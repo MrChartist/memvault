@@ -25,9 +25,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/memvault.git"
+    "url": "https://github.com/MrChartist/memvault.git"
   },
-  "homepage": "https://github.com/yourusername/memvault#readme",
+  "homepage": "https://github.com/MrChartist/memvault#readme",
   "dependencies": {
     "express": "^5.2.1",
     "multer": "^2.1.1",
