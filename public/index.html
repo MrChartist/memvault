@@ -1,480 +1,1304 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Knowledge Vault — Daily Diary</title>
+  <title>MemVault — Personal Knowledge Vault</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
+    rel="stylesheet" />
   <style>
+    /* ═══ DESIGN TOKENS ══════════════════════════════ */
     :root {
-      --bg: #0d0f14;
-      --surface: #13161e;
-      --surface2: #1c2030;
-      --border: #252a3a;
-      --accent: #6c63ff;
-      --accent2: #a78bfa;
-      --gold: #f0b429;
-      --text: #e8eaf2;
-      --muted: #8890a8;
+      --accent: #6366f1;
+      --accent-soft: rgba(99, 102, 241, 0.12);
+      --gold: #f59e0b;
+      --gold-soft: rgba(245, 158, 11, 0.12);
       --danger: #ef4444;
-      --success: #22c55e;
-      --diary: #6c63ff;
-      --convo: #06b6d4;
-      --worklog: #f59e0b;
-      --file: #10b981;
+      --success: #10b981;
+      --diary-c: #818cf8;
+      --convo-c: #22d3ee;
+      --work-c: #fb923c;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+      --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.2);
+      --transition: 0.2s ease;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ─── DARK THEME ─── */
+    [data-theme="dark"] {
+      --bg: #0c0e14;
+      --bg2: #111318;
+      --surface: #161920;
+      --surface2: #1d2029;
+      --border: rgba(255, 255, 255, 0.07);
+      --border-hover: rgba(255, 255, 255, 0.14);
+      --text: #e4e7f0;
+      --text2: #9399b0;
+      --text3: #575f77;
+      --header-bg: rgba(12, 14, 20, 0.88);
+      --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+      --input-bg: #1d2029;
+    }
+
+    /* ─── LIGHT THEME ─── */
+    [data-theme="light"] {
+      --bg: #f4f5f9;
+      --bg2: #eceef4;
+      --surface: #ffffff;
+      --surface2: #f0f1f7;
+      --border: rgba(0, 0, 0, 0.08);
+      --border-hover: rgba(0, 0, 0, 0.16);
+      --text: #1a1d2e;
+      --text2: #5a607a;
+      --text3: #9ca3bb;
+      --header-bg: rgba(244, 245, 249, 0.88);
+      --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
+      --input-bg: #f4f5f9;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'DM Sans', 'Inter', sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
-      overflow-x: hidden;
+      font-size: 15px;
+      line-height: 1.6;
+      transition: background var(--transition), color var(--transition);
     }
 
-    /* Background orbs */
-    body::before {
-      content: '';
-      position: fixed;
-      top: -200px; left: -200px;
-      width: 600px; height: 600px;
-      background: radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%);
-      pointer-events: none;
-      animation: orb1 20s ease-in-out infinite alternate;
-    }
-    body::after {
-      content: '';
-      position: fixed;
-      bottom: -200px; right: -200px;
-      width: 500px; height: 500px;
-      background: radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%);
-      pointer-events: none;
-      animation: orb2 25s ease-in-out infinite alternate;
-    }
-    @keyframes orb1 { to { transform: translate(100px, 80px); } }
-    @keyframes orb2 { to { transform: translate(-80px, -60px); } }
-
-    /* Layout */
-    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
-
-    /* Header */
+    /* ═══ HEADER ════════════════════════════════════ */
     header {
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      background: var(--header-bg);
       border-bottom: 1px solid var(--border);
-      padding: 18px 0;
-      position: sticky; top: 0;
-      background: rgba(13,15,20,0.85);
-      backdrop-filter: blur(16px);
-      z-index: 100;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      padding: 0 24px;
+      height: 58px;
+      display: flex;
+      align-items: center;
     }
+
     .header-inner {
-      display: flex; align-items: center; gap: 14px;
+      max-width: 980px;
+      margin: 0 auto;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-    .logo {
-      width: 36px; height: 36px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
+
+    .logo-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      box-shadow: 0 0 18px rgba(99, 102, 241, 0.35);
+    }
+
+    .logo-text {
+      line-height: 1.1;
+    }
+
+    .logo-text strong {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text);
+    }
+
+    .logo-text span {
+      font-size: 10.5px;
+      color: var(--text2);
+      font-weight: 400;
+    }
+
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Theme toggle */
+    .theme-toggle {
+      width: 38px;
+      height: 38px;
       border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-      box-shadow: 0 0 20px rgba(108,99,255,0.4);
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: var(--text2);
+      transition: all var(--transition);
     }
-    .brand { display: flex; flex-direction: column; }
-    .brand h1 {
-      font-family: 'Playfair Display', serif;
-      font-size: 1.1rem; font-weight: 600;
-      background: linear-gradient(90deg, #e8eaf2, var(--accent2));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+
+    .theme-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 11px;
+      border-radius: 99px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--text2);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text3);
+    }
+
+    .status-dot.online {
+      background: var(--success);
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+    }
+
+    /* ═══ MAIN CONTENT ══════════════════════════════ */
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+    }
+
+    /* Date hero */
+    .date-hero {
+      text-align: center;
+      padding: 28px 0 24px;
+    }
+
+    .date-hero h1 {
+      font-size: clamp(36px, 6vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--text) 0%, var(--text2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
       background-clip: text;
+      font-family: 'Inter', sans-serif;
     }
-    .brand span { font-size: 0.7rem; color: var(--muted); }
-    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-    #status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--muted);
-      transition: background 0.3s;
-    }
-    #status-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
-    #status-label { font-size: 0.75rem; color: var(--muted); }
 
-    /* Main */
-    main { padding: 32px 0 80px; }
-
-    /* Date banner */
-    .date-banner {
-      text-align: center; margin-bottom: 36px;
+    .date-hero p {
+      font-size: 14px;
+      color: var(--text2);
+      margin-top: 4px;
     }
-    .date-banner .day-name {
-      font-family: 'Playfair Display', serif;
-      font-size: 2.8rem; font-weight: 600;
-      background: linear-gradient(135deg, var(--text), var(--accent2));
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .date-banner .full-date { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
 
-    /* Diary compose */
+    /* ═══ COMPOSE CARD ══════════════════════════════ */
     .compose-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 28px;
-      position: relative;
+      border-radius: var(--radius);
+      padding: 0;
+      margin-bottom: 24px;
       overflow: hidden;
+      box-shadow: var(--card-shadow);
+      transition: border-color var(--transition);
     }
-    .compose-card::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, var(--accent), var(--accent2), var(--gold));
+
+    .compose-card:focus-within {
+      border-color: var(--accent);
     }
+
     .compose-label {
-      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em;
-      text-transform: uppercase; color: var(--accent2); margin-bottom: 10px;
+      padding: 12px 16px 0;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
     }
+
     #diary-input {
       width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--text);
-      font-family: 'Inter', sans-serif;
-      font-size: 0.95rem;
-      line-height: 1.7;
-      padding: 14px 16px;
-      resize: vertical; min-height: 110px;
+      resize: none;
+      border: none;
       outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      background: transparent;
+      padding: 10px 16px 6px;
+      font-size: 14.5px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      line-height: 1.65;
+      min-height: 90px;
+      caret-color: var(--accent);
     }
-    #diary-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+
+    #diary-input::placeholder {
+      color: var(--text3);
     }
-    .compose-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
-    #char-count { font-size: 0.75rem; color: var(--muted); }
+
+    .compose-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .char-count {
+      font-size: 11.5px;
+      color: var(--text3);
+      font-family: 'DM Mono', monospace;
+    }
+
     .btn-save {
-      padding: 9px 22px; border-radius: 8px; border: none; cursor: pointer;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #fff; font-size: 0.88rem; font-weight: 600;
-      display: flex; align-items: center; gap: 7px;
-      transition: opacity 0.2s, transform 0.1s;
-      box-shadow: 0 4px 14px rgba(108,99,255,0.35);
+      padding: 8px 18px;
+      border-radius: 9px;
+      border: none;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: 'DM Sans', sans-serif;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: opacity var(--transition), transform 0.1s;
+      letter-spacing: -0.01em;
     }
-    .btn-save:hover { opacity: 0.9; transform: translateY(-1px); }
-    .btn-save:active { transform: translateY(0); }
-    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* Toast */
-    #toast {
-      position: fixed; bottom: 30px; right: 30px;
-      padding: 12px 20px; border-radius: 10px;
-      font-size: 0.85rem; font-weight: 500;
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--text); opacity: 0;
-      transform: translateY(20px);
-      transition: opacity 0.3s, transform 0.3s;
-      z-index: 999;
+    .btn-save:hover {
+      opacity: 0.88;
+      transform: translateY(-1px);
     }
-    #toast.show { opacity: 1; transform: translateY(0); }
-    #toast.success { border-color: var(--success); color: var(--success); }
-    #toast.error { border-color: var(--danger); color: var(--danger); }
 
-    /* Tabs */
-    .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .btn-save:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ═══ STATS ROW ═════════════════════════════════ */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .stat-num {
+      font-size: 26px;
+      font-weight: 800;
+      font-family: 'Inter', sans-serif;
+      letter-spacing: -0.03em;
+    }
+
+    .stat-num.diary {
+      color: var(--diary-c);
+    }
+
+    .stat-num.convo {
+      color: var(--convo-c);
+    }
+
+    .stat-num.work {
+      color: var(--work-c);
+    }
+
+    .stat-label {
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+
+    /* ═══ TABS ══════════════════════════════════════ */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
     .tab {
-      padding: 7px 16px; border-radius: 20px; border: 1px solid var(--border);
-      background: transparent; color: var(--muted); font-size: 0.8rem;
-      cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
-    }
-    .tab:hover { border-color: var(--accent); color: var(--accent); }
-    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-    .tab-secure { border-color: rgba(245,158,11,0.4); color: var(--gold); }
-    .tab-secure:hover { border-color: var(--gold); color: var(--gold); }
-    .tab-secure.active { background: var(--gold); border-color: var(--gold); color: #000; }
-
-    /* Secure Vault panel */
-    #secure-panel { display: none; }
-    #secure-panel.visible { display: block; }
-    .lock-screen {
-      text-align: center; padding: 60px 20px;
-      background: var(--surface); border: 1px solid rgba(245,158,11,0.3);
-      border-radius: 16px; margin-bottom: 24px;
-    }
-    .lock-screen .lock-icon { font-size: 3rem; margin-bottom: 16px; }
-    .lock-screen h2 { font-size: 1.2rem; margin-bottom: 8px; color: var(--gold); }
-    .lock-screen p { font-size: 0.82rem; color: var(--muted); margin-bottom: 24px; }
-    .pw-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-    .pw-input {
-      padding: 10px 16px; border-radius: 10px;
-      border: 1px solid rgba(245,158,11,0.4); background: var(--surface2);
-      color: var(--text); font-size: 0.9rem; font-family: 'Inter', sans-serif;
-      width: 240px; outline: none; letter-spacing: 0.05em;
-    }
-    .pw-input:focus { border-color: var(--gold); }
-    .btn-unlock {
-      padding: 10px 22px; border-radius: 10px; border: none; cursor: pointer;
-      background: var(--gold); color: #000; font-weight: 700;
-      font-size: 0.88rem; font-family: 'Inter', sans-serif;
-      transition: opacity 0.2s, transform 0.1s;
-    }
-    .btn-unlock:hover { opacity: 0.9; transform: translateY(-1px); }
-
-    /* Secrets list */
-    .secrets-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .secrets-header h3 { font-size: 0.9rem; color: var(--gold); }
-    .btn-add-secret {
-      padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(245,158,11,0.4);
-      background: transparent; color: var(--gold); font-size: 0.8rem;
-      cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
-    }
-    .btn-add-secret:hover { background: rgba(245,158,11,0.1); }
-    .btn-lock-vault {
-      padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
-      background: transparent; color: var(--muted); font-size: 0.8rem;
-      cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
-    }
-    .btn-lock-vault:hover { border-color: var(--danger); color: var(--danger); }
-    .category-group { margin-bottom: 20px; }
-    .cat-label {
-      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
-      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
-    }
-    .secret-card {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;
-      display: flex; align-items: center; gap: 12px;
-      cursor: pointer; transition: border-color 0.2s;
-    }
-    .secret-card:hover { border-color: rgba(245,158,11,0.5); }
-    .secret-icon { font-size: 1.4rem; }
-    .secret-info { flex: 1; }
-    .secret-label { font-weight: 600; font-size: 0.9rem; }
-    .secret-meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
-    .secret-delete { color: var(--muted); background: none; border: none; cursor: pointer; font-size: 1rem; padding: 4px; transition: color 0.2s; }
-    .secret-delete:hover { color: var(--danger); }
-
-    /* Modal */
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(6px); z-index: 1000;
-      display: flex; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none; transition: opacity 0.25s;
-    }
-    .modal-overlay.open { opacity: 1; pointer-events: all; }
-    .modal {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 20px; padding: 28px; width: 420px; max-width: 95vw;
-      transform: scale(0.95); transition: transform 0.25s;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-    }
-    .modal-overlay.open .modal { transform: scale(1); }
-    .modal h3 { font-size: 1rem; margin-bottom: 18px; color: var(--gold); }
-    .field-group { margin-bottom: 14px; }
-    .field-group label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 5px; }
-    .field-input {
-      width: 100%; background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 8px; padding: 9px 12px;
-      color: var(--text); font-size: 0.88rem; font-family: 'Inter', sans-serif;
-      outline: none; transition: border-color 0.2s;
-    }
-    .field-input:focus { border-color: var(--gold); }
-    .field-select { appearance: none; cursor: pointer; }
-    .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
-    .btn-cancel {
-      padding: 9px 18px; border-radius: 8px; border: 1px solid var(--border);
-      background: transparent; color: var(--muted); cursor: pointer;
-      font-size: 0.85rem; font-family: 'Inter', sans-serif;
-    }
-    .btn-save-secret {
-      padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer;
-      background: var(--gold); color: #000; font-weight: 700;
-      font-size: 0.85rem; font-family: 'Inter', sans-serif;
+      padding: 6px 15px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      font-family: 'DM Sans', sans-serif;
     }
 
-    /* Reveal modal */
-    .reveal-field { margin-bottom: 10px; }
-    .reveal-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; }
-    .reveal-value {
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 8px; padding: 8px 12px; font-size: 0.85rem;
-      font-family: monospace; word-break: break-all; cursor: pointer;
-      transition: border-color 0.2s; user-select: all;
+    .tab:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-soft);
     }
-    .reveal-value:hover { border-color: var(--gold); }
 
-    /* Search */
-    .search-row { display: flex; gap: 10px; margin-bottom: 24px; }
+    .tab.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .tab-secure {
+      border-color: rgba(245, 158, 11, 0.3);
+      color: var(--gold) !important;
+    }
+
+    .tab-secure:hover {
+      border-color: var(--gold) !important;
+      background: var(--gold-soft) !important;
+      color: var(--gold) !important;
+    }
+
+    .tab-secure.active {
+      background: var(--gold) !important;
+      border-color: var(--gold) !important;
+      color: #1a1200 !important;
+    }
+
+    /* ═══ SEARCH ════════════════════════════════════ */
+    .search-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .search-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0 14px;
+      transition: border-color var(--transition);
+    }
+
+    .search-wrap:focus-within {
+      border-color: var(--accent);
+    }
+
+    .search-icon {
+      color: var(--text3);
+      font-size: 15px;
+      flex-shrink: 0;
+    }
+
     #search-input {
-      flex: 1; background: var(--surface); border: 1px solid var(--border);
-      border-radius: 10px; padding: 10px 16px;
-      color: var(--text); font-size: 0.88rem; font-family: 'Inter', sans-serif;
-      outline: none; transition: border-color 0.2s;
+      flex: 1;
+      border: none;
+      outline: none;
+      background: transparent;
+      font-size: 14px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      padding: 10px 0;
     }
-    #search-input:focus { border-color: var(--accent); }
-    .btn-search {
-      padding: 10px 18px; border-radius: 10px; border: 1px solid var(--border);
-      background: var(--surface2); color: var(--text); font-size: 0.88rem;
-      cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
-    }
-    .btn-search:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* Entry list */
-    .entries-list { display: flex; flex-direction: column; gap: 14px; }
+    #search-input::placeholder {
+      color: var(--text3);
+    }
+
+    .btn-action {
+      padding: 9px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text2);
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all var(--transition);
+    }
+
+    .btn-action:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ═══ ENTRY CARDS ═══════════════════════════════ */
+    .entries-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
     .entry-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: var(--radius);
       padding: 16px 18px;
-      transition: border-color 0.2s, transform 0.15s;
-      cursor: default;
+      transition: border-color var(--transition), transform 0.15s;
+      box-shadow: var(--card-shadow);
     }
-    .entry-card:hover { border-color: var(--border); transform: translateY(-1px); }
-    .entry-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+
+    .entry-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-1px);
+    }
+
+    .entry-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
     .type-badge {
-      padding: 3px 9px; border-radius: 12px; font-size: 0.68rem;
-      font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 2.5px 9px;
+      border-radius: 99px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
-    .type-diary { background: rgba(108,99,255,0.15); color: var(--diary); }
-    .type-conversation { background: rgba(6,182,212,0.15); color: var(--convo); }
-    .type-worklog { background: rgba(245,158,11,0.15); color: var(--worklog); }
-    .type-file { background: rgba(16,185,129,0.15); color: var(--file); }
-    .entry-source { font-size: 0.72rem; color: var(--muted); }
-    .entry-time { font-size: 0.72rem; color: var(--muted); margin-left: auto; }
-    .entry-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 5px; }
-    .entry-content { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+
+    .type-diary {
+      background: rgba(129, 140, 248, 0.15);
+      color: var(--diary-c);
+    }
+
+    .type-conversation {
+      background: rgba(34, 211, 238, 0.12);
+      color: var(--convo-c);
+    }
+
+    .type-worklog {
+      background: rgba(251, 146, 60, 0.14);
+      color: var(--work-c);
+    }
+
+    .type-file {
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--success);
+    }
+
+    .entry-source {
+      font-size: 11.5px;
+      color: var(--text3);
+    }
+
+    .entry-time {
+      margin-left: auto;
+      font-size: 11.5px;
+      color: var(--text3);
+      font-family: 'DM Mono', monospace;
+    }
+
+    .entry-title {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .entry-content {
+      font-size: 13px;
+      color: var(--text2);
+      margin-top: 5px;
+      line-height: 1.55;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Loading / Empty */
+    #loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text2);
+      font-size: 14px;
+    }
 
     .empty-state {
-      text-align: center; padding: 60px 20px; color: var(--muted);
+      text-align: center;
+      padding: 60px 20px;
     }
-    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
-    .empty-state p { font-size: 0.9rem; }
 
-    /* Stats row */
-    .stats-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-    .stat-card {
-      flex: 1; min-width: 140px;
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: 12px; padding: 14px 16px;
-      display: flex; flex-direction: column; gap: 4px;
+    .empty-state .icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+      opacity: 0.5;
     }
-    .stat-num { font-size: 1.6rem; font-weight: 700; }
-    .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
-    #loading { 
-      text-align: center; padding: 40px; color: var(--muted); font-size: 0.9rem; 
+    .empty-state p {
+      color: var(--text2);
+      font-size: 14px;
+    }
+
+    /* ═══ SECURE VAULT ══════════════════════════════ */
+    #secure-panel {
+      display: none;
+    }
+
+    #secure-panel.visible {
+      display: block;
+    }
+
+    .lock-screen {
+      text-align: center;
+      padding: 56px 24px;
+      background: var(--surface);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+    }
+
+    .lock-icon {
+      font-size: 44px;
+      margin-bottom: 16px;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+
+      0%,
+      100% {
+        transform: translateY(0)
+      }
+
+      50% {
+        transform: translateY(-5px)
+      }
+    }
+
+    .lock-screen h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .lock-screen p {
+      font-size: 13.5px;
+      color: var(--text2);
+      margin-bottom: 24px;
+      line-height: 1.6;
+    }
+
+    .pw-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .pw-input {
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid rgba(245, 158, 11, 0.3);
+      background: var(--input-bg);
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'DM Sans', sans-serif;
+      width: 230px;
+      outline: none;
+      letter-spacing: 0.04em;
+      transition: border-color var(--transition);
+    }
+
+    .pw-input:focus {
+      border-color: var(--gold);
+    }
+
+    .btn-unlock {
+      padding: 10px 22px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: var(--gold);
+      color: #18120a;
+      font-weight: 700;
+      font-size: 13.5px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: opacity var(--transition), transform 0.1s;
+    }
+
+    .btn-unlock:hover {
+      opacity: 0.88;
+      transform: translateY(-1px);
+    }
+
+    .pw-error {
+      color: var(--danger);
+      font-size: 12.5px;
+      margin-top: 10px;
+      display: none;
+    }
+
+    .lock-hint {
+      font-size: 11.5px;
+      color: var(--text3);
+      margin-top: 18px;
+    }
+
+    .secrets-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .secrets-header h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--gold);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .secrets-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-add-secret {
+      padding: 7px 15px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      background: var(--gold-soft);
+      color: var(--gold);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all var(--transition);
+    }
+
+    .btn-add-secret:hover {
+      background: rgba(245, 158, 11, 0.2);
+    }
+
+    .btn-lock-vault {
+      padding: 7px 13px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      font-size: 12.5px;
+      cursor: pointer;
+      font-family: 'DM Sans', sans-serif;
+      transition: all var(--transition);
+    }
+
+    .btn-lock-vault:hover {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .category-group {
+      margin-bottom: 20px;
+    }
+
+    .cat-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 8px;
+      padding-left: 2px;
+    }
+
+    .secret-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 13px 16px;
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      cursor: pointer;
+      transition: border-color var(--transition), transform 0.12s;
+      box-shadow: var(--card-shadow);
+    }
+
+    .secret-card:hover {
+      border-color: rgba(245, 158, 11, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .secret-icon {
+      font-size: 1.25rem;
+    }
+
+    .secret-info {
+      flex: 1;
+    }
+
+    .secret-label {
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: -0.01em;
+    }
+
+    .secret-meta {
+      font-size: 11.5px;
+      color: var(--text3);
+      margin-top: 2px;
+      font-family: 'DM Mono', monospace;
+    }
+
+    .secret-del {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text3);
+      font-size: 15px;
+      padding: 4px 6px;
+      border-radius: 6px;
+      transition: all var(--transition);
+    }
+
+    .secret-del:hover {
+      color: var(--danger);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    /* ═══ MODALS ═════════════════════════════════════ */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 26px;
+      width: 430px;
+      max-width: 96vw;
+      transform: translateY(12px) scale(0.97);
+      transition: transform 0.22s;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+    }
+
+    .modal-overlay.open .modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      letter-spacing: -0.01em;
+    }
+
+    .modal-title .title-icon {
+      font-size: 1.2rem;
+    }
+
+    .field-group {
+      margin-bottom: 14px;
+    }
+
+    .field-group label {
+      display: block;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text2);
+      margin-bottom: 5px;
+      letter-spacing: 0.02em;
+    }
+
+    .field-input {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 13px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+
+    .field-input:focus {
+      border-color: var(--gold);
+    }
+
+    .field-input[type="password"] {
+      font-family: 'DM Mono', monospace;
+      letter-spacing: 0.06em;
+    }
+
+    select.field-input {
+      cursor: pointer;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-cancel {
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text2);
+      cursor: pointer;
+      font-size: 13.5px;
+      font-family: 'DM Sans', sans-serif;
+      transition: all var(--transition);
+    }
+
+    .btn-cancel:hover {
+      background: var(--surface2);
+    }
+
+    .btn-save-secret {
+      padding: 9px 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      background: var(--gold);
+      color: #1a1200;
+      font-weight: 700;
+      font-size: 13.5px;
+      font-family: 'DM Sans', sans-serif;
+      transition: opacity var(--transition);
+    }
+
+    .btn-save-secret:hover {
+      opacity: 0.88;
+    }
+
+    /* Reveal modal */
+    .reveal-field {
+      margin-bottom: 12px;
+    }
+
+    .reveal-lbl {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text3);
+      margin-bottom: 5px;
+    }
+
+    .reveal-val {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 13px;
+      font-size: 13.5px;
+      font-family: 'DM Mono', monospace;
+      word-break: break-all;
+      cursor: pointer;
+      color: var(--text);
+      transition: border-color var(--transition);
+      -webkit-user-select: all;
+      user-select: all;
+    }
+
+    .reveal-val:hover {
+      border-color: var(--gold);
+    }
+
+    /* ═══ TOAST ══════════════════════════════════════ */
+    #toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 10px 20px;
+      border-radius: 99px;
+      font-size: 13.5px;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      z-index: 999;
+      opacity: 0;
+      transition: opacity 0.25s, transform 0.25s;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #toast.error {
+      border-color: rgba(239, 68, 68, 0.4);
+      color: var(--danger);
+    }
+
+    #toast.success {
+      border-color: rgba(16, 185, 129, 0.4);
+      color: var(--success);
+    }
+
+    /* ═══ ACCESS MAP PANEL ═══════════════════════════ */
+    #access-panel {
+      display: none;
+    }
+
+    #access-panel.visible {
+      display: block;
+    }
+
+    .access-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .access-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .access-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .access-card h4 {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+
+    .endpoint-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 12.5px;
+    }
+
+    .endpoint-row:last-child {
+      border-bottom: none;
+    }
+
+    .method {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .method.get {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+    }
+
+    .method.post {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--diary-c);
+    }
+
+    .method.del {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--danger);
+    }
+
+    .ep-path {
+      font-family: 'DM Mono', monospace;
+      font-size: 11.5px;
+      color: var(--text2);
+    }
+
+    .ep-desc {
+      font-size: 11px;
+      color: var(--text3);
+      margin-left: auto;
+      text-align: right;
     }
   </style>
 </head>
+
 <body>
+
+  <!-- HEADER -->
   <header>
-    <div class="container">
-      <div class="header-inner">
-        <div class="logo">📒</div>
-        <div class="brand">
-          <h1>Knowledge Vault</h1>
-          <span>Daily Diary &amp; Memory</span>
-        </div>
-        <div class="header-right">
-          <div id="status-dot"></div>
-          <span id="status-label">Checking...</span>
+    <div class="header-inner">
+      <div class="logo-mark">🗄️</div>
+      <div class="logo-text">
+        <strong>MemVault</strong>
+        <span>Personal Knowledge Vault</span>
+      </div>
+      <div class="header-right">
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
+          aria-label="Toggle dark/light theme">🌙</button>
+        <div class="status-pill">
+          <div class="status-dot" id="status-dot"></div>
+          <span id="status-label">Connecting…</span>
         </div>
       </div>
     </div>
   </header>
 
   <main>
-    <div class="container">
-      <!-- Date -->
-      <div class="date-banner">
-        <div class="day-name" id="day-name">—</div>
-        <div class="full-date" id="full-date">—</div>
-      </div>
+    <!-- Date Hero -->
+    <div class="date-hero">
+      <h1 id="day-name">—</h1>
+      <p id="full-date">—</p>
+    </div>
 
-      <!-- Compose diary entry -->
-      <div class="compose-card">
-        <div class="compose-label">✏️ &nbsp;New Diary Entry</div>
-        <textarea id="diary-input" placeholder="What's on your mind today?&#10;&#10;Write freely — this is your private vault." maxlength="5000"></textarea>
-        <div class="compose-footer">
-          <span id="char-count">0 / 5000</span>
-          <button class="btn-save" id="save-btn" onclick="saveDiary()">
-            <span>💾</span> Save to Vault
-          </button>
+    <!-- Compose -->
+    <div class="compose-card" id="compose-card">
+      <div class="compose-label">✏️ New diary entry</div>
+      <textarea id="diary-input" placeholder="What's on your mind today?&#10;Write freely — this is your private vault."
+        aria-label="Diary entry"></textarea>
+      <div class="compose-footer">
+        <span class="char-count" id="char-count">0 / 5000</span>
+        <button class="btn-save" id="save-btn" onclick="saveDiary()">
+          <span>💾</span> Save to Vault
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card">
+        <div class="stat-num diary" id="stat-diary">—</div>
+        <div class="stat-label">Diary Entries</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num convo" id="stat-convo">—</div>
+        <div class="stat-label">Conversations</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num work" id="stat-worklog">—</div>
+        <div class="stat-label">Worklogs</div>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs" id="tabs">
+      <button class="tab active" onclick="switchTab('all', this)" id="tab-all">All</button>
+      <button class="tab" onclick="switchTab('diary', this)">📔 Diary</button>
+      <button class="tab" onclick="switchTab('conversation', this)">💬 Conversations</button>
+      <button class="tab" onclick="switchTab('worklog', this)">🛠️ Worklogs</button>
+      <button class="tab tab-secure" onclick="openSecureVault(this)">🔒 Secure Vault</button>
+      <button class="tab" onclick="openAccessMap(this)" style="margin-left:auto">📡 Access Map</button>
+    </div>
+
+    <!-- Search -->
+    <div class="search-row" id="search-row">
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input id="search-input" type="text" placeholder="Search your vault… (press Enter)"
+          onkeydown="if(event.key==='Enter') doSearch()" aria-label="Search vault" />
+      </div>
+      <button class="btn-action" onclick="doSearch()">Search</button>
+      <button class="btn-action" onclick="clearSearch()">✕ Clear</button>
+    </div>
+
+    <!-- Entries -->
+    <div id="entries-wrapper">
+      <div id="loading">Loading entries…</div>
+      <div class="entries-list" id="entries-list" style="display:none"></div>
+    </div>
+
+    <!-- ═══ SECURE VAULT PANEL ═══ -->
+    <div id="secure-panel">
+      <div id="lock-screen" class="lock-screen">
+        <div class="lock-icon">🔐</div>
+        <h2>Secure Vault</h2>
+        <p>Passwords, API keys, user IDs, and payment details<br>encrypted with <strong>AES-256-GCM</strong>. Enter your
+          master password.</p>
+        <div class="pw-row">
+          <input id="master-pw" class="pw-input" type="password" placeholder="Master password"
+            onkeydown="if(event.key==='Enter')unlockVault()" aria-label="Master password" />
+          <button class="btn-unlock" onclick="unlockVault()">🔓 Unlock</button>
         </div>
+        <p class="pw-error" id="pw-error">Wrong password. Try again.</p>
+        <p class="lock-hint">First use? Any password you enter becomes your master password permanently.</p>
       </div>
-
-      <!-- Stats -->
-      <div class="stats-row" id="stats-row">
-        <div class="stat-card">
-          <div class="stat-num" id="stat-diary" style="color:var(--diary)">—</div>
-          <div class="stat-label">Diary Entries</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num" id="stat-convo" style="color:var(--convo)">—</div>
-          <div class="stat-label">Conversations</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-num" id="stat-worklog" style="color:var(--worklog)">—</div>
-          <div class="stat-label">Worklogs</div>
-        </div>
-      </div>
-
-      <!-- Tabs + Search -->
-      <div class="tabs" id="tabs">
-        <button class="tab active" onclick="setFilter('all', this)">All</button>
-        <button class="tab" onclick="setFilter('diary', this)">📔 Diary</button>
-        <button class="tab" onclick="setFilter('conversation', this)">💬 Conversations</button>
-        <button class="tab" onclick="setFilter('worklog', this)">🛠️ Worklogs</button>
-        <button class="tab tab-secure" onclick="openSecureVault(this)">🔒 Secure Vault</button>
-      </div>
-      <div class="search-row">
-        <input id="search-input" type="text" placeholder="Search your vault… (press Enter)" onkeydown="if(event.key==='Enter') doSearch()" />
-        <button class="btn-search" onclick="doSearch()">🔍 Search</button>
-        <button class="btn-search" onclick="clearSearch()">✕ Clear</button>
-      </div>
-
-      <!-- Entries -->
-      <div id="entries-wrapper">
-        <div id="loading">Loading entries…</div>
-        <div class="entries-list" id="entries-list" style="display:none"></div>
-      </div>
-
-      <!-- ═══ SECURE VAULT PANEL ═══ -->
-      <div id="secure-panel">
-        <!-- Lock screen -->
-        <div id="lock-screen" class="lock-screen">
-          <div class="lock-icon">🔐</div>
-          <h2>Secure Vault</h2>
-          <p>Your passwords, API keys, user IDs, and payment details<br>are encrypted with AES-256-GCM. Enter your master password.</p>
-          <div class="pw-row">
-            <input id="master-pw" class="pw-input" type="password" placeholder="Master password" onkeydown="if(event.key==='Enter')unlockVault()" />
-            <button class="btn-unlock" onclick="unlockVault()">🔓 Unlock</button>
+      <div id="vault-unlocked" style="display:none">
+        <div class="secrets-header">
+          <h3><span>🔐</span> Secure Vault</h3>
+          <div class="secrets-actions">
+            <button class="btn-add-secret" onclick="openAddModal()">+ Add Secret</button>
+            <button class="btn-lock-vault" onclick="lockVault()">🔒 Lock</button>
           </div>
-          <p id="pw-error" style="color:var(--danger);font-size:0.78rem;margin-top:10px;display:none">Wrong password. Try again.</p>
-          <p style="font-size:0.72rem;color:var(--muted);margin-top:18px">First time? Any password you enter becomes your master password permanently.</p>
         </div>
+        <div id="secrets-list"></div>
+      </div>
+    </div>
 
-        <!-- Unlocked view -->
-        <div id="vault-unlocked" style="display:none">
-          <div class="secrets-header">
-            <h3>🔒 Secure Vault</h3>
-            <div style="display:flex;gap:8px">
-              <button class="btn-add-secret" onclick="openAddModal()">+ Add Secret</button>
-              <button class="btn-lock-vault" onclick="lockVault()">🔒 Lock</button>
-            </div>
+    <!-- ═══ ACCESS MAP PANEL ═══ -->
+    <div id="access-panel">
+      <div style="margin-bottom:16px">
+        <div style="font-size:18px;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px">📡 API Access Map</div>
+        <div style="font-size:13px;color:var(--text2)">All endpoints available in MemVault v2 • Server: <code
+            style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)">http://127.0.0.1:7799</code>
+        </div>
+      </div>
+      <div class="access-grid">
+        <div class="access-card">
+          <h4>📋 Knowledge Entries</h4>
+          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/health</span><span
+              class="ep-desc">Server status</span></div>
+          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/add</span><span
+              class="ep-desc">Add diary/conversation/worklog</span></div>
+          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/search?q=…</span><span
+              class="ep-desc">Full-text search</span></div>
+          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/list</span><span
+              class="ep-desc">List all entries</span></div>
+          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/clear</span><span
+              class="ep-desc">Delete all entries</span></div>
+          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/upload</span><span
+              class="ep-desc">Upload file attachment</span></div>
+        </div>
+        <div class="access-card">
+          <h4>🔐 Encrypted Secrets</h4>
+          <div class="endpoint-row"><span class="method post">POST</span><span
+              class="ep-path">/secrets/verify</span><span class="ep-desc">Check/set master password</span></div>
+          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/add</span><span
+              class="ep-desc">Encrypt & store secret</span></div>
+          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/get</span><span
+              class="ep-desc">Decrypt & return secret</span></div>
+          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/secrets/list</span><span
+              class="ep-desc">List labels (no decrypt)</span></div>
+          <div class="endpoint-row"><span class="method del">DEL</span><span
+              class="ep-path">/secrets/delete/:id</span><span class="ep-desc">Remove a secret</span></div>
+        </div>
+        <div class="access-card">
+          <h4>🔒 Encryption Details</h4>
+          <div class="endpoint-row"><span class="ep-path">Algorithm</span><span class="ep-desc">AES-256-GCM</span></div>
+          <div class="endpoint-row"><span class="ep-path">Key derivation</span><span class="ep-desc">PBKDF2 SHA-256
+              (100k iters)</span></div>
+          <div class="endpoint-row"><span class="ep-path">IV</span><span class="ep-desc">12-byte random per
+              secret</span></div>
+          <div class="endpoint-row"><span class="ep-path">Stored</span><span class="ep-desc">{ iv, authTag, ciphertext
+              }</span></div>
+          <div class="endpoint-row"><span class="ep-path">Password</span><span class="ep-desc">Never stored
+              anywhere</span></div>
+        </div>
+        <div class="access-card">
+          <h4>🔄 Sync Scripts</h4>
+          <div class="endpoint-row"><span class="ep-path">sync-antigravity.mjs</span><span class="ep-desc">AI
+              conversations</span></div>
+          <div class="endpoint-row"><span class="ep-path">sync-browser.mjs</span><span class="ep-desc">Chrome/Edge
+              history + bookmarks</span></div>
+          <div class="endpoint-row"><span class="ep-path">--dry-run flag</span><span class="ep-desc">Preview without
+              posting</span></div>
+          <div class="endpoint-row"><span class="ep-path">--chrome / --edge</span><span class="ep-desc">Single browser
+              sync</span></div>
+        </div>
+        <div class="access-card">
+          <h4>🗄️ Secret Categories</h4>
+          <div class="endpoint-row"><span class="ep-path">🔑 apikey</span><span class="ep-desc">API Key +
+              environment</span></div>
+          <div class="endpoint-row"><span class="ep-path">🔐 password</span><span class="ep-desc">Username + password +
+              URL</span></div>
+          <div class="endpoint-row"><span class="ep-path">👤 userid</span><span class="ep-desc">User ID + service</span>
           </div>
-          <div id="secrets-list"></div>
+          <div class="endpoint-row"><span class="ep-path">💳 payment</span><span class="ep-desc">Card label + last4 +
+              expiry</span></div>
+          <div class="endpoint-row"><span class="ep-path">📱 phone</span><span class="ep-desc">Name + number</span>
+          </div>
+          <div class="endpoint-row"><span class="ep-path">📝 custom</span><span class="ep-desc">Any label + value</span>
+          </div>
+        </div>
+        <div class="access-card">
+          <h4>📁 Storage Paths</h4>
+          <div class="endpoint-row"><span class="ep-path">Vault root</span><span class="ep-desc">/mnt/d/AG/Vault</span>
+          </div>
+          <div class="endpoint-row"><span class="ep-path">SQLite DB</span><span class="ep-desc">db/index.sqlite</span>
+          </div>
+          <div class="endpoint-row"><span class="ep-path">File uploads</span><span class="ep-desc">files/</span></div>
+          <div class="endpoint-row"><span class="ep-path">GitHub</span><span class="ep-desc">MrChartist/memvault</span>
+          </div>
         </div>
       </div>
     </div>
+
   </main>
 
   <!-- Add Secret Modal -->
   <div class="modal-overlay" id="add-modal">
     <div class="modal">
-      <h3>🔑 Add New Secret</h3>
+      <div class="modal-title"><span class="title-icon">🔑</span> Add New Secret</div>
       <div class="field-group">
         <label>Category</label>
-        <select id="m-category" class="field-input field-select">
+        <select id="m-category" class="field-input" onchange="renderCategoryFields()" title="Secret category"
+          aria-label="Secret category">
           <option value="apikey">🔑 API Key</option>
           <option value="password">🔐 Password</option>
           <option value="userid">👤 User ID</option>
@@ -484,8 +1308,8 @@
         </select>
       </div>
       <div class="field-group">
-        <label>Label (e.g. "OpenAI API Key", "Gmail Password")</label>
-        <input id="m-label" class="field-input" type="text" placeholder="Label" />
+        <label>Label <span style="color:var(--text3);font-weight:400">(e.g. "OpenAI API Key")</span></label>
+        <input id="m-label" class="field-input" type="text" placeholder="Descriptive label" aria-label="Secret label" />
       </div>
       <div id="m-fields-container"></div>
       <div class="modal-footer">
@@ -498,9 +1322,9 @@
   <!-- Reveal Secret Modal -->
   <div class="modal-overlay" id="reveal-modal">
     <div class="modal">
-      <h3 id="reveal-title">🔓 Secret</h3>
+      <div class="modal-title" id="reveal-title">🔓 Secret</div>
       <div id="reveal-fields"></div>
-      <p style="font-size:0.7rem;color:var(--muted);margin-top:12px">💡 Click any value to copy</p>
+      <p style="font-size:11px;color:var(--text3);margin-top:10px">💡 Click any value to copy to clipboard</p>
       <div class="modal-footer">
         <button class="btn-cancel" onclick="closeRevealModal()">Close</button>
       </div>
@@ -510,236 +1334,49 @@
   <div id="toast"></div>
 
   <script>
-  // ═══ SECURE VAULT ═══════════════════════════════════════
-  let vaultSession = null; // master password for this session only
-
-  const CAT_ICONS = {
-    apikey: '🔑', password: '🔐', userid: '👤',
-    payment: '💳', phone: '📱', custom: '📝',
-  };
-  const CAT_LABELS = {
-    apikey: 'API Keys', password: 'Passwords', userid: 'User IDs',
-    payment: 'Payment Details', phone: 'Phone Numbers', custom: 'Custom',
-  };
-  // Default fields per category
-  const CAT_FIELDS = {
-    apikey:   [['key',      'API Key'],     ['env',      'Environment (prod/dev)'], ['notes', 'Notes']],
-    password: [['username', 'Username / Email'], ['password', 'Password'], ['url', 'Website URL'], ['notes', 'Notes']],
-    userid:   [['userid',   'User ID'],     ['service',  'Service / Platform'],    ['notes', 'Notes']],
-    payment:  [['label',    'Card Label'],  ['last4',    'Last 4 digits'],   ['expiry', 'Expiry (MM/YY)'], ['notes', 'Notes']],
-    phone:    [['name',     'Name'],        ['number',   'Phone Number'],           ['notes', 'Notes']],
-    custom:   [['value',    'Value'],       ['notes',    'Notes']],
-  };
-
-  function openSecureVault(el) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    el.classList.add('active');
-    document.getElementById('entries-wrapper').style.display = 'none';
-    document.getElementById('compose-card') && (document.getElementById('compose-card').style.display = 'none');
-    document.getElementById('stats-row').style.display = 'none';
-    document.getElementById('search-row') && (document.getElementById('search-row').style.display = 'none');
-    document.getElementById('secure-panel').classList.add('visible');
-    if (vaultSession) showUnlocked();
-  }
-
-  function setFilterOrig(f, el) { setFilter(f, el); }
-  const _origSetFilter = setFilter;
-  function setFilter(f, el) {
-    document.getElementById('secure-panel').classList.remove('visible');
-    document.getElementById('entries-wrapper').style.display = '';
-    const compose = document.getElementById('compose-card');
-    if (compose) compose.style.display = '';
-    document.getElementById('stats-row').style.display = '';
-    const sr = document.getElementById('search-row');
-    if (sr) sr.style.display = '';
-    _origSetFilter(f, el);
-  }
-
-  async function unlockVault() {
-    const pw = document.getElementById('master-pw').value;
-    if (!pw) return;
-    try {
-      const r = await fetch(`${API}/secrets/verify`, {
-        method: 'POST', headers: {'content-type':'application/json'},
-        body: JSON.stringify({ password: pw }),
-      });
-      const d = await r.json();
-      if (d.ok) {
-        vaultSession = pw;
-        document.getElementById('pw-error').style.display = 'none';
-        document.getElementById('master-pw').value = '';
-        showUnlocked();
-      } else {
-        document.getElementById('pw-error').style.display = 'block';
-      }
-    } catch { toast('Cannot reach vault server', 'error'); }
-  }
-
-  function lockVault() {
-    vaultSession = null;
-    document.getElementById('vault-unlocked').style.display = 'none';
-    document.getElementById('lock-screen').style.display = 'block';
-  }
-
-  async function showUnlocked() {
-    document.getElementById('lock-screen').style.display = 'none';
-    document.getElementById('vault-unlocked').style.display = 'block';
-    await loadSecrets();
-  }
-
-  async function loadSecrets() {
-    try {
-      const r = await fetch(`${API}/secrets/list`);
-      const d = await r.json();
-      renderSecrets(d.secrets || []);
-    } catch { document.getElementById('secrets-list').innerHTML = '<p style="color:var(--muted)">Failed to load secrets.</p>'; }
-  }
-
-  function renderSecrets(secrets) {
-    const el = document.getElementById('secrets-list');
-    if (!secrets.length) {
-      el.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>No secrets yet. Click "+ Add Secret" to store your first one.</p></div>';
-      return;
+    /* ═══ THEME ══════════════════════════════════════ */
+    const THEME_KEY = 'memvault-theme';
+    function applyTheme(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      document.getElementById('theme-toggle').textContent = t === 'dark' ? '🌙' : '☀️';
+      localStorage.setItem(THEME_KEY, t);
     }
-    const groups = {};
-    for (const s of secrets) {
-      if (!groups[s.category]) groups[s.category] = [];
-      groups[s.category].push(s);
+    function toggleTheme() {
+      applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
     }
-    el.innerHTML = Object.entries(groups).map(([cat, items]) => `
-      <div class="category-group">
-        <div class="cat-label">${CAT_ICONS[cat] || '📝'} ${CAT_LABELS[cat] || cat}</div>
-        ${items.map(s => `
-          <div class="secret-card" onclick="revealSecret('${s.id}')">
-            <div class="secret-icon">${CAT_ICONS[s.category] || '📝'}</div>
-            <div class="secret-info">
-              <div class="secret-label">${s.label.replace(/</g,'&lt;')}</div>
-              <div class="secret-meta">${new Date(s.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
-            </div>
-            <button class="secret-delete" onclick="event.stopPropagation();deleteSecret('${s.id}')" title="Delete">🗑</button>
-          </div>`).join('')}
-      </div>`).join('');
-  }
+    applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
-  async function revealSecret(id) {
-    if (!vaultSession) return;
-    try {
-      const r = await fetch(`${API}/secrets/get`, {
-        method: 'POST', headers: {'content-type':'application/json'},
-        body: JSON.stringify({ id, password: vaultSession }),
-      });
-      const d = await r.json();
-      if (!d.ok) return toast('Decryption failed', 'error');
-      document.getElementById('reveal-title').textContent = `${CAT_ICONS[d.category] || '🔓'} ${d.label}`;
-      document.getElementById('reveal-fields').innerHTML = Object.entries(d.fields).map(([k,v]) => `
-        <div class="reveal-field">
-          <div class="reveal-label">${k}</div>
-          <div class="reveal-value" onclick="copyText('${v.replace(/'/g,'\\&apos;').replace(/</g,'&lt;')}', this)">${v.replace(/</g,'&lt;')}</div>
-        </div>`).join('');
-      document.getElementById('reveal-modal').classList.add('open');
-    } catch { toast('Error revealing secret','error'); }
-  }
-
-  function closeRevealModal() {
-    document.getElementById('reveal-modal').classList.remove('open');
-    document.getElementById('reveal-fields').innerHTML = '';
-  }
-
-  function copyText(text, el) {
-    navigator.clipboard.writeText(text).then(() => {
-      const orig = el.style.borderColor;
-      el.style.borderColor = 'var(--success)';
-      setTimeout(() => el.style.borderColor = orig, 1000);
-      toast('✅ Copied!', 'success');
-    });
-  }
-
-  async function deleteSecret(id) {
-    if (!vaultSession) return;
-    if (!confirm('Delete this secret? This cannot be undone.')) return;
-    await fetch(`${API}/secrets/delete/${id}`, {
-      method: 'DELETE', headers: {'content-type':'application/json'},
-      body: JSON.stringify({ password: vaultSession }),
-    });
-    await loadSecrets();
-  }
-
-  // ─── Add Modal ───
-  let addModalOpen = false;
-  function openAddModal() {
-    document.getElementById('add-modal').classList.add('open');
-    renderCategoryFields();
-    document.getElementById('m-category').onchange = renderCategoryFields;
-  }
-  function closeAddModal() {
-    document.getElementById('add-modal').classList.remove('open');
-    document.getElementById('m-label').value = '';
-  }
-  function renderCategoryFields() {
-    const cat = document.getElementById('m-category').value;
-    const fields = CAT_FIELDS[cat] || [['value','Value'],['notes','Notes']];
-    document.getElementById('m-fields-container').innerHTML = fields.map(([k,lbl]) => `
-      <div class="field-group">
-        <label>${lbl}</label>
-        <input id="mf-${k}" class="field-input" type="${k==='password'?'password':'text'}" placeholder="${lbl}" />
-      </div>`).join('');
-  }
-  async function saveSecret() {
-    if (!vaultSession) return;
-    const category = document.getElementById('m-category').value;
-    const label = document.getElementById('m-label').value.trim();
-    if (!label) return toast('Label is required', 'error');
-    const fields = {};
-    const defs = CAT_FIELDS[category] || [['value','Value'],['notes','Notes']];
-    for (const [k] of defs) {
-      const el = document.getElementById(`mf-${k}`);
-      if (el && el.value.trim()) fields[k] = el.value.trim();
-    }
-    if (!Object.keys(fields).length) return toast('Fill at least one field', 'error');
-    try {
-      const r = await fetch(`${API}/secrets/add`, {
-        method: 'POST', headers: {'content-type':'application/json'},
-        body: JSON.stringify({ password: vaultSession, category, label, fields }),
-      });
-      const d = await r.json();
-      if (d.ok) { toast('🔐 Secret saved!'); closeAddModal(); await loadSecrets(); }
-      else toast('Failed: ' + (d.error || 'unknown'), 'error');
-    } catch { toast('Server error','error'); }
-  }
-
-  // Close modals on overlay click
-  document.getElementById('add-modal').addEventListener('click', e => { if (e.target.id==='add-modal') closeAddModal(); });
-  document.getElementById('reveal-modal').addEventListener('click', e => { if (e.target.id==='reveal-modal') closeRevealModal(); });
-  // ════════════════════════════════════════════════════════=
+    /* ═══ CONFIG ══════════════════════════════════════ */
     const API = 'http://127.0.0.1:7799';
     let currentFilter = 'all';
-    let allEntries = [];
+    let activePanel = 'entries'; // 'entries' | 'secure' | 'access'
 
-    // Date display
+    /* ═══ DATE ═══════════════════════════════════════ */
     const now = new Date();
-    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    document.getElementById('day-name').textContent = days[now.getDay()];
-    document.getElementById('full-date').textContent = now.toLocaleDateString('en-US', {
-      weekday: undefined, year: 'numeric', month: 'long', day: 'numeric'
-    });
+    document.getElementById('day-name').textContent =
+      ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+    document.getElementById('full-date').textContent =
+      now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    // Char counter
-    document.getElementById('diary-input').addEventListener('input', function() {
+    /* ═══ CHAR COUNTER ═══════════════════════════════ */
+    document.getElementById('diary-input').addEventListener('input', function () {
       document.getElementById('char-count').textContent = `${this.value.length} / 5000`;
     });
 
-    function toast(msg, type='success') {
+    /* ═══ TOAST ══════════════════════════════════════ */
+    function toast(msg, type = 'success') {
       const t = document.getElementById('toast');
       t.textContent = msg;
       t.className = 'show ' + type;
-      setTimeout(() => { t.className = ''; }, 3000);
+      setTimeout(() => t.className = '', 3200);
     }
 
+    /* ═══ STATUS ═════════════════════════════════════ */
     async function checkStatus() {
       try {
         const r = await fetch(`${API}/health`);
         if (r.ok) {
-          document.getElementById('status-dot').className = 'online';
+          document.getElementById('status-dot').className = 'status-dot online';
           document.getElementById('status-label').textContent = 'Vault Online';
         }
       } catch {
@@ -748,34 +1385,66 @@
     }
     checkStatus();
 
+    /* ═══ SAVE DIARY ═════════════════════════════════ */
     async function saveDiary() {
       const text = document.getElementById('diary-input').value.trim();
       if (!text) return toast('Write something first!', 'error');
       const btn = document.getElementById('save-btn');
-      btn.disabled = true; btn.innerHTML = '<span>⏳</span> Saving…';
+      btn.disabled = true; btn.innerHTML = '⏳ Saving…';
       try {
         const res = await fetch(`${API}/add`, {
-          method: 'POST', headers: {'content-type':'application/json'},
-          body: JSON.stringify({ type: 'diary', source: 'manual',
-            title: `Diary ${now.toISOString().slice(0,10)}`, content: text, tags: 'diary' })
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            type: 'diary', source: 'manual',
+            title: `Diary ${now.toISOString().slice(0, 10)}`, content: text, tags: 'diary'
+          })
         });
-        if (!res.ok) throw new Error('Server error');
+        if (!res.ok) throw new Error();
         document.getElementById('diary-input').value = '';
         document.getElementById('char-count').textContent = '0 / 5000';
-        toast('✅ Entry saved to Vault!');
+        toast('✅ Saved to Vault!');
         loadEntries();
-      } catch(e) { toast('❌ Failed to save: ' + e.message, 'error'); }
+      } catch { toast('❌ Save failed', 'error'); }
       btn.disabled = false; btn.innerHTML = '<span>💾</span> Save to Vault';
     }
 
-    function setFilter(f, el) {
-      currentFilter = f;
+    /* ═══ PANEL SWITCHING ════════════════════════════ */
+    function showOnlyPanel(panel) {
+      document.getElementById('entries-wrapper').style.display = panel === 'entries' ? '' : 'none';
+      document.getElementById('secure-panel').classList.toggle('visible', panel === 'secure');
+      document.getElementById('access-panel').classList.toggle('visible', panel === 'access');
+      const composeCard = document.getElementById('compose-card');
+      const statsRow = document.getElementById('stats-row');
+      const searchRow = document.getElementById('search-row');
+      if (composeCard) composeCard.style.display = panel === 'entries' ? '' : 'none';
+      if (statsRow) statsRow.style.display = panel === 'entries' ? '' : 'none';
+      if (searchRow) searchRow.style.display = panel === 'entries' ? '' : 'none';
+      activePanel = panel;
+    }
+
+    function switchTab(f, el) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
+      currentFilter = f;
       document.getElementById('search-input').value = '';
+      showOnlyPanel('entries');
       loadEntries();
     }
 
+    function openSecureVault(el) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      showOnlyPanel('secure');
+      if (vaultSession) showUnlocked();
+    }
+
+    function openAccessMap(el) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      showOnlyPanel('access');
+    }
+
+    /* ═══ SEARCH / LOAD ENTRIES ══════════════════════ */
     async function doSearch() {
       const q = document.getElementById('search-input').value.trim();
       if (!q) return loadEntries();
@@ -786,7 +1455,7 @@
         const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}${type}`);
         const d = await r.json();
         renderEntries(d.results);
-      } catch(e) { toast('Search failed', 'error'); }
+      } catch { toast('Search failed', 'error'); }
     }
 
     async function clearSearch() {
@@ -798,26 +1467,25 @@
       document.getElementById('loading').style.display = 'block';
       document.getElementById('entries-list').style.display = 'none';
       try {
-        const q = currentFilter === 'all' ? '' : currentFilter;
-        const r = await fetch(`${API}/search?q=${q || ' '}&type=${currentFilter === 'all' ? '' : currentFilter}`);
+        const type = currentFilter === 'all' ? '' : currentFilter;
+        const r = await fetch(`${API}/search?q= &type=${type}`);
         const d = await r.json();
-        allEntries = d.results;
         updateStats();
         renderEntries(d.results);
-      } catch(e) {
-        document.getElementById('loading').textContent = '❌ Cannot connect to Vault server. Make sure it is running.';
+      } catch {
+        document.getElementById('loading').textContent = '❌ Cannot connect — is the server running?';
       }
     }
 
     function updateStats() {
-      // fetch counts by searching for each type
-      ['diary','conversation','worklog'].forEach(async (type) => {
+      ['diary', 'conversation', 'worklog'].forEach(async type => {
         try {
           const r = await fetch(`${API}/search?q= &type=${type}`);
           const d = await r.json();
-          const el = document.getElementById(`stat-${type === 'conversation' ? 'convo' : type}`);
+          const id = type === 'conversation' ? 'stat-convo' : `stat-${type}`;
+          const el = document.getElementById(id);
           if (el) el.textContent = d.results.length;
-        } catch {}
+        } catch { }
       });
     }
 
@@ -825,28 +1493,192 @@
       document.getElementById('loading').style.display = 'none';
       const list = document.getElementById('entries-list');
       list.style.display = 'flex';
-      if (!entries || !entries.length) {
+      if (!entries?.length) {
         list.innerHTML = `<div class="empty-state"><div class="icon">🌌</div><p>No entries found. Start writing!</p></div>`;
         return;
       }
       list.innerHTML = entries.map(e => {
-        const typeClass = `type-${e.type}`;
         const source = e.source ? `· ${e.source}` : '';
-        const time = new Date(e.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
-        const snippet = e.snippet ? e.snippet.replace(/</g,'&lt;') : '';
+        const time = new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const snippet = e.snippet ? e.snippet.replace(/</g, '&lt;') : '';
         return `<div class="entry-card">
-          <div class="entry-header">
-            <span class="type-badge ${typeClass}">${e.type}</span>
-            <span class="entry-source">${source}</span>
-            <span class="entry-time">${time}</span>
-          </div>
-          <div class="entry-title">${(e.title || 'Untitled').replace(/</g,'&lt;')}</div>
-          ${snippet ? `<div class="entry-content">${snippet}</div>` : ''}
-        </div>`;
+        <div class="entry-header">
+          <span class="type-badge type-${e.type}">${e.type}</span>
+          <span class="entry-source">${source}</span>
+          <span class="entry-time">${time}</span>
+        </div>
+        <div class="entry-title">${(e.title || 'Untitled').replace(/</g, '&lt;')}</div>
+        ${snippet ? `<div class="entry-content">${snippet}</div>` : ''}
+      </div>`;
       }).join('');
     }
-
     loadEntries();
+
+    /* ═══ SECURE VAULT ════════════════════════════════ */
+    let vaultSession = null;
+    const CAT_ICONS = { apikey: '🔑', password: '🔐', userid: '👤', payment: '💳', phone: '📱', custom: '📝' };
+    const CAT_LABELS = { apikey: 'API Keys', password: 'Passwords', userid: 'User IDs', payment: 'Payment Details', phone: 'Phone Numbers', custom: 'Custom' };
+    const CAT_FIELDS = {
+      apikey: [['key', 'API Key'], ['env', 'Environment (prod/dev)'], ['notes', 'Notes']],
+      password: [['username', 'Username / Email'], ['password', 'Password'], ['url', 'Website URL'], ['notes', 'Notes']],
+      userid: [['userid', 'User ID'], ['service', 'Service / Platform'], ['notes', 'Notes']],
+      payment: [['label', 'Card Label'], ['last4', 'Last 4 Digits'], ['expiry', 'Expiry (MM/YY)'], ['notes', 'Notes']],
+      phone: [['name', 'Name'], ['number', 'Phone Number'], ['notes', 'Notes']],
+      custom: [['value', 'Value'], ['notes', 'Notes']],
+    };
+
+    async function unlockVault() {
+      const pw = document.getElementById('master-pw').value;
+      if (!pw) return;
+      try {
+        const r = await fetch(`${API}/secrets/verify`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password: pw }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          vaultSession = pw;
+          document.getElementById('pw-error').style.display = 'none';
+          document.getElementById('master-pw').value = '';
+          showUnlocked();
+        } else {
+          document.getElementById('pw-error').style.display = 'block';
+        }
+      } catch { toast('Cannot reach vault server', 'error'); }
+    }
+
+    function lockVault() {
+      vaultSession = null;
+      document.getElementById('vault-unlocked').style.display = 'none';
+      document.getElementById('lock-screen').style.display = 'block';
+    }
+
+    async function showUnlocked() {
+      document.getElementById('lock-screen').style.display = 'none';
+      document.getElementById('vault-unlocked').style.display = 'block';
+      await loadSecrets();
+    }
+
+    async function loadSecrets() {
+      try {
+        const r = await fetch(`${API}/secrets/list`);
+        const d = await r.json();
+        renderSecrets(d.secrets || []);
+      } catch { document.getElementById('secrets-list').textContent = 'Failed to load.'; }
+    }
+
+    function renderSecrets(secrets) {
+      const el = document.getElementById('secrets-list');
+      if (!secrets.length) {
+        el.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>No secrets yet. Click "+ Add Secret" to get started.</p></div>';
+        return;
+      }
+      const groups = {};
+      for (const s of secrets) { if (!groups[s.category]) groups[s.category] = []; groups[s.category].push(s); }
+      el.innerHTML = Object.entries(groups).map(([cat, items]) => `
+      <div class="category-group">
+        <div class="cat-label">${CAT_ICONS[cat] || '📝'} ${CAT_LABELS[cat] || cat}</div>
+        ${items.map(s => `
+          <div class="secret-card" onclick="revealSecret('${s.id}')">
+            <div class="secret-icon">${CAT_ICONS[s.category] || '📝'}</div>
+            <div class="secret-info">
+              <div class="secret-label">${s.label.replace(/</g, '&lt;')}</div>
+              <div class="secret-meta">${new Date(s.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+            </div>
+            <button class="secret-del" onclick="event.stopPropagation();deleteSecret('${s.id}')" title="Delete">🗑</button>
+          </div>`).join('')}
+      </div>`).join('');
+    }
+
+    async function revealSecret(id) {
+      if (!vaultSession) return;
+      try {
+        const r = await fetch(`${API}/secrets/get`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id, password: vaultSession }),
+        });
+        const d = await r.json();
+        if (!d.ok) return toast('Decryption failed', 'error');
+        document.getElementById('reveal-title').textContent = `${CAT_ICONS[d.category] || '🔓'} ${d.label}`;
+        document.getElementById('reveal-fields').innerHTML = Object.entries(d.fields).map(([k, v]) => `
+        <div class="reveal-field">
+          <div class="reveal-lbl">${k}</div>
+          <div class="reveal-val" onclick="copyVal(this,'${encodeURIComponent(v)}')">${v.replace(/</g, '&lt;')}</div>
+        </div>`).join('');
+        document.getElementById('reveal-modal').classList.add('open');
+      } catch { toast('Error revealing secret', 'error'); }
+    }
+
+    function copyVal(el, encoded) {
+      navigator.clipboard.writeText(decodeURIComponent(encoded)).then(() => {
+        const orig = el.style.borderColor;
+        el.style.borderColor = 'var(--success)';
+        setTimeout(() => el.style.borderColor = orig, 1000);
+        toast('✅ Copied!');
+      });
+    }
+
+    function closeRevealModal() {
+      document.getElementById('reveal-modal').classList.remove('open');
+      document.getElementById('reveal-fields').innerHTML = '';
+    }
+
+    async function deleteSecret(id) {
+      if (!vaultSession || !confirm('Delete this secret? This cannot be undone.')) return;
+      await fetch(`${API}/secrets/delete/${id}`, {
+        method: 'DELETE', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: vaultSession }),
+      });
+      await loadSecrets();
+    }
+
+    // Add Modal
+    function openAddModal() {
+      document.getElementById('add-modal').classList.add('open');
+      renderCategoryFields();
+    }
+    function closeAddModal() {
+      document.getElementById('add-modal').classList.remove('open');
+      document.getElementById('m-label').value = '';
+    }
+    function renderCategoryFields() {
+      const cat = document.getElementById('m-category').value;
+      const fields = CAT_FIELDS[cat] || [['value', 'Value'], ['notes', 'Notes']];
+      document.getElementById('m-fields-container').innerHTML = fields.map(([k, lbl]) => `
+      <div class="field-group">
+        <label>${lbl}</label>
+        <input id="mf-${k}" class="field-input" type="${k === 'password' ? 'password' : 'text'}" placeholder="${lbl}" aria-label="${lbl}" />
+      </div>`).join('');
+    }
+    async function saveSecret() {
+      if (!vaultSession) return;
+      const category = document.getElementById('m-category').value;
+      const label = document.getElementById('m-label').value.trim();
+      if (!label) return toast('Label is required', 'error');
+      const fields = {};
+      for (const [k] of CAT_FIELDS[category] || [['value', 'Value']]) {
+        const el = document.getElementById(`mf-${k}`);
+        if (el?.value.trim()) fields[k] = el.value.trim();
+      }
+      if (!Object.keys(fields).length) return toast('Fill at least one field', 'error');
+      try {
+        const r = await fetch(`${API}/secrets/add`, {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ password: vaultSession, category, label, fields }),
+        });
+        const d = await r.json();
+        if (d.ok) { toast('🔐 Secret encrypted & saved!'); closeAddModal(); await loadSecrets(); }
+        else toast('Failed: ' + (d.error || 'unknown'), 'error');
+      } catch { toast('Server error', 'error'); }
+    }
+
+    // Close modals on overlay click
+    ['add-modal', 'reveal-modal'].forEach(id => {
+      document.getElementById(id).addEventListener('click', e => {
+        if (e.target.id === id) { id === 'add-modal' ? closeAddModal() : closeRevealModal(); }
+      });
+    });
   </script>
 </body>
+
 </html>

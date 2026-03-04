@@ -1,31 +1,55 @@
-# ── Node / npm ──────────────────────────────────────────
+# ── Node / npm ──────────────────────────────────────────────────────────────
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
 
-# ── SQLite database (local data, not committed) ──────────
+# ── SQLite database — contains encrypted secrets + all personal data ─────────
+# NEVER commit this. It's your personal vault, lives only on your machine.
 db/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
 
-# ── Vault data directories ───────────────────────────────
+# ── Vault data directories — diary, conversations, files ─────────────────────
 entries/
 conversations/
 worklogs/
 files/
 
-# ── Logs ────────────────────────────────────────────────
+# ── Secrets & credentials — NEVER expose on GitHub ───────────────────────────
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.cert
+secrets.json
+credentials.json
+config.local.*
+
+# ── Sync output / temp files ──────────────────────────────────────────────────
 *.log
 /tmp/
+sync-output/
+.sync-state/
 
-# ── OS artefacts ────────────────────────────────────────
+# ── OS artefacts ─────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# ── Editor ──────────────────────────────────────────────
+# ── Editor ───────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+*.sublime-project
+*.sublime-workspace
+
+# ── Test data / scratch files ─────────────────────────────────────────────────
+test-add.json
+test-secrets.sh
+test.sh
+*.test-output.*
