@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knowledge Vault — Daily Diary</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0d0f14;
+      --surface: #13161e;
+      --surface2: #1c2030;
+      --border: #252a3a;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --gold: #f0b429;
+      --text: #e8eaf2;
+      --muted: #8890a8;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --diary: #6c63ff;
+      --convo: #06b6d4;
+      --worklog: #f59e0b;
+      --file: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background orbs */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%);
+      pointer-events: none;
+      animation: orb1 20s ease-in-out infinite alternate;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -200px; right: -200px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      animation: orb2 25s ease-in-out infinite alternate;
+    }
+    @keyframes orb1 { to { transform: translate(100px, 80px); } }
+    @keyframes orb2 { to { transform: translate(-80px, -60px); } }
+
+    /* Layout */
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 0;
+      position: sticky; top: 0;
+      background: rgba(13,15,20,0.85);
+      backdrop-filter: blur(16px);
+      z-index: 100;
+    }
+    .header-inner {
+      display: flex; align-items: center; gap: 14px;
+    }
+    .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 20px rgba(108,99,255,0.4);
+    }
+    .brand { display: flex; flex-direction: column; }
+    .brand h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem; font-weight: 600;
+      background: linear-gradient(90deg, #e8eaf2, var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .brand span { font-size: 0.7rem; color: var(--muted); }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    #status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.3s;
+    }
+    #status-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    #status-label { font-size: 0.75rem; color: var(--muted); }
+
+    /* Main */
+    main { padding: 32px 0 80px; }
+
+    /* Date banner */
+    .date-banner {
+      text-align: center; margin-bottom: 36px;
+    }
+    .date-banner .day-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 2.8rem; font-weight: 600;
+      background: linear-gradient(135deg, var(--text), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .date-banner .full-date { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+
+    /* Diary compose */
+    .compose-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 28px;
+      position: relative;
+      overflow: hidden;
+    }
+    .compose-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2), var(--gold));
+    }
+    .compose-label {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--accent2); margin-bottom: 10px;
+    }
+    #diary-input {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      padding: 14px 16px;
+      resize: vertical; min-height: 110px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #diary-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+    }
+    .compose-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; }
+    #char-count { font-size: 0.75rem; color: var(--muted); }
+    .btn-save {
+      padding: 9px 22px; border-radius: 8px; border: none; cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; font-size: 0.88rem; font-weight: 600;
+      display: flex; align-items: center; gap: 7px;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: 0 4px 14px rgba(108,99,255,0.35);
+    }
+    .btn-save:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-save:active { transform: translateY(0); }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 30px; right: 30px;
+      padding: 12px 20px; border-radius: 10px;
+      font-size: 0.85rem; font-weight: 500;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 999;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.success { border-color: var(--success); color: var(--success); }
+    #toast.error { border-color: var(--danger); color: var(--danger); }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab {
+      padding: 7px 16px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 0.8rem;
+      cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .tab:hover { border-color: var(--accent); color: var(--accent); }
+    .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+    /* Search */
+    .search-row { display: flex; gap: 10px; margin-bottom: 24px; }
+    #search-input {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 16px;
+      color: var(--text); font-size: 0.88rem; font-family: 'Inter', sans-serif;
+      outline: none; transition: border-color 0.2s;
+    }
+    #search-input:focus { border-color: var(--accent); }
+    .btn-search {
+      padding: 10px 18px; border-radius: 10px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text); font-size: 0.88rem;
+      cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+    }
+    .btn-search:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Entry list */
+    .entries-list { display: flex; flex-direction: column; gap: 14px; }
+    .entry-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 18px;
+      transition: border-color 0.2s, transform 0.15s;
+      cursor: default;
+    }
+    .entry-card:hover { border-color: var(--border); transform: translateY(-1px); }
+    .entry-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .type-badge {
+      padding: 3px 9px; border-radius: 12px; font-size: 0.68rem;
+      font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .type-diary { background: rgba(108,99,255,0.15); color: var(--diary); }
+    .type-conversation { background: rgba(6,182,212,0.15); color: var(--convo); }
+    .type-worklog { background: rgba(245,158,11,0.15); color: var(--worklog); }
+    .type-file { background: rgba(16,185,129,0.15); color: var(--file); }
+    .entry-source { font-size: 0.72rem; color: var(--muted); }
+    .entry-time { font-size: 0.72rem; color: var(--muted); margin-left: auto; }
+    .entry-title { font-weight: 600; font-size: 0.95rem; margin-bottom: 5px; }
+    .entry-content { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* Stats row */
+    .stats-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+    .stat-card {
+      flex: 1; min-width: 140px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .stat-num { font-size: 1.6rem; font-weight: 700; }
+    .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    #loading { 
+      text-align: center; padding: 40px; color: var(--muted); font-size: 0.9rem; 
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <div class="header-inner">
+        <div class="logo">📒</div>
+        <div class="brand">
+          <h1>Knowledge Vault</h1>
+          <span>Daily Diary &amp; Memory</span>
+        </div>
+        <div class="header-right">
+          <div id="status-dot"></div>
+          <span id="status-label">Checking...</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <!-- Date -->
+      <div class="date-banner">
+        <div class="day-name" id="day-name">—</div>
+        <div class="full-date" id="full-date">—</div>
+      </div>
+
+      <!-- Compose diary entry -->
+      <div class="compose-card">
+        <div class="compose-label">✏️ &nbsp;New Diary Entry</div>
+        <textarea id="diary-input" placeholder="What's on your mind today?&#10;&#10;Write freely — this is your private vault." maxlength="5000"></textarea>
+        <div class="compose-footer">
+          <span id="char-count">0 / 5000</span>
+          <button class="btn-save" id="save-btn" onclick="saveDiary()">
+            <span>💾</span> Save to Vault
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-row" id="stats-row">
+        <div class="stat-card">
+          <div class="stat-num" id="stat-diary" style="color:var(--diary)">—</div>
+          <div class="stat-label">Diary Entries</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="stat-convo" style="color:var(--convo)">—</div>
+          <div class="stat-label">Conversations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-num" id="stat-worklog" style="color:var(--worklog)">—</div>
+          <div class="stat-label">Worklogs</div>
+        </div>
+      </div>
+
+      <!-- Tabs + Search -->
+      <div class="tabs" id="tabs">
+        <button class="tab active" onclick="setFilter('all', this)">All</button>
+        <button class="tab" onclick="setFilter('diary', this)">📔 Diary</button>
+        <button class="tab" onclick="setFilter('conversation', this)">💬 Conversations</button>
+        <button class="tab" onclick="setFilter('worklog', this)">🛠️ Worklogs</button>
+      </div>
+      <div class="search-row">
+        <input id="search-input" type="text" placeholder="Search your vault… (press Enter)" onkeydown="if(event.key==='Enter') doSearch()" />
+        <button class="btn-search" onclick="doSearch()">🔍 Search</button>
+        <button class="btn-search" onclick="clearSearch()">✕ Clear</button>
+      </div>
+
+      <!-- Entries -->
+      <div id="entries-wrapper">
+        <div id="loading">Loading entries…</div>
+        <div class="entries-list" id="entries-list" style="display:none"></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="toast"></div>
+
+  <script>
+    const API = 'http://127.0.0.1:7799';
+    let currentFilter = 'all';
+    let allEntries = [];
+
+    // Date display
+    const now = new Date();
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    document.getElementById('day-name').textContent = days[now.getDay()];
+    document.getElementById('full-date').textContent = now.toLocaleDateString('en-US', {
+      weekday: undefined, year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    // Char counter
+    document.getElementById('diary-input').addEventListener('input', function() {
+      document.getElementById('char-count').textContent = `${this.value.length} / 5000`;
+    });
+
+    function toast(msg, type='success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'show ' + type;
+      setTimeout(() => { t.className = ''; }, 3000);
+    }
+
+    async function checkStatus() {
+      try {
+        const r = await fetch(`${API}/health`);
+        if (r.ok) {
+          document.getElementById('status-dot').className = 'online';
+          document.getElementById('status-label').textContent = 'Vault Online';
+        }
+      } catch {
+        document.getElementById('status-label').textContent = 'Offline';
+      }
+    }
+    checkStatus();
+
+    async function saveDiary() {
+      const text = document.getElementById('diary-input').value.trim();
+      if (!text) return toast('Write something first!', 'error');
+      const btn = document.getElementById('save-btn');
+      btn.disabled = true; btn.innerHTML = '<span>⏳</span> Saving…';
+      try {
+        const res = await fetch(`${API}/add`, {
+          method: 'POST', headers: {'content-type':'application/json'},
+          body: JSON.stringify({ type: 'diary', source: 'manual',
+            title: `Diary ${now.toISOString().slice(0,10)}`, content: text, tags: 'diary' })
+        });
+        if (!res.ok) throw new Error('Server error');
+        document.getElementById('diary-input').value = '';
+        document.getElementById('char-count').textContent = '0 / 5000';
+        toast('✅ Entry saved to Vault!');
+        loadEntries();
+      } catch(e) { toast('❌ Failed to save: ' + e.message, 'error'); }
+      btn.disabled = false; btn.innerHTML = '<span>💾</span> Save to Vault';
+    }
+
+    function setFilter(f, el) {
+      currentFilter = f;
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('search-input').value = '';
+      loadEntries();
+    }
+
+    async function doSearch() {
+      const q = document.getElementById('search-input').value.trim();
+      if (!q) return loadEntries();
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('entries-list').style.display = 'none';
+      try {
+        const type = currentFilter === 'all' ? '' : `&type=${currentFilter}`;
+        const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}${type}`);
+        const d = await r.json();
+        renderEntries(d.results);
+      } catch(e) { toast('Search failed', 'error'); }
+    }
+
+    async function clearSearch() {
+      document.getElementById('search-input').value = '';
+      loadEntries();
+    }
+
+    async function loadEntries() {
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('entries-list').style.display = 'none';
+      try {
+        const q = currentFilter === 'all' ? '' : currentFilter;
+        const r = await fetch(`${API}/search?q=${q || ' '}&type=${currentFilter === 'all' ? '' : currentFilter}`);
+        const d = await r.json();
+        allEntries = d.results;
+        updateStats();
+        renderEntries(d.results);
+      } catch(e) {
+        document.getElementById('loading').textContent = '❌ Cannot connect to Vault server. Make sure it is running.';
+      }
+    }
+
+    function updateStats() {
+      // fetch counts by searching for each type
+      ['diary','conversation','worklog'].forEach(async (type) => {
+        try {
+          const r = await fetch(`${API}/search?q= &type=${type}`);
+          const d = await r.json();
+          const el = document.getElementById(`stat-${type === 'conversation' ? 'convo' : type}`);
+          if (el) el.textContent = d.results.length;
+        } catch {}
+      });
+    }
+
+    function renderEntries(entries) {
+      document.getElementById('loading').style.display = 'none';
+      const list = document.getElementById('entries-list');
+      list.style.display = 'flex';
+      if (!entries || !entries.length) {
+        list.innerHTML = `<div class="empty-state"><div class="icon">🌌</div><p>No entries found. Start writing!</p></div>`;
+        return;
+      }
+      list.innerHTML = entries.map(e => {
+        const typeClass = `type-${e.type}`;
+        const source = e.source ? `· ${e.source}` : '';
+        const time = new Date(e.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const snippet = e.snippet ? e.snippet.replace(/</g,'&lt;') : '';
+        return `<div class="entry-card">
+          <div class="entry-header">
+            <span class="type-badge ${typeClass}">${e.type}</span>
+            <span class="entry-source">${source}</span>
+            <span class="entry-time">${time}</span>
+          </div>
+          <div class="entry-title">${(e.title || 'Untitled').replace(/</g,'&lt;')}</div>
+          ${snippet ? `<div class="entry-content">${snippet}</div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    loadEntries();
+  </script>
+</body>
+</html>

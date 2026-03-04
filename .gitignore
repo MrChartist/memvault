@@ -1,0 +1,31 @@
+# ── Node / npm ──────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── SQLite database (local data, not committed) ──────────
+db/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ── Vault data directories ───────────────────────────────
+entries/
+conversations/
+worklogs/
+files/
+
+# ── Logs ────────────────────────────────────────────────
+*.log
+/tmp/
+
+# ── OS artefacts ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
