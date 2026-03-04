@@ -188,6 +188,119 @@
     }
     .tab:hover { border-color: var(--accent); color: var(--accent); }
     .tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .tab-secure { border-color: rgba(245,158,11,0.4); color: var(--gold); }
+    .tab-secure:hover { border-color: var(--gold); color: var(--gold); }
+    .tab-secure.active { background: var(--gold); border-color: var(--gold); color: #000; }
+
+    /* Secure Vault panel */
+    #secure-panel { display: none; }
+    #secure-panel.visible { display: block; }
+    .lock-screen {
+      text-align: center; padding: 60px 20px;
+      background: var(--surface); border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 16px; margin-bottom: 24px;
+    }
+    .lock-screen .lock-icon { font-size: 3rem; margin-bottom: 16px; }
+    .lock-screen h2 { font-size: 1.2rem; margin-bottom: 8px; color: var(--gold); }
+    .lock-screen p { font-size: 0.82rem; color: var(--muted); margin-bottom: 24px; }
+    .pw-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    .pw-input {
+      padding: 10px 16px; border-radius: 10px;
+      border: 1px solid rgba(245,158,11,0.4); background: var(--surface2);
+      color: var(--text); font-size: 0.9rem; font-family: 'Inter', sans-serif;
+      width: 240px; outline: none; letter-spacing: 0.05em;
+    }
+    .pw-input:focus { border-color: var(--gold); }
+    .btn-unlock {
+      padding: 10px 22px; border-radius: 10px; border: none; cursor: pointer;
+      background: var(--gold); color: #000; font-weight: 700;
+      font-size: 0.88rem; font-family: 'Inter', sans-serif;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn-unlock:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    /* Secrets list */
+    .secrets-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .secrets-header h3 { font-size: 0.9rem; color: var(--gold); }
+    .btn-add-secret {
+      padding: 8px 16px; border-radius: 8px; border: 1px solid rgba(245,158,11,0.4);
+      background: transparent; color: var(--gold); font-size: 0.8rem;
+      cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
+    }
+    .btn-add-secret:hover { background: rgba(245,158,11,0.1); }
+    .btn-lock-vault {
+      padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 0.8rem;
+      cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s;
+    }
+    .btn-lock-vault:hover { border-color: var(--danger); color: var(--danger); }
+    .category-group { margin-bottom: 20px; }
+    .cat-label {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+    }
+    .secret-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 16px; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer; transition: border-color 0.2s;
+    }
+    .secret-card:hover { border-color: rgba(245,158,11,0.5); }
+    .secret-icon { font-size: 1.4rem; }
+    .secret-info { flex: 1; }
+    .secret-label { font-weight: 600; font-size: 0.9rem; }
+    .secret-meta { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .secret-delete { color: var(--muted); background: none; border: none; cursor: pointer; font-size: 1rem; padding: 4px; transition: color 0.2s; }
+    .secret-delete:hover { color: var(--danger); }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(6px); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 28px; width: 420px; max-width: 95vw;
+      transform: scale(0.95); transition: transform 0.25s;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .modal-overlay.open .modal { transform: scale(1); }
+    .modal h3 { font-size: 1rem; margin-bottom: 18px; color: var(--gold); }
+    .field-group { margin-bottom: 14px; }
+    .field-group label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 5px; }
+    .field-input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 12px;
+      color: var(--text); font-size: 0.88rem; font-family: 'Inter', sans-serif;
+      outline: none; transition: border-color 0.2s;
+    }
+    .field-input:focus { border-color: var(--gold); }
+    .field-select { appearance: none; cursor: pointer; }
+    .modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+    .btn-cancel {
+      padding: 9px 18px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer;
+      font-size: 0.85rem; font-family: 'Inter', sans-serif;
+    }
+    .btn-save-secret {
+      padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer;
+      background: var(--gold); color: #000; font-weight: 700;
+      font-size: 0.85rem; font-family: 'Inter', sans-serif;
+    }
+
+    /* Reveal modal */
+    .reveal-field { margin-bottom: 10px; }
+    .reveal-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 3px; }
+    .reveal-value {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; font-size: 0.85rem;
+      font-family: monospace; word-break: break-all; cursor: pointer;
+      transition: border-color 0.2s; user-select: all;
+    }
+    .reveal-value:hover { border-color: var(--gold); }
 
     /* Search */
     .search-row { display: flex; gap: 10px; margin-bottom: 24px; }
@@ -311,6 +424,7 @@
         <button class="tab" onclick="setFilter('diary', this)">📔 Diary</button>
         <button class="tab" onclick="setFilter('conversation', this)">💬 Conversations</button>
         <button class="tab" onclick="setFilter('worklog', this)">🛠️ Worklogs</button>
+        <button class="tab tab-secure" onclick="openSecureVault(this)">🔒 Secure Vault</button>
       </div>
       <div class="search-row">
         <input id="search-input" type="text" placeholder="Search your vault… (press Enter)" onkeydown="if(event.key==='Enter') doSearch()" />
@@ -323,12 +437,280 @@
         <div id="loading">Loading entries…</div>
         <div class="entries-list" id="entries-list" style="display:none"></div>
       </div>
+
+      <!-- ═══ SECURE VAULT PANEL ═══ -->
+      <div id="secure-panel">
+        <!-- Lock screen -->
+        <div id="lock-screen" class="lock-screen">
+          <div class="lock-icon">🔐</div>
+          <h2>Secure Vault</h2>
+          <p>Your passwords, API keys, user IDs, and payment details<br>are encrypted with AES-256-GCM. Enter your master password.</p>
+          <div class="pw-row">
+            <input id="master-pw" class="pw-input" type="password" placeholder="Master password" onkeydown="if(event.key==='Enter')unlockVault()" />
+            <button class="btn-unlock" onclick="unlockVault()">🔓 Unlock</button>
+          </div>
+          <p id="pw-error" style="color:var(--danger);font-size:0.78rem;margin-top:10px;display:none">Wrong password. Try again.</p>
+          <p style="font-size:0.72rem;color:var(--muted);margin-top:18px">First time? Any password you enter becomes your master password permanently.</p>
+        </div>
+
+        <!-- Unlocked view -->
+        <div id="vault-unlocked" style="display:none">
+          <div class="secrets-header">
+            <h3>🔒 Secure Vault</h3>
+            <div style="display:flex;gap:8px">
+              <button class="btn-add-secret" onclick="openAddModal()">+ Add Secret</button>
+              <button class="btn-lock-vault" onclick="lockVault()">🔒 Lock</button>
+            </div>
+          </div>
+          <div id="secrets-list"></div>
+        </div>
+      </div>
     </div>
   </main>
+
+  <!-- Add Secret Modal -->
+  <div class="modal-overlay" id="add-modal">
+    <div class="modal">
+      <h3>🔑 Add New Secret</h3>
+      <div class="field-group">
+        <label>Category</label>
+        <select id="m-category" class="field-input field-select">
+          <option value="apikey">🔑 API Key</option>
+          <option value="password">🔐 Password</option>
+          <option value="userid">👤 User ID</option>
+          <option value="payment">💳 Payment Detail</option>
+          <option value="phone">📱 Phone Number</option>
+          <option value="custom">📝 Custom</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Label (e.g. "OpenAI API Key", "Gmail Password")</label>
+        <input id="m-label" class="field-input" type="text" placeholder="Label" />
+      </div>
+      <div id="m-fields-container"></div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeAddModal()">Cancel</button>
+        <button class="btn-save-secret" onclick="saveSecret()">💾 Encrypt &amp; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reveal Secret Modal -->
+  <div class="modal-overlay" id="reveal-modal">
+    <div class="modal">
+      <h3 id="reveal-title">🔓 Secret</h3>
+      <div id="reveal-fields"></div>
+      <p style="font-size:0.7rem;color:var(--muted);margin-top:12px">💡 Click any value to copy</p>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeRevealModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast"></div>
 
   <script>
+  // ═══ SECURE VAULT ═══════════════════════════════════════
+  let vaultSession = null; // master password for this session only
+
+  const CAT_ICONS = {
+    apikey: '🔑', password: '🔐', userid: '👤',
+    payment: '💳', phone: '📱', custom: '📝',
+  };
+  const CAT_LABELS = {
+    apikey: 'API Keys', password: 'Passwords', userid: 'User IDs',
+    payment: 'Payment Details', phone: 'Phone Numbers', custom: 'Custom',
+  };
+  // Default fields per category
+  const CAT_FIELDS = {
+    apikey:   [['key',      'API Key'],     ['env',      'Environment (prod/dev)'], ['notes', 'Notes']],
+    password: [['username', 'Username / Email'], ['password', 'Password'], ['url', 'Website URL'], ['notes', 'Notes']],
+    userid:   [['userid',   'User ID'],     ['service',  'Service / Platform'],    ['notes', 'Notes']],
+    payment:  [['label',    'Card Label'],  ['last4',    'Last 4 digits'],   ['expiry', 'Expiry (MM/YY)'], ['notes', 'Notes']],
+    phone:    [['name',     'Name'],        ['number',   'Phone Number'],           ['notes', 'Notes']],
+    custom:   [['value',    'Value'],       ['notes',    'Notes']],
+  };
+
+  function openSecureVault(el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('entries-wrapper').style.display = 'none';
+    document.getElementById('compose-card') && (document.getElementById('compose-card').style.display = 'none');
+    document.getElementById('stats-row').style.display = 'none';
+    document.getElementById('search-row') && (document.getElementById('search-row').style.display = 'none');
+    document.getElementById('secure-panel').classList.add('visible');
+    if (vaultSession) showUnlocked();
+  }
+
+  function setFilterOrig(f, el) { setFilter(f, el); }
+  const _origSetFilter = setFilter;
+  function setFilter(f, el) {
+    document.getElementById('secure-panel').classList.remove('visible');
+    document.getElementById('entries-wrapper').style.display = '';
+    const compose = document.getElementById('compose-card');
+    if (compose) compose.style.display = '';
+    document.getElementById('stats-row').style.display = '';
+    const sr = document.getElementById('search-row');
+    if (sr) sr.style.display = '';
+    _origSetFilter(f, el);
+  }
+
+  async function unlockVault() {
+    const pw = document.getElementById('master-pw').value;
+    if (!pw) return;
+    try {
+      const r = await fetch(`${API}/secrets/verify`, {
+        method: 'POST', headers: {'content-type':'application/json'},
+        body: JSON.stringify({ password: pw }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        vaultSession = pw;
+        document.getElementById('pw-error').style.display = 'none';
+        document.getElementById('master-pw').value = '';
+        showUnlocked();
+      } else {
+        document.getElementById('pw-error').style.display = 'block';
+      }
+    } catch { toast('Cannot reach vault server', 'error'); }
+  }
+
+  function lockVault() {
+    vaultSession = null;
+    document.getElementById('vault-unlocked').style.display = 'none';
+    document.getElementById('lock-screen').style.display = 'block';
+  }
+
+  async function showUnlocked() {
+    document.getElementById('lock-screen').style.display = 'none';
+    document.getElementById('vault-unlocked').style.display = 'block';
+    await loadSecrets();
+  }
+
+  async function loadSecrets() {
+    try {
+      const r = await fetch(`${API}/secrets/list`);
+      const d = await r.json();
+      renderSecrets(d.secrets || []);
+    } catch { document.getElementById('secrets-list').innerHTML = '<p style="color:var(--muted)">Failed to load secrets.</p>'; }
+  }
+
+  function renderSecrets(secrets) {
+    const el = document.getElementById('secrets-list');
+    if (!secrets.length) {
+      el.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>No secrets yet. Click "+ Add Secret" to store your first one.</p></div>';
+      return;
+    }
+    const groups = {};
+    for (const s of secrets) {
+      if (!groups[s.category]) groups[s.category] = [];
+      groups[s.category].push(s);
+    }
+    el.innerHTML = Object.entries(groups).map(([cat, items]) => `
+      <div class="category-group">
+        <div class="cat-label">${CAT_ICONS[cat] || '📝'} ${CAT_LABELS[cat] || cat}</div>
+        ${items.map(s => `
+          <div class="secret-card" onclick="revealSecret('${s.id}')">
+            <div class="secret-icon">${CAT_ICONS[s.category] || '📝'}</div>
+            <div class="secret-info">
+              <div class="secret-label">${s.label.replace(/</g,'&lt;')}</div>
+              <div class="secret-meta">${new Date(s.updated_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+            </div>
+            <button class="secret-delete" onclick="event.stopPropagation();deleteSecret('${s.id}')" title="Delete">🗑</button>
+          </div>`).join('')}
+      </div>`).join('');
+  }
+
+  async function revealSecret(id) {
+    if (!vaultSession) return;
+    try {
+      const r = await fetch(`${API}/secrets/get`, {
+        method: 'POST', headers: {'content-type':'application/json'},
+        body: JSON.stringify({ id, password: vaultSession }),
+      });
+      const d = await r.json();
+      if (!d.ok) return toast('Decryption failed', 'error');
+      document.getElementById('reveal-title').textContent = `${CAT_ICONS[d.category] || '🔓'} ${d.label}`;
+      document.getElementById('reveal-fields').innerHTML = Object.entries(d.fields).map(([k,v]) => `
+        <div class="reveal-field">
+          <div class="reveal-label">${k}</div>
+          <div class="reveal-value" onclick="copyText('${v.replace(/'/g,'\\&apos;').replace(/</g,'&lt;')}', this)">${v.replace(/</g,'&lt;')}</div>
+        </div>`).join('');
+      document.getElementById('reveal-modal').classList.add('open');
+    } catch { toast('Error revealing secret','error'); }
+  }
+
+  function closeRevealModal() {
+    document.getElementById('reveal-modal').classList.remove('open');
+    document.getElementById('reveal-fields').innerHTML = '';
+  }
+
+  function copyText(text, el) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = el.style.borderColor;
+      el.style.borderColor = 'var(--success)';
+      setTimeout(() => el.style.borderColor = orig, 1000);
+      toast('✅ Copied!', 'success');
+    });
+  }
+
+  async function deleteSecret(id) {
+    if (!vaultSession) return;
+    if (!confirm('Delete this secret? This cannot be undone.')) return;
+    await fetch(`${API}/secrets/delete/${id}`, {
+      method: 'DELETE', headers: {'content-type':'application/json'},
+      body: JSON.stringify({ password: vaultSession }),
+    });
+    await loadSecrets();
+  }
+
+  // ─── Add Modal ───
+  let addModalOpen = false;
+  function openAddModal() {
+    document.getElementById('add-modal').classList.add('open');
+    renderCategoryFields();
+    document.getElementById('m-category').onchange = renderCategoryFields;
+  }
+  function closeAddModal() {
+    document.getElementById('add-modal').classList.remove('open');
+    document.getElementById('m-label').value = '';
+  }
+  function renderCategoryFields() {
+    const cat = document.getElementById('m-category').value;
+    const fields = CAT_FIELDS[cat] || [['value','Value'],['notes','Notes']];
+    document.getElementById('m-fields-container').innerHTML = fields.map(([k,lbl]) => `
+      <div class="field-group">
+        <label>${lbl}</label>
+        <input id="mf-${k}" class="field-input" type="${k==='password'?'password':'text'}" placeholder="${lbl}" />
+      </div>`).join('');
+  }
+  async function saveSecret() {
+    if (!vaultSession) return;
+    const category = document.getElementById('m-category').value;
+    const label = document.getElementById('m-label').value.trim();
+    if (!label) return toast('Label is required', 'error');
+    const fields = {};
+    const defs = CAT_FIELDS[category] || [['value','Value'],['notes','Notes']];
+    for (const [k] of defs) {
+      const el = document.getElementById(`mf-${k}`);
+      if (el && el.value.trim()) fields[k] = el.value.trim();
+    }
+    if (!Object.keys(fields).length) return toast('Fill at least one field', 'error');
+    try {
+      const r = await fetch(`${API}/secrets/add`, {
+        method: 'POST', headers: {'content-type':'application/json'},
+        body: JSON.stringify({ password: vaultSession, category, label, fields }),
+      });
+      const d = await r.json();
+      if (d.ok) { toast('🔐 Secret saved!'); closeAddModal(); await loadSecrets(); }
+      else toast('Failed: ' + (d.error || 'unknown'), 'error');
+    } catch { toast('Server error','error'); }
+  }
+
+  // Close modals on overlay click
+  document.getElementById('add-modal').addEventListener('click', e => { if (e.target.id==='add-modal') closeAddModal(); });
+  document.getElementById('reveal-modal').addEventListener('click', e => { if (e.target.id==='reveal-modal') closeRevealModal(); });
+  // ════════════════════════════════════════════════════════=
     const API = 'http://127.0.0.1:7799';
     let currentFilter = 'all';
     let allEntries = [];
