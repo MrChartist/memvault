@@ -13,6 +13,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const VAULT_ROOT = process.env.VAULT_ROOT || "/mnt/d/AG/Vault";
 const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
 const PORT = Number(process.env.VAULT_PORT || 7799);
+const HOST = process.env.VAULT_HOST || "127.0.0.1";
+const VAULT_TOKEN = process.env.VAULT_TOKEN || "";
+const ALLOWED_ORIGINS = (process.env.VAULT_CORS_ORIGINS || "http://127.0.0.1:7799,http://localhost:7799")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
 
@@ -25,11 +31,28 @@ ensureDir(path.join(VAULT_ROOT, "files"));
 const app = express();
 app.use(express.json({ limit: "20mb" }));
 
-// CORS — allow browser requests from any local origin
+function requestAllowedByToken(req) {
+  if (!VAULT_TOKEN) return true;
+  const header = req.header("x-vault-token");
+  return header === VAULT_TOKEN;
+}
+
+function requireToken(req, res, next) {
+  if (!requestAllowedByToken(req)) {
+    return res.status(401).json({ ok: false, error: "Missing or invalid vault token" });
+  }
+  next();
+}
+
+// CORS — default restrict to local UI origins (configurable)
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "content-type");
+  const origin = req.header("origin");
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Vary", "Origin");
+  }
+  res.header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "content-type,x-vault-token");
   if (req.method === "OPTIONS") return res.sendStatus(200);
   next();
 });
@@ -117,7 +140,7 @@ const AddSchema = z.object({
   created_at: z.string().optional(), // ISO
 });
 
-app.post("/add", (req, res) => {
+app.post("/add", requireToken, (req, res) => {
   const parsed = AddSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -160,14 +183,16 @@ app.get("/search", (req, res) => {
   res.json({ ok: true, results: rows });
 });
 
-app.post("/upload", upload.single("file"), (req, res) => {
+app.post("/upload", requireToken, upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
   const original = req.file.originalname || "file";
   const dayDir = path.join(VAULT_ROOT, "files", isoDate());
   ensureDir(dayDir);
 
-  const target = path.join(dayDir, `${Date.now()}_${safeSlug(original)}${path.extname(original)}`);
+  const ext = path.extname(original);
+  const base = path.basename(original, ext);
+  const target = path.join(dayDir, `${Date.now()}_${safeSlug(base)}${ext}`);
   fs.renameSync(req.file.path, target);
 
   const id = `file_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -186,6 +211,13 @@ app.get("/health", (req, res) => res.json({ ok: true, vault: VAULT_ROOT, db: DB_
 // Clear ALL items — used by auto-sync to wipe test/old data
 app.post("/clear", (req, res) => {
   try {
+    if (!requestAllowedByToken(req)) {
+      return res.status(401).json({ ok: false, error: "Missing or invalid vault token" });
+    }
+    const { confirm } = req.body || {};
+    if (confirm !== "DELETE_ALL_ITEMS") {
+      return res.status(400).json({ ok: false, error: "Confirmation required: confirm=DELETE_ALL_ITEMS" });
+    }
     db.run("DELETE FROM items");
     persistDb();
     res.json({ ok: true, message: "All items cleared." });
@@ -197,7 +229,10 @@ app.post("/clear", (req, res) => {
 // List all items (no search filter) — for UI browsing
 app.get("/list", (req, res) => {
   const type = String(req.query.type || "").trim();
-  const limit = Math.min(Number(req.query.limit || 100), 500);
+  const parsedLimit = Number(req.query.limit || 100);
+  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0
+    ? Math.min(Math.floor(parsedLimit), 500)
+    : 100;
   const where = type ? `WHERE type = ?` : "";
   const params = type ? [type] : [];
   const stmt = db.prepare(
@@ -305,7 +340,7 @@ const SecretAddSchema = z.object({
 });
 
 // POST /secrets/verify — check master password
-app.post("/secrets/verify", (req, res) => {
+app.post("/secrets/verify", requireToken, (req, res) => {
   const { password } = req.body || {};
   if (!password) return res.status(400).json({ ok: false, error: "password required" });
   const ok = verifyPassword(password);
@@ -314,7 +349,7 @@ app.post("/secrets/verify", (req, res) => {
 });
 
 // POST /secrets/add — add an encrypted secret
-app.post("/secrets/add", (req, res) => {
+app.post("/secrets/add", requireToken, (req, res) => {
   const parsed = SecretAddSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -335,7 +370,7 @@ app.post("/secrets/add", (req, res) => {
 });
 
 // POST /secrets/get — decrypt and return a secret
-app.post("/secrets/get", (req, res) => {
+app.post("/secrets/get", requireToken, (req, res) => {
   const { password, id } = req.body || {};
   if (!password || !id) return res.status(400).json({ error: "password and id required" });
   if (!verifyPassword(password)) return res.status(401).json({ ok: false, error: "Wrong password" });
@@ -355,7 +390,11 @@ app.post("/secrets/get", (req, res) => {
 });
 
 // GET /secrets/list — list labels/categories only (no decryption)
-app.get("/secrets/list", (req, res) => {
+app.get("/secrets/list", requireToken, (req, res) => {
+  const password = String(req.query.password || "");
+  if (!password) return res.status(400).json({ ok: false, error: "password required" });
+  if (!verifyPassword(password)) return res.status(401).json({ ok: false, error: "Wrong password" });
+
   const cat = String(req.query.category || "").trim();
   const where = cat ? "WHERE category = ? AND id != ?" : "WHERE id != ?";
   const params = cat ? [cat, SENTINEL_ID] : [SENTINEL_ID];
@@ -370,7 +409,7 @@ app.get("/secrets/list", (req, res) => {
 });
 
 // DELETE /secrets/delete — remove a secret
-app.delete("/secrets/delete/:id", (req, res) => {
+app.delete("/secrets/delete/:id", requireToken, (req, res) => {
   const { password } = req.body || {};
   if (!password) return res.status(400).json({ error: "password required" });
   if (!verifyPassword(password)) return res.status(401).json({ ok: false, error: "Wrong password" });
@@ -382,10 +421,12 @@ app.delete("/secrets/delete/:id", (req, res) => {
 
 // ═══════════════════════════════════════════════════════
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Vault API running on http://0.0.0.0:${PORT} (WSL2: also try http://127.0.0.1:${PORT} from Windows)`);
+if (!VAULT_TOKEN) {
+  console.warn("⚠️ VAULT_TOKEN is not set. API routes are running in local-trust mode.");
+}
+
+app.listen(PORT, HOST, () => {
+  console.log(`Vault API running on http://${HOST}:${PORT}`);
   console.log(`VAULT_ROOT=${VAULT_ROOT}`);
+  console.log(`CORS allowlist=${ALLOWED_ORIGINS.join(",") || "(none)"}`);
 });
-
-
-
