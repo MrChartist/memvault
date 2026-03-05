@@ -186,7 +186,7 @@ All endpoints available at `http://127.0.0.1:7799`
 | `POST` | `/add` | `{type, source, title, content, tags}` | Add entry |
 | `GET` | `/search?q=…&type=…` | Query string | Full-text search with optional type filter |
 | `GET` | `/list?type=…&limit=…` | Query string | List entries |
-| `POST` | `/clear` | — | Delete all knowledge entries |
+| `POST` | `/clear` | `{confirm:"DELETE_ALL_ITEMS"}` | Delete all knowledge entries |
 | `POST` | `/upload` | `multipart/form-data` | Upload file attachment |
 
 **Entry types**: `diary` · `conversation` · `worklog` · `file`
@@ -198,7 +198,7 @@ All endpoints available at `http://127.0.0.1:7799`
 | `POST` | `/secrets/verify` | `{password}` | Verify/register master password |
 | `POST` | `/secrets/add` | `{password, category, label, fields}` | Encrypt & store a secret |
 | `POST` | `/secrets/get` | `{password, id}` | Decrypt & return a secret |
-| `GET` | `/secrets/list` | — | List labels + categories (no decryption) |
+| `GET` | `/secrets/list?password=...` | Query string | List labels + categories (password required) |
 | `DELETE` | `/secrets/delete/:id` | `{password}` | Delete a secret (password required) |
 
 **Secret categories**: `apikey` · `password` · `userid` · `payment` · `phone` · `custom`
@@ -240,6 +240,16 @@ Start-Process wsl -ArgumentList "-d Ubuntu-24.04 -- bash -c `"cd /path/to/vault 
 ### 4. Open the UI
 
 Navigate to **<http://127.0.0.1:7799>** in your browser.
+
+### Optional hardening env vars
+
+```bash
+VAULT_HOST=127.0.0.1
+VAULT_TOKEN=choose-a-long-random-token
+VAULT_CORS_ORIGINS=http://127.0.0.1:7799,http://localhost:7799
+```
+
+When `VAULT_TOKEN` is set, mutating and secrets endpoints require the header `x-vault-token`.
 
 ### 5. First-time Secure Vault Setup
 

@@ -14,10 +14,9 @@
  */
 
 import fs from "fs";
-import path from "path";
-import os from "os";
 
 const API = process.env.VAULT_API || "http://127.0.0.1:7799";
+const VAULT_TOKEN = process.env.VAULT_TOKEN || "";
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONLY_CHROME = args.includes("--chrome");
@@ -62,6 +61,10 @@ function shouldSkip(url) {
     return SKIP_URLS.some(r => r.test(url));
 }
 
+function tokenHeaders(extra = {}) {
+    return VAULT_TOKEN ? { ...extra, "x-vault-token": VAULT_TOKEN } : extra;
+}
+
 async function postToVault(entry) {
     if (DRY_RUN) {
         console.log(`  [DRY] ${entry.title || entry.content?.slice(0, 60)}`);
@@ -70,7 +73,7 @@ async function postToVault(entry) {
     try {
         const res = await fetch(`${API}/add`, {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: tokenHeaders({ "content-type": "application/json" }),
             body: JSON.stringify(entry),
         });
         return (await res.json()).ok;
@@ -203,7 +206,7 @@ async function main() {
 
     // Health check
     try {
-        const h = await fetch(`${API}/health`);
+        const h = await fetch(`${API}/health`, { headers: tokenHeaders() });
         if (!h.ok) throw new Error();
         console.log("✅ Vault API reachable\n");
     } catch {

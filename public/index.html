@@ -1221,7 +1221,7 @@
           <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/list</span><span
               class="ep-desc">List all entries</span></div>
           <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/clear</span><span
-              class="ep-desc">Delete all entries</span></div>
+              class="ep-desc">Delete all entries (confirm required)</span></div>
           <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/upload</span><span
               class="ep-desc">Upload file attachment</span></div>
         </div>
@@ -1233,8 +1233,8 @@
               class="ep-desc">Encrypt & store secret</span></div>
           <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/get</span><span
               class="ep-desc">Decrypt & return secret</span></div>
-          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/secrets/list</span><span
-              class="ep-desc">List labels (no decrypt)</span></div>
+          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/secrets/list?password=…</span><span
+              class="ep-desc">List labels (password required)</span></div>
           <div class="endpoint-row"><span class="method del">DEL</span><span
               class="ep-path">/secrets/delete/:id</span><span class="ep-desc">Remove a secret</span></div>
         </div>
@@ -1347,7 +1347,9 @@
     applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
     /* ═══ CONFIG ══════════════════════════════════════ */
-    const API = 'http://127.0.0.1:7799';
+    const API = localStorage.getItem('vaultApi') || 'http://127.0.0.1:7799';
+    const VAULT_TOKEN = localStorage.getItem('vaultToken') || '';
+    const withToken = (headers = {}) => VAULT_TOKEN ? { ...headers, 'x-vault-token': VAULT_TOKEN } : headers;
     let currentFilter = 'all';
     let activePanel = 'entries'; // 'entries' | 'secure' | 'access'
 
@@ -1374,7 +1376,7 @@
     /* ═══ STATUS ═════════════════════════════════════ */
     async function checkStatus() {
       try {
-        const r = await fetch(`${API}/health`);
+        const r = await fetch(`${API}/health`, { headers: withToken() });
         if (r.ok) {
           document.getElementById('status-dot').className = 'status-dot online';
           document.getElementById('status-label').textContent = 'Vault Online';
@@ -1393,7 +1395,7 @@
       btn.disabled = true; btn.innerHTML = '⏳ Saving…';
       try {
         const res = await fetch(`${API}/add`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST', headers: withToken({ 'content-type': 'application/json' }),
           body: JSON.stringify({
             type: 'diary', source: 'manual',
             title: `Diary ${now.toISOString().slice(0, 10)}`, content: text, tags: 'diary'
@@ -1452,7 +1454,7 @@
       document.getElementById('entries-list').style.display = 'none';
       try {
         const type = currentFilter === 'all' ? '' : `&type=${currentFilter}`;
-        const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}${type}`);
+        const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}${type}`, { headers: withToken() });
         const d = await r.json();
         renderEntries(d.results);
       } catch { toast('Search failed', 'error'); }
@@ -1468,7 +1470,7 @@
       document.getElementById('entries-list').style.display = 'none';
       try {
         const type = currentFilter === 'all' ? '' : currentFilter;
-        const r = await fetch(`${API}/search?q= &type=${type}`);
+        const r = await fetch(`${API}/search?q= &type=${type}`, { headers: withToken() });
         const d = await r.json();
         updateStats();
         renderEntries(d.results);
@@ -1480,7 +1482,7 @@
     function updateStats() {
       ['diary', 'conversation', 'worklog'].forEach(async type => {
         try {
-          const r = await fetch(`${API}/search?q= &type=${type}`);
+          const r = await fetch(`${API}/search?q= &type=${type}`, { headers: withToken() });
           const d = await r.json();
           const id = type === 'conversation' ? 'stat-convo' : `stat-${type}`;
           const el = document.getElementById(id);
@@ -1532,7 +1534,7 @@
       if (!pw) return;
       try {
         const r = await fetch(`${API}/secrets/verify`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST', headers: withToken({ 'content-type': 'application/json' }),
           body: JSON.stringify({ password: pw }),
         });
         const d = await r.json();
@@ -1561,7 +1563,7 @@
 
     async function loadSecrets() {
       try {
-        const r = await fetch(`${API}/secrets/list`);
+        const r = await fetch(`${API}/secrets/list?password=${encodeURIComponent(vaultSession || '')}`, { headers: withToken() });
         const d = await r.json();
         renderSecrets(d.secrets || []);
       } catch { document.getElementById('secrets-list').textContent = 'Failed to load.'; }
@@ -1594,7 +1596,7 @@
       if (!vaultSession) return;
       try {
         const r = await fetch(`${API}/secrets/get`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST', headers: withToken({ 'content-type': 'application/json' }),
           body: JSON.stringify({ id, password: vaultSession }),
         });
         const d = await r.json();
@@ -1626,7 +1628,7 @@
     async function deleteSecret(id) {
       if (!vaultSession || !confirm('Delete this secret? This cannot be undone.')) return;
       await fetch(`${API}/secrets/delete/${id}`, {
-        method: 'DELETE', headers: { 'content-type': 'application/json' },
+        method: 'DELETE', headers: withToken({ 'content-type': 'application/json' }),
         body: JSON.stringify({ password: vaultSession }),
       });
       await loadSecrets();
@@ -1663,7 +1665,7 @@
       if (!Object.keys(fields).length) return toast('Fill at least one field', 'error');
       try {
         const r = await fetch(`${API}/secrets/add`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
+          method: 'POST', headers: withToken({ 'content-type': 'application/json' }),
           body: JSON.stringify({ password: vaultSession, category, label, fields }),
         });
         const d = await r.json();

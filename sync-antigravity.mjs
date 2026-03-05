@@ -22,7 +22,12 @@
 import fs from "fs";
 import path from "path";
 
-const API = "http://127.0.0.1:7799";
+const API = process.env.VAULT_API || "http://127.0.0.1:7799";
+const VAULT_TOKEN = process.env.VAULT_TOKEN || "";
+
+function tokenHeaders(extra = {}) {
+  return VAULT_TOKEN ? { ...extra, "x-vault-token": VAULT_TOKEN } : extra;
+}
 
 // Windows path to Antigravity brain directory (accessible from WSL as /mnt/c/...)
 const BRAIN_DIR = process.env.BRAIN_DIR || "/mnt/c/Users/rohit/.gemini/antigravity/brain";
@@ -58,7 +63,7 @@ function readFileSafe(filePath) {
 async function apiPost(endpoint, body) {
   const res = await fetch(`${API}${endpoint}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: tokenHeaders({ "content-type": "application/json" }),
     body: JSON.stringify(body),
   });
   return res.json();
@@ -67,13 +72,17 @@ async function apiPost(endpoint, body) {
 async function clearAllData() {
   console.log("🗑️  Clearing existing vault data...");
   try {
-    const res = await fetch(`${API}/clear`, { method: "POST" });
+    const res = await fetch(`${API}/clear`, {
+      method: "POST",
+      headers: tokenHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify({ confirm: "DELETE_ALL_ITEMS" }),
+    });
     if (res.ok) {
       console.log("   ✅ Cleared.");
     } else {
       // Endpoint may not exist, do it manually via the reset endpoint
       console.log("   ⚠️  /clear not available, trying /reset...");
-      const r2 = await fetch(`${API}/reset`, { method: "POST" });
+      const r2 = await fetch(`${API}/reset`, { method: "POST", headers: tokenHeaders() });
       if (r2.ok) {
         console.log("   ✅ Reset done.");
       } else {
@@ -95,7 +104,7 @@ async function main() {
 
   // 1. Check vault is reachable
   try {
-    const health = await fetch(`${API}/health`);
+    const health = await fetch(`${API}/health`, { headers: tokenHeaders() });
     if (!health.ok) throw new Error("not ok");
     const hj = await health.json();
     console.log(`✅ Vault online — ${hj.vault}\n`);
