@@ -28,9 +28,9 @@ app.use(express.json({ limit: "20mb" }));
 // CORS — allow browser requests from any local origin
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "content-type");
-  if (req.method === "OPTIONS") return res.sendStatus(200);
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "content-type,authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
 

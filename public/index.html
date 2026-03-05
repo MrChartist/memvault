@@ -83,8 +83,8 @@
       z-index: 200;
       background: var(--header-bg);
       border-bottom: 1px solid var(--border);
-      backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: blur(20px);
       padding: 0 24px;
       height: 58px;
       display: flex;
@@ -540,6 +540,7 @@
       line-height: 1.55;
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -805,8 +806,8 @@
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.6);
-      backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
       z-index: 500;
       display: flex;
       align-items: center;
@@ -1358,9 +1359,16 @@
     document.getElementById('full-date').textContent =
       now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    /* ═══ CHAR COUNTER ═══════════════════════════════ */
+    /* ═══ CHAR COUNTER + KEYBOARD SHORTCUT ══════════ */
     document.getElementById('diary-input').addEventListener('input', function () {
-      document.getElementById('char-count').textContent = `${this.value.length} / 5000`;
+      const len = this.value.length;
+      const counter = document.getElementById('char-count');
+      counter.textContent = `${len} / 5000`;
+      counter.style.color = len > 4500 ? 'var(--danger)' : 'var(--text3)';
+      if (len > 5000) this.value = this.value.slice(0, 5000);
+    });
+    document.getElementById('diary-input').addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveDiary(); }
     });
 
     /* ═══ TOAST ══════════════════════════════════════ */
@@ -1392,19 +1400,27 @@
       const btn = document.getElementById('save-btn');
       btn.disabled = true; btn.innerHTML = '⏳ Saving…';
       try {
+        const ts = new Date();
+        const dateStr = ts.toISOString().slice(0, 10);
+        const timeStr = ts.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         const res = await fetch(`${API}/add`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             type: 'diary', source: 'manual',
-            title: `Diary ${now.toISOString().slice(0, 10)}`, content: text, tags: 'diary'
+            title: `Diary · ${dateStr} ${timeStr}`, content: text, tags: 'diary,manual'
           })
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) throw new Error('Server error: ' + res.status);
         document.getElementById('diary-input').value = '';
         document.getElementById('char-count').textContent = '0 / 5000';
         toast('✅ Saved to Vault!');
-        loadEntries();
-      } catch { toast('❌ Save failed', 'error'); }
+        // switch to All tab and refresh
+        currentFilter = 'all';
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById('tab-all').classList.add('active');
+        showOnlyPanel('entries');
+        await loadEntries();
+      } catch (e) { toast('❌ Save failed — ' + e.message, 'error'); }
       btn.disabled = false; btn.innerHTML = '<span>💾</span> Save to Vault';
     }
 
@@ -1454,7 +1470,14 @@
         const type = currentFilter === 'all' ? '' : `&type=${currentFilter}`;
         const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}${type}`);
         const d = await r.json();
-        renderEntries(d.results);
+        if (d.results?.length === 0) {
+          renderEntries([]);
+          // show "no results" with clear option
+          document.getElementById('entries-list').innerHTML =
+            `<div class="empty-state"><div class="icon">🔍</div><p>No results for "${q.replace(/</g, '&lt;')}" — <a href="#" onclick="clearSearch()" style="color:var(--accent)">clear search</a></p></div>`;
+        } else {
+          renderEntries(d.results);
+        }
       } catch { toast('Search failed', 'error'); }
     }
 
@@ -1467,26 +1490,29 @@
       document.getElementById('loading').style.display = 'block';
       document.getElementById('entries-list').style.display = 'none';
       try {
-        const type = currentFilter === 'all' ? '' : currentFilter;
-        const r = await fetch(`${API}/search?q= &type=${type}`);
+        const type = currentFilter === 'all' ? '' : `&type=${currentFilter}`;
+        const r = await fetch(`${API}/list?limit=200${type}`);
         const d = await r.json();
-        updateStats();
+        if (!d.ok) throw new Error('API error');
+        await updateStats();
         renderEntries(d.results);
-      } catch {
-        document.getElementById('loading').textContent = '❌ Cannot connect — is the server running?';
+      } catch (err) {
+        document.getElementById('loading').innerHTML = '❌ Cannot connect to vault server — <a href="#" onclick="loadEntries()" style="color:var(--accent)">retry</a>';
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('entries-list').style.display = 'none';
       }
     }
 
-    function updateStats() {
-      ['diary', 'conversation', 'worklog'].forEach(async type => {
+    async function updateStats() {
+      for (const type of ['diary', 'conversation', 'worklog']) {
         try {
-          const r = await fetch(`${API}/search?q= &type=${type}`);
+          const r = await fetch(`${API}/list?limit=500&type=${type}`);
           const d = await r.json();
           const id = type === 'conversation' ? 'stat-convo' : `stat-${type}`;
           const el = document.getElementById(id);
-          if (el) el.textContent = d.results.length;
+          if (el) el.textContent = d.results?.length ?? '—';
         } catch { }
-      });
+      }
     }
 
     function renderEntries(entries) {
