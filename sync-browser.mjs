@@ -17,37 +17,40 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-const API = process.env.VAULT_API || "http://127.0.0.1:7799";
+const API = process.env.VAULT_API || "http://127.0.0.1:7800";
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONLY_CHROME = args.includes("--chrome");
 const ONLY_EDGE = args.includes("--edge");
 
-// Windows username (from WSL /mnt/c/Users/<name>)
-const WIN_USER = process.env.WIN_USER || (() => {
-    try {
-        const dirs = fs.readdirSync("/mnt/c/Users").filter(d =>
-            !["Public", "Default", "Default User", "All Users"].includes(d) &&
-            fs.statSync(`/mnt/c/Users/${d}`).isDirectory()
-        );
-        return dirs[0] || "rohit";
-    } catch { return "rohit"; }
-})();
+// Detect environment
+const USERNAME = process.env.USERNAME || process.env.USER || "rohit";
+const isWsl = process.env.WSL_DISTRO_NAME !== undefined;
+
+const WIN_USER = process.env.WIN_USER || USERNAME;
 
 const BROWSER_PROFILES = [];
 
 if (!ONLY_EDGE) {
+    const chromePathWin = `C:\\Users\\${WIN_USER}\\AppData\\Local\\Google\\Chrome\\User Data\\Default`;
+    const chromePathWsl = `/mnt/c/Users/${WIN_USER}/AppData/Local/Google/Chrome/User Data/Default`;
+    const base = isWsl ? chromePathWsl : chromePathWin;
+
     BROWSER_PROFILES.push({
         name: "Chrome",
-        historyPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Google/Chrome/User Data/Default/History`,
-        bookmarksPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Google/Chrome/User Data/Default/Bookmarks`,
+        historyPath: path.join(base, "History"),
+        bookmarksPath: path.join(base, "Bookmarks"),
     });
 }
 if (!ONLY_CHROME) {
+    const edgePathWin = `C:\\Users\\${WIN_USER}\\AppData\\Local\\Microsoft\\Edge\\User Data\\Default`;
+    const edgePathWsl = `/mnt/c/Users/${WIN_USER}/AppData/Local/Microsoft/Edge/User Data/Default`;
+    const base = isWsl ? edgePathWsl : edgePathWin;
+
     BROWSER_PROFILES.push({
         name: "Edge",
-        historyPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Microsoft/Edge/User Data/Default/History`,
-        bookmarksPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Microsoft/Edge/User Data/Default/Bookmarks`,
+        historyPath: path.join(base, "History"),
+        bookmarksPath: path.join(base, "Bookmarks"),
     });
 }
 
@@ -92,8 +95,8 @@ async function syncHistory(profile) {
         return 0;
     }
 
-    // Copy to /tmp (Chrome locks the file while running)
-    const tmp = `/tmp/memvault_${profile.name.toLowerCase()}_history_${Date.now()}`;
+    // Copy to tmp (Chrome locks the file while running)
+    const tmp = path.join(os.tmpdir(), `memvault_${profile.name.toLowerCase()}_history_${Date.now()}`);
     fs.copyFileSync(src, tmp);
 
     // Use sql.js to read the SQLite file
@@ -212,6 +215,19 @@ async function main() {
         process.exit(1);
     }
 
+    // Clear old browser data
+    if (!DRY_RUN) {
+        console.log("🗑️ Clearing previous browser sync entries...");
+        try {
+            await fetch(`${API}/clear`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ source: "browser" })
+            });
+            console.log("   ✅ Cleared.\n");
+        } catch { console.log("   ⚠️ Clear failed, appending instead.\n"); }
+    }
+
     let totalOk = 0;
 
     for (const profile of BROWSER_PROFILES) {
@@ -224,7 +240,7 @@ async function main() {
 
     console.log(`\n═══════════════════════════════════════`);
     console.log(`✅ Total synced: ${totalOk} entries`);
-    console.log(`🌐 Open http://127.0.0.1:7799 to browse`);
+    console.log(`🌐 Open http://127.0.0.1:7800 to browse`);
     console.log(`═══════════════════════════════════════\n`);
 }
 

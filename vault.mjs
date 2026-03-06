@@ -1,9 +1,9 @@
-// /mnt/d/AG/Vault/apps/vault/vault.mjs
 import fs from "fs";
 import path from "path";
+import os from "os";
 
-const VAULT_ROOT = process.env.VAULT_ROOT || "/mnt/d/AG/Vault";
-const API = process.env.VAULT_API || "http://127.0.0.1:7799";
+const VAULT_ROOT = process.env.VAULT_ROOT || path.join(os.homedir(), ".memvault");
+const API = process.env.VAULT_API || "http://127.0.0.1:7800";
 
 function isoDate() {
     const d = new Date();
@@ -32,7 +32,7 @@ Usage:
 
 Env:
   VAULT_ROOT=/mnt/d/AG/Vault
-  VAULT_API=http://127.0.0.1:7799
+  VAULT_API=http://127.0.0.1:7800
 `);
     process.exit(1);
 }
@@ -62,6 +62,7 @@ if (cmd === "diary") {
     });
 
     console.log(`OK: wrote diary -> ${file}`);
+    console.log(`🌐 Open http://127.0.0.1:7800 to view your vault.`);
     process.exit(0);
 }
 

@@ -5,7 +5,7 @@
 $distro = "Ubuntu-24.04"
 $serverScript = "/mnt/d/AG/Vault/apps/vault/server.mjs"
 $logFile = "/mnt/d/AG/Vault/db/vault.log"
-$port = 7799
+$port = 7800
 
 # Kill any previous instance
 wsl -d $distro -e bash -c "pkill -f 'server.mjs' 2>/dev/null; sleep 0.5" 2>$null

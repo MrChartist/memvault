@@ -9,55 +9,75 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
     rel="stylesheet" />
+  <!-- Prism for code highlighting -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+  <!-- Marked -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     /* ═══ DESIGN TOKENS ══════════════════════════════ */
     :root {
-      --accent: #6366f1;
-      --accent-soft: rgba(99, 102, 241, 0.12);
+      --accent: #8b5cf6;
+      --accent-rgb: 139, 92, 246;
+      --accent-gradient: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%);
+      --accent-soft: rgba(139, 92, 246, 0.1);
+
+      --secondary: #06b6d4;
+      --secondary-soft: rgba(6, 182, 212, 0.1);
+
       --gold: #f59e0b;
       --gold-soft: rgba(245, 158, 11, 0.12);
-      --danger: #ef4444;
+
+      --danger: #f43f5e;
       --success: #10b981;
+
       --diary-c: #818cf8;
       --convo-c: #22d3ee;
       --work-c: #fb923c;
-      --radius: 14px;
-      --radius-sm: 8px;
-      --shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
-      --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.2);
-      --transition: 0.2s ease;
+
+      --radius: 20px;
+      --radius-sm: 12px;
+      --radius-full: 99px;
+
+      --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.15);
+
+      --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    /* ─── DARK THEME ─── */
     [data-theme="dark"] {
-      --bg: #0c0e14;
-      --bg2: #111318;
-      --surface: #161920;
-      --surface2: #1d2029;
-      --border: rgba(255, 255, 255, 0.07);
-      --border-hover: rgba(255, 255, 255, 0.14);
-      --text: #e4e7f0;
-      --text2: #9399b0;
-      --text3: #575f77;
-      --header-bg: rgba(12, 14, 20, 0.88);
-      --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
-      --input-bg: #1d2029;
+      --bg: #05070a;
+      --surface: rgba(17, 19, 26, 0.65);
+      --surface2: rgba(30, 35, 45, 0.75);
+      --surface-floating: rgba(15, 18, 25, 0.95);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.15);
+      --text: #f8fafc;
+      --text2: #94a3b8;
+      --text3: #475569;
+      --header-bg: rgba(5, 7, 10, 0.75);
+      --input-bg: rgba(10, 12, 18, 0.5);
+      --glass-blur: blur(20px);
     }
 
-    /* ─── LIGHT THEME ─── */
     [data-theme="light"] {
-      --bg: #f4f5f9;
-      --bg2: #eceef4;
-      --surface: #ffffff;
-      --surface2: #f0f1f7;
-      --border: rgba(0, 0, 0, 0.08);
-      --border-hover: rgba(0, 0, 0, 0.16);
-      --text: #1a1d2e;
-      --text2: #5a607a;
-      --text3: #9ca3bb;
-      --header-bg: rgba(244, 245, 249, 0.88);
-      --card-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
-      --input-bg: #f4f5f9;
+      --bg: #f8fafc;
+      --surface: rgba(255, 255, 255, 0.75);
+      --surface2: rgba(241, 245, 249, 0.85);
+      --surface-floating: rgba(255, 255, 255, 0.98);
+      --border: rgba(0, 0, 0, 0.06);
+      --border-hover: rgba(0, 0, 0, 0.12);
+      --text: #0f172a;
+      --text2: #64748b;
+      --text3: #94a3b8;
+      --header-bg: rgba(248, 250, 252, 0.8);
+      --input-bg: rgba(255, 255, 255, 0.5);
+      --glass-blur: blur(20px);
     }
 
     * {
@@ -66,14 +86,55 @@
       padding: 0;
     }
 
+    /* ═══ BACKGROUND BLOBS ═══════════════════════════ */
+    .bg-blobs {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      overflow: hidden;
+      pointer-events: none;
+      filter: blur(80px);
+      opacity: 0.15;
+    }
+
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .blob-1 {
+      width: 400px;
+      height: 400px;
+      top: -100px;
+      left: -100px;
+      background: var(--accent);
+      opacity: 0.4;
+    }
+
+    .blob-2 {
+      width: 350px;
+      height: 350px;
+      bottom: -50px;
+      right: -50px;
+      background: var(--secondary);
+      opacity: 0.3;
+    }
+
     body {
-      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-family: 'DM Sans', 'Inter', system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
       font-size: 15px;
       line-height: 1.6;
       transition: background var(--transition), color var(--transition);
+      overflow-x: hidden;
+      /* Premium Background Mesh */
+      background-image:
+        radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.03) 0, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(6, 182, 212, 0.03) 0, transparent 50%);
+      background-attachment: fixed;
     }
 
     /* ═══ HEADER ════════════════════════════════════ */
@@ -83,34 +144,46 @@
       z-index: 200;
       background: var(--header-bg);
       border-bottom: 1px solid var(--border);
-      -webkit-backdrop-filter: blur(20px);
-      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
       padding: 0 24px;
-      height: 58px;
+      height: 64px;
       display: flex;
       align-items: center;
     }
 
     .header-inner {
-      max-width: 980px;
+      max-width: 1100px;
       margin: 0 auto;
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 16px;
     }
 
     .logo-mark {
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
       flex-shrink: 0;
-      background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 100%);
+      background: var(--accent-gradient);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 17px;
-      box-shadow: 0 0 18px rgba(99, 102, 241, 0.35);
+      font-size: 20px;
+      box-shadow: 0 0 25px rgba(139, 92, 246, 0.25);
+      position: relative;
+    }
+
+    .logo-mark::after {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      background: var(--accent-gradient);
+      border-radius: 14px;
+      z-index: -1;
+      opacity: 0.3;
+      filter: blur(8px);
     }
 
     .logo-text {
@@ -186,32 +259,35 @@
 
     /* ═══ MAIN CONTENT ══════════════════════════════ */
     main {
-      max-width: 980px;
+      max-width: 1100px;
       margin: 0 auto;
-      padding: 32px 24px 80px;
+      padding: 40px 24px 100px;
     }
 
     /* Date hero */
     .date-hero {
-      text-align: center;
-      padding: 28px 0 24px;
+      text-align: left;
+      padding: 0 0 40px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
     }
 
-    .date-hero h1 {
-      font-size: clamp(36px, 6vw, 52px);
+    .date-hero .hero-main h1 {
+      font-size: clamp(32px, 5vw, 48px);
       font-weight: 800;
-      letter-spacing: -0.03em;
-      background: linear-gradient(135deg, var(--text) 0%, var(--text2) 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      letter-spacing: -0.04em;
+      color: var(--text);
+      line-height: 1;
       font-family: 'Inter', sans-serif;
     }
 
-    .date-hero p {
-      font-size: 14px;
+    .date-hero .hero-main p {
+      font-size: 16px;
+      font-weight: 500;
       color: var(--text2);
-      margin-top: 4px;
+      margin-top: 8px;
+      opacity: 0.8;
     }
 
     /* ═══ COMPOSE CARD ══════════════════════════════ */
@@ -220,23 +296,47 @@
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 0;
-      margin-bottom: 24px;
+      margin-bottom: 32px;
       overflow: hidden;
-      box-shadow: var(--card-shadow);
-      transition: border-color var(--transition);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
+      box-shadow: var(--shadow-md);
+      transition: all var(--transition);
+      position: relative;
+    }
+
+    .compose-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity var(--transition);
     }
 
     .compose-card:focus-within {
-      border-color: var(--accent);
+      border-color: rgba(var(--accent-rgb), 0.3);
+      box-shadow: var(--shadow-lg), var(--shadow-glow);
+      transform: translateY(-2px);
+    }
+
+    .compose-card:focus-within::before {
+      opacity: 1;
     }
 
     .compose-label {
-      padding: 12px 16px 0;
-      font-size: 10.5px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
+      padding: 16px 20px 0;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     #diary-input {
@@ -245,24 +345,21 @@
       border: none;
       outline: none;
       background: transparent;
-      padding: 10px 16px 6px;
-      font-size: 14.5px;
+      padding: 12px 20px 10px;
+      font-size: 16px;
       color: var(--text);
       font-family: 'DM Sans', sans-serif;
-      line-height: 1.65;
-      min-height: 90px;
+      line-height: 1.6;
+      min-height: 120px;
       caret-color: var(--accent);
-    }
-
-    #diary-input::placeholder {
-      color: var(--text3);
     }
 
     .compose-footer {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 12px 10px;
+      padding: 12px 16px 14px;
+      background: var(--surface2);
       border-top: 1px solid var(--border);
     }
 
@@ -273,30 +370,37 @@
     }
 
     .btn-save {
-      padding: 8px 18px;
-      border-radius: 9px;
+      padding: 10px 24px;
+      border-radius: 12px;
       border: none;
       cursor: pointer;
-      background: var(--accent);
+      background: var(--accent-gradient);
       color: #fff;
-      font-size: 13px;
-      font-weight: 600;
+      font-size: 14px;
+      font-weight: 700;
       font-family: 'DM Sans', sans-serif;
       display: flex;
       align-items: center;
-      gap: 6px;
-      transition: opacity var(--transition), transform 0.1s;
-      letter-spacing: -0.01em;
+      gap: 8px;
+      transition: all var(--transition);
+      box-shadow: 0 4px 15px rgba(var(--accent-rgb), 0.25);
     }
 
     .btn-save:hover {
-      opacity: 0.88;
-      transform: translateY(-1px);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(var(--accent-rgb), 0.35);
+      filter: brightness(1.1);
+    }
+
+    .btn-save:active {
+      transform: translateY(0);
     }
 
     .btn-save:disabled {
-      opacity: 0.5;
+      background: var(--surface2);
+      color: var(--text3);
       cursor: not-allowed;
+      box-shadow: none;
       transform: none;
     }
 
@@ -304,23 +408,33 @@
     .stats-row {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 10px;
-      margin-bottom: 20px;
+      gap: 16px;
+      margin-bottom: 32px;
     }
 
     .stat-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 14px 16px;
-      box-shadow: var(--card-shadow);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      box-shadow: var(--shadow-md);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
+      transition: all var(--transition);
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
     }
 
     .stat-num {
-      font-size: 26px;
-      font-weight: 800;
+      font-size: 32px;
+      font-weight: 900;
       font-family: 'Inter', sans-serif;
-      letter-spacing: -0.03em;
+      letter-spacing: -0.05em;
+      line-height: 1;
     }
 
     .stat-num.diary {
@@ -345,53 +459,75 @@
     }
 
     /* ═══ TABS ══════════════════════════════════════ */
-    .tabs {
+    /* ═══ TABS (Navigation) ══════════════════════════ */
+    .tabs-nav {
       display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      margin-bottom: 16px;
+      align-items: center;
+      gap: 32px;
+      margin-left: 48px;
     }
 
-    .tab {
-      padding: 6px 15px;
-      border-radius: 99px;
-      border: 1px solid var(--border);
+    .tab-link {
+      color: var(--text2);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      padding: 20px 0;
+      cursor: pointer;
+      position: relative;
+      transition: color var(--transition);
+      border: none;
+      background: none;
+      font-family: inherit;
+    }
+
+    .tab-link:hover {
+      color: var(--text);
+    }
+
+    .tab-link.active {
+      color: var(--accent);
+    }
+
+    .tab-link.active::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px;
+      box-shadow: 0 0 10px rgba(var(--accent-rgb), 0.5);
+    }
+
+    /* ═══ ACTIONS / ICONS ══════════════════════════════ */
+    .utility-icons {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .btn-utility {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      border: 1px solid transparent;
       background: transparent;
       color: var(--text2);
-      font-size: 13px;
-      font-weight: 500;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
       transition: all var(--transition);
-      font-family: 'DM Sans', sans-serif;
+      text-decoration: none;
     }
 
-    .tab:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-      background: var(--accent-soft);
-    }
-
-    .tab.active {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
-
-    .tab-secure {
-      border-color: rgba(245, 158, 11, 0.3);
-      color: var(--gold) !important;
-    }
-
-    .tab-secure:hover {
-      border-color: var(--gold) !important;
-      background: var(--gold-soft) !important;
-      color: var(--gold) !important;
-    }
-
-    .tab-secure.active {
-      background: var(--gold) !important;
-      border-color: var(--gold) !important;
-      color: #1a1200 !important;
+    .btn-utility:hover {
+      background: var(--surface2);
+      color: var(--text);
+      border-color: var(--border);
     }
 
     /* ═══ SEARCH ════════════════════════════════════ */
@@ -456,6 +592,173 @@
       color: var(--accent);
     }
 
+    .filter-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .project-filter-wrap {
+      display: flex;
+      align-items: center;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0 12px;
+      transition: all var(--transition);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .project-filter-wrap:focus-within {
+      border-color: var(--accent);
+      background: var(--surface);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .project-filter-wrap select {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 13.5px;
+      font-weight: 600;
+      padding: 10px 0;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .color-btn {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+    }
+
+    .color-btn::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      opacity: 0;
+      transform: scale(0.8);
+      transition: all 0.2s;
+    }
+
+    .color-btn.active::after {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .color-btn[data-color="#6366f1"] {
+      background: #6366f1;
+    }
+
+    .color-btn[data-color="#10b981"] {
+      background: #10b981;
+    }
+
+    .color-btn[data-color="#f59e0b"] {
+      background: #f59e0b;
+    }
+
+    .color-btn[data-color="#ef4444"] {
+      background: #ef4444;
+    }
+
+    .color-btn[data-color="#ec4899"] {
+      background: #ec4899;
+    }
+
+    .color-btn[data-color="#a78bfa"] {
+      background: #a78bfa;
+    }
+
+    .color-btn:hover {
+      transform: scale(1.1);
+    }
+
+    /* Lint fixes: move inline styles to classes */
+    .txt-accent {
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .txt-muted {
+      color: var(--text3);
+      font-size: 11px;
+      margin-top: 10px;
+    }
+
+    .txt-retry {
+      color: var(--accent);
+      cursor: pointer;
+    }
+
+    .flex-center {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mt-10 {
+      margin-top: 10px;
+    }
+
+    .ml-auto {
+      margin-left: auto;
+    }
+
+    .mb-16 {
+      margin-bottom: 16px;
+    }
+
+    .mt-8 {
+      margin-top: 8px;
+    }
+
+    .access-title {
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .access-subtitle {
+      font-size: 13px;
+      color: var(--text2);
+    }
+
+    .code-accent {
+      font-family: 'DM Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+    }
+
+    .empty-project-msg {
+      font-size: 12px;
+      color: var(--text3);
+      text-align: center;
+      padding: 10px;
+    }
+
+    .reveal-hint {
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 10px;
+    }
+
+    .vault-unlocked-hidden {
+      display: none;
+    }
+
+    #entries-list {
+      display: none;
+    }
+
     /* ═══ ENTRY CARDS ═══════════════════════════════ */
     .entries-list {
       display: flex;
@@ -467,52 +770,108 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 16px 18px;
-      transition: border-color var(--transition), transform 0.15s;
-      box-shadow: var(--card-shadow);
+      padding: 24px;
+      transition: all var(--transition);
+      box-shadow: var(--shadow-md);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
+      position: relative;
+      animation: fadeIn 0.4s ease-out backwards;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .hero-btn-cal {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 10px 18px;
+      border-radius: 14px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all var(--transition);
+      -webkit-backdrop-filter: var(--glass-blur);
+      backdrop-filter: var(--glass-blur);
     }
 
     .entry-card:hover {
-      border-color: var(--border-hover);
-      transform: translateY(-1px);
+      border-color: rgba(var(--accent-rgb), 0.25);
+      transform: translateY(-4px) scale(1.01);
+      box-shadow: var(--shadow-lg), 0 10px 30px -10px rgba(139, 92, 246, 0.1);
+      z-index: 10;
     }
 
     .entry-header {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-bottom: 8px;
-      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 16px;
     }
 
     .type-badge {
-      padding: 2.5px 9px;
-      border-radius: 99px;
-      font-size: 10.5px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
       text-transform: uppercase;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
     }
 
-    .type-diary {
-      background: rgba(129, 140, 248, 0.15);
+    .type-badge.type-diary {
       color: var(--diary-c);
+      background: rgba(129, 140, 248, 0.1);
+      border-color: rgba(129, 140, 248, 0.2);
     }
 
-    .type-conversation {
-      background: rgba(34, 211, 238, 0.12);
+    .type-badge.type-conversation {
       color: var(--convo-c);
+      background: rgba(34, 211, 238, 0.1);
+      border-color: rgba(34, 211, 238, 0.2);
     }
 
-    .type-worklog {
-      background: rgba(251, 146, 60, 0.14);
+    .type-badge.type-worklog {
       color: var(--work-c);
+      background: rgba(251, 146, 60, 0.1);
+      border-color: rgba(251, 146, 60, 0.2);
     }
 
-    .type-file {
-      background: rgba(16, 185, 129, 0.12);
-      color: var(--success);
+    .entry-title {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      line-height: 1.3;
+      margin-bottom: 10px;
     }
+
+    .entry-content {
+      font-size: 15px;
+      color: var(--text2);
+      line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
 
     .entry-source {
       font-size: 11.5px;
@@ -524,6 +883,28 @@
       font-size: 11.5px;
       color: var(--text3);
       font-family: 'DM Mono', monospace;
+    }
+
+    .project-badge {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      margin-left: 8px;
+    }
+
+    .project-badge::before {
+      content: '📁';
+      font-size: 9px;
+      opacity: 0.8;
     }
 
     .entry-title {
@@ -745,63 +1126,123 @@
       padding-left: 2px;
     }
 
-    .secret-card {
+    .entry-card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 13px 16px;
-      margin-bottom: 7px;
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+      transition: all var(--transition);
+      position: relative;
+      animation: fadeIn 0.4s ease-out;
+      overflow: hidden;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .entry-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg), 0 10px 30px -10px rgba(var(--accent-rgb), 0.1);
+    }
+
+    .entry-header {
       display: flex;
       align-items: center;
-      gap: 13px;
-      cursor: pointer;
-      transition: border-color var(--transition), transform 0.12s;
-      box-shadow: var(--card-shadow);
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
     }
 
-    .secret-card:hover {
-      border-color: rgba(245, 158, 11, 0.4);
-      transform: translateY(-1px);
+    .entry-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
     }
 
-    .secret-icon {
-      font-size: 1.25rem;
+    .entry-content {
+      font-size: 14.5px;
+      color: var(--text2);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
 
-    .secret-info {
-      flex: 1;
-    }
-
-    .secret-label {
+    .entry-time {
+      font-size: 11px;
       font-weight: 600;
-      font-size: 14px;
-      letter-spacing: -0.01em;
-    }
-
-    .secret-meta {
-      font-size: 11.5px;
       color: var(--text3);
-      margin-top: 2px;
-      font-family: 'DM Mono', monospace;
+      margin-left: auto;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
 
-    .secret-del {
-      background: none;
-      border: none;
+    /* Badges */
+    .type-badge {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 99px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border: 1px solid transparent;
+    }
+
+    .type-diary {
+      background: rgba(129, 140, 248, 0.15);
+      color: #818cf8;
+      border-color: rgba(129, 140, 248, 0.2);
+    }
+
+    .type-conversation {
+      background: rgba(34, 211, 238, 0.15);
+      color: #22d3ee;
+      border-color: rgba(34, 211, 238, 0.2);
+    }
+
+    .type-worklog {
+      background: rgba(251, 146, 60, 0.15);
+      color: #fb923c;
+      border-color: rgba(251, 146, 60, 0.2);
+    }
+
+    .type-file {
+      background: rgba(167, 139, 250, 0.15);
+      color: #a78bfa;
+      border-color: rgba(167, 139, 250, 0.2);
+    }
+
+    .project-badge {
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
       cursor: pointer;
-      color: var(--text3);
-      font-size: 15px;
-      padding: 4px 6px;
-      border-radius: 6px;
       transition: all var(--transition);
     }
 
-    .secret-del:hover {
-      color: var(--danger);
-      background: rgba(239, 68, 68, 0.1);
+    .project-badge:hover {
+      filter: brightness(1.2);
+      transform: scale(1.05);
     }
 
-    /* ═══ MODALS ═════════════════════════════════════ */
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -825,13 +1266,13 @@
     .modal {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 26px;
-      width: 430px;
+      border-radius: 24px;
+      padding: 32px;
+      width: 480px;
       max-width: 96vw;
       transform: translateY(12px) scale(0.97);
       transition: transform 0.22s;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.5);
     }
 
     .modal-overlay.open .modal {
@@ -1000,6 +1441,339 @@
       color: var(--success);
     }
 
+    .visible-panel {
+      display: block !important;
+    }
+
+    .vault-panel-hidden {
+      display: none;
+    }
+
+    .modal-title {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Unlocked Pulse */
+    @keyframes vaultPulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+      }
+
+      70% {
+        box-shadow: 0 0 0 10px rgba(245, 158, 11, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+      }
+    }
+
+    .unlocked-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: var(--gold-soft);
+      color: var(--gold);
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      animation: vaultPulse 2s infinite;
+    }
+
+    /* ═══ PANELS HELPER ══════════════════════════════ */
+    .panel-header {
+      margin-bottom: 24px;
+    }
+
+    .panel-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+
+    .panel-title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .panel-subtitle {
+      font-size: 14px;
+      color: var(--text2);
+    }
+
+    /* ═══ CALENDAR GRID ══════════════════════════════ */
+    .calendar-grid-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .calendar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .calendar-header h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .btn-cal-nav {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .btn-cal-nav:hover {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .cal-day {
+      background: var(--surface);
+      aspect-ratio: 1;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s;
+    }
+
+    .cal-day:hover {
+      background: var(--surface2);
+    }
+
+    .cal-day.today {
+      font-weight: 800;
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .cal-day.outside {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    .cal-day.active {
+      box-shadow: inset 0 0 0 2px var(--accent);
+      z-index: 2;
+    }
+
+    .cal-date-num {
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .cal-activity {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text3);
+      opacity: 0;
+    }
+
+    .cal-activity.has-work {
+      opacity: 1;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    .cal-activity.high {
+      background: var(--gold);
+      box-shadow: 0 0 8px var(--gold);
+      transform: scale(1.3);
+    }
+
+    /* Day labels in calendar */
+    .cal-day-labels {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      margin-bottom: 8px;
+    }
+
+    .cal-day-label {
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text3);
+      text-transform: uppercase;
+    }
+
+    .day-details {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      animation: slideUp 0.3s ease;
+    }
+
+    .day-details h4 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: var(--text);
+      border-left: 3px solid var(--accent);
+      padding-left: 12px;
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(10px);
+        opacity: 0;
+      }
+
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* ═══ PROJECTS GRID ══════════════════════════════ */
+    .projects-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .project-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .project-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .p-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .p-icon {
+      font-size: 24px;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--p-color, var(--accent));
+      background: color-mix(in srgb, var(--p-color, var(--accent)), transparent 85%);
+      color: var(--p-color, var(--accent));
+      border: 1px solid var(--p-color, var(--accent));
+      border: 1px solid color-mix(in srgb, var(--p-color, var(--accent)), transparent 70%);
+      transition: all var(--transition);
+    }
+
+    .p-glow {
+      position: absolute;
+      top: -30px;
+      right: -30px;
+      width: 100px;
+      height: 100px;
+      filter: blur(40px);
+      opacity: 0.12;
+      border-radius: 50%;
+      background: var(--p-color, var(--accent));
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+
+    .project-card:hover .p-glow {
+      opacity: 0.25;
+    }
+
+    .p-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .p-desc {
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.5;
+    }
+
+    .p-stats {
+      margin-top: auto;
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text3);
+    }
+
+    .p-stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .p-glow {
+      position: absolute;
+      top: -20px;
+      right: -20px;
+      width: 80px;
+      height: 80px;
+      filter: blur(30px);
+      opacity: 0.15;
+      border-radius: 50%;
+      background: var(--accent);
+      pointer-events: none;
+    }
+
     /* ═══ ACCESS MAP PANEL ═══════════════════════════ */
     #access-panel {
       display: none;
@@ -1014,6 +1788,236 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       margin-bottom: 16px;
+    }
+
+    /* Markdown Viewer Styles */
+    #viewer-content h1,
+    #viewer-content h2,
+    #viewer-content h3 {
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+    #viewer-content h1 {
+      font-size: 1.8em;
+    }
+
+    #viewer-content h2 {
+      font-size: 1.4em;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    #viewer-content h3 {
+      font-size: 1.2em;
+    }
+
+    #viewer-content p {
+      margin-bottom: 1em;
+      color: var(--text2);
+    }
+
+    #viewer-content a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    #viewer-content a:hover {
+      text-decoration: underline;
+    }
+
+    #viewer-content pre {
+      background: var(--bg) !important;
+      padding: 1.2em !important;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      margin-bottom: 1.5em;
+    }
+
+    #viewer-content code {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.9em;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--accent);
+    }
+
+    #viewer-content pre code {
+      color: inherit;
+      background: none;
+      padding: 0;
+    }
+
+    #viewer-content blockquote {
+      border-left: 4px solid var(--accent);
+      margin: 1.5em 0;
+      padding: 0.5em 1em;
+      color: var(--text2);
+      background: var(--bg);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font-style: italic;
+    }
+
+    #viewer-content ul,
+    #viewer-content ol {
+      padding-left: 2em;
+      margin-bottom: 1.5em;
+      color: var(--text2);
+    }
+
+    #viewer-content li {
+      margin-bottom: 0.5em;
+    }
+
+    #viewer-content img {
+      max-width: 100%;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      margin: 1em 0;
+    }
+
+    #viewer-content hr {
+      border: 0;
+      height: 1px;
+      background: var(--border);
+      margin: 2em 0;
+    }
+
+    #viewer-content table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 1.5em;
+    }
+
+    #viewer-content th,
+    #viewer-content td {
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    #viewer-content th {
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* Markdown Body in entries */
+    .markdown-body h1,
+    .markdown-body h2,
+    .markdown-body h3 {
+      margin-top: 1.5em;
+      margin-bottom: 0.5em;
+      color: var(--text);
+      line-height: 1.3;
+    }
+
+    .markdown-body h1 {
+      font-size: 1.5em;
+    }
+
+    .markdown-body h2 {
+      font-size: 1.25em;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .markdown-body h3 {
+      font-size: 1.1em;
+    }
+
+    .markdown-body p {
+      margin-bottom: 0.8em;
+      color: var(--text2);
+    }
+
+    .markdown-body a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .markdown-body a:hover {
+      text-decoration: underline;
+    }
+
+    .markdown-body pre {
+      background: var(--bg) !important;
+      padding: 1em !important;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      margin-bottom: 1em;
+    }
+
+    .markdown-body code {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.9em;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+      background: var(--bg);
+      color: var(--accent);
+    }
+
+    .markdown-body pre code {
+      color: inherit;
+      background: none;
+      padding: 0;
+    }
+
+    .markdown-body blockquote {
+      border-left: 3px solid var(--accent);
+      margin: 1em 0;
+      padding: 0.5em 1em;
+      color: var(--text2);
+      background: var(--bg);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font-style: italic;
+    }
+
+    .markdown-body ul,
+    .markdown-body ol {
+      padding-left: 2em;
+      margin-bottom: 1em;
+      color: var(--text2);
+    }
+
+    .markdown-body li {
+      margin-bottom: 0.3em;
+    }
+
+    .markdown-body img {
+      max-width: 100%;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      margin: 1em 0;
+    }
+
+    .markdown-body hr {
+      border: 0;
+      height: 1px;
+      background: var(--border);
+      margin: 1.5em 0;
+    }
+
+    .markdown-body table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 1em;
+    }
+
+    .markdown-body th,
+    .markdown-body td {
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      text-align: left;
+    }
+
+    .markdown-body th {
+      background: var(--bg);
+      color: var(--text);
     }
 
     @media (max-width: 640px) {
@@ -1088,10 +2092,217 @@
       margin-left: auto;
       text-align: right;
     }
+
+    /* Secret Cards */
+    .secret-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      cursor: pointer;
+      transition: all var(--transition);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .secret-card:hover {
+      border-color: var(--gold);
+      transform: translateX(4px);
+      background: rgba(212, 175, 55, 0.05);
+    }
+
+    .secret-icon {
+      font-size: 1.5rem;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--surface2);
+      border-radius: 10px;
+    }
+
+    .secret-info {
+      flex: 1;
+    }
+
+    .secret-label {
+      font-weight: 700;
+      font-size: 14.5px;
+      color: var(--text);
+    }
+
+    .secret-del {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text3);
+      padding: 8px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .secret-del:hover {
+      color: var(--danger);
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .cat-label {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin: 24px 0 12px 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .source-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text3);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .source-badge svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .entry-actions {
+      display: none;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .entry-card:hover .entry-actions {
+      display: flex;
+    }
+
+    .btn-icon {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .btn-icon.del:hover {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .doc-entry:hover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .doc-hint {
+      margin-top: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* K-Hint Styling */
+    .k-hint {
+      font-family: 'DM Mono', monospace;
+      font-size: 9px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      padding: 1px 4px;
+      border-radius: 4px;
+      color: var(--text3);
+      margin-left: 4px;
+      transition: all 0.2s;
+    }
+
+    .btn-utility:hover .k-hint {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Shortcuts Styling */
+    .kbd-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .kbd-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .kbd-row:last-child {
+      border-bottom: none;
+    }
+
+    .kbd-keys {
+      display: flex;
+      gap: 4px;
+    }
+
+    .kbd {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--text);
+      min-width: 24px;
+      text-align: center;
+    }
+
+    .kbd-desc {
+      font-size: 13.5px;
+      color: var(--text2);
+    }
   </style>
 </head>
 
 <body>
+  <div class="bg-blobs">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+  </div>
 
   <!-- HEADER -->
   <header>
@@ -1101,12 +2312,34 @@
         <strong>MemVault</strong>
         <span>Personal Knowledge Vault</span>
       </div>
+
+      <nav class="tabs-nav" id="main-tabs">
+        <button class="tab-link active" onclick="switchTab('all', this)" id="tab-all">Timeline</button>
+        <button class="tab-link" onclick="switchTab('diary', this)">Diary</button>
+        <button class="tab-link" onclick="switchTab('conversation', this)">Brain</button>
+        <button class="tab-link" onclick="switchTab('worklog', this)">Work</button>
+        <button class="tab-link" onclick="switchTab('doc', this)">Docs</button>
+        <button class="tab-link" onclick="openProjects(this)">Projects</button>
+        <button class="tab-link" style="color:var(--gold)" onclick="openSecureVault(this)">Vault 🔒</button>
+      </nav>
+
       <div class="header-right">
-        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme"
-          aria-label="Toggle dark/light theme">🌙</button>
+        <div class="utility-icons">
+          <button class="btn-utility" onclick="openSearchModal()" title="Global Search (Ctrl+/)">🔍<span
+              class="k-hint">/</span></button>
+          <button class="btn-utility" onclick="openShortcutsModal()" title="Keyboard Shortcuts">⌨️<span
+              class="k-hint">?</span></button>
+          <a href="/docs.html" class="btn-utility" title="Documentation Explorer">📄<span class="k-hint">5</span></a>
+          <button class="btn-utility" onclick="openCalendarFull()" title="Activity Activity (C)">📅<span
+              class="k-hint">C</span></button>
+        </div>
+
+        <div style="width:1px; height:24px; background:var(--border); margin:0 8px;"></div>
+
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
         <div class="status-pill">
           <div class="status-dot" id="status-dot"></div>
-          <span id="status-label">Connecting…</span>
+          <span id="status-label">Live</span>
         </div>
       </div>
     </div>
@@ -1115,13 +2348,22 @@
   <main>
     <!-- Date Hero -->
     <div class="date-hero">
-      <h1 id="day-name">—</h1>
-      <p id="full-date">—</p>
+      <div class="hero-main">
+        <h1 id="day-name">Good Evening</h1>
+        <p id="full-date">—</p>
+      </div>
+      <div class="hero-actions">
+        <button class="hero-btn-cal" onclick="openCalendarFromHero()" title="Open Calendar View">
+          <span>📅</span> Explore by Date
+        </button>
+      </div>
     </div>
 
     <!-- Compose -->
     <div class="compose-card" id="compose-card">
-      <div class="compose-label">✏️ New diary entry</div>
+      <div class="compose-label">
+        <span>✍️</span> Quick Log
+      </div>
       <textarea id="diary-input" placeholder="What's on your mind today?&#10;Write freely — this is your private vault."
         aria-label="Diary entry"></textarea>
       <div class="compose-footer">
@@ -1132,47 +2374,64 @@
       </div>
     </div>
 
-    <!-- Stats -->
-    <div class="stats-row" id="stats-row">
-      <div class="stat-card">
-        <div class="stat-num diary" id="stat-diary">—</div>
-        <div class="stat-label">Diary Entries</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num convo" id="stat-convo">—</div>
-        <div class="stat-label">Conversations</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-num work" id="stat-worklog">—</div>
-        <div class="stat-label">Worklogs</div>
-      </div>
-    </div>
-
-    <!-- Tabs -->
-    <div class="tabs" id="tabs">
-      <button class="tab active" onclick="switchTab('all', this)" id="tab-all">All</button>
-      <button class="tab" onclick="switchTab('diary', this)">📔 Diary</button>
-      <button class="tab" onclick="switchTab('conversation', this)">💬 Conversations</button>
-      <button class="tab" onclick="switchTab('worklog', this)">🛠️ Worklogs</button>
-      <button class="tab tab-secure" onclick="openSecureVault(this)">🔒 Secure Vault</button>
-      <button class="tab" onclick="openAccessMap(this)" style="margin-left:auto">📡 Access Map</button>
-    </div>
-
-    <!-- Search -->
+    <!-- Filter & Search Section -->
     <div class="search-row" id="search-row">
       <div class="search-wrap">
         <span class="search-icon">🔍</span>
-        <input id="search-input" type="text" placeholder="Search your vault… (press Enter)"
-          onkeydown="if(event.key==='Enter') doSearch()" aria-label="Search vault" />
+        <input id="search-input" type="text" placeholder="Explore your memories and docs..."
+          onkeydown="if(event.key==='Enter') doSearch()" aria-label="Search" />
       </div>
-      <button class="btn-action" onclick="doSearch()">Search</button>
-      <button class="btn-action" onclick="clearSearch()">✕ Clear</button>
+      <div class="filter-group">
+        <div class="project-filter-wrap">
+          <select id="project-filter" onchange="setProject(this.value)" title="Project">
+            <option value="">📁 All Projects</option>
+          </select>
+        </div>
+        <div class="project-filter-wrap">
+          <select id="source-filter" onchange="setSource(this.value)" title="Source">
+            <option value="">🧩 All Sources</option>
+          </select>
+        </div>
+        <button class="btn-action" onclick="clearSearch()" title="Reset Filters">✕</button>
+      </div>
     </div>
 
     <!-- Entries -->
     <div id="entries-wrapper">
       <div id="loading">Loading entries…</div>
-      <div class="entries-list" id="entries-list" style="display:none"></div>
+      <div class="entries-list" id="entries-list"></div>
+    </div>
+
+    <!-- ═══ CALENDAR PANEL ═══ -->
+    <div id="calendar-panel" class="vault-panel-hidden">
+      <div class="panel-header">
+        <h2 class="panel-title">📅 Life Chronicles</h2>
+        <p class="panel-subtitle">Your activity heatmap and daily logs</p>
+      </div>
+      <div class="calendar-grid-wrap">
+        <div class="calendar-header">
+          <button onclick="prevMonth()" class="btn-cal-nav">‹</button>
+          <h3 id="calendar-month-year">March 2026</h3>
+          <button onclick="nextMonth()" class="btn-cal-nav">›</button>
+        </div>
+        <div class="calendar-grid" id="calendar-days"></div>
+      </div>
+      <div class="day-details" id="day-details" style="display:none;">
+        <h4 id="selected-day-label">Logs for March 5th</h4>
+        <div id="day-entries-list" class="entries-list"></div>
+      </div>
+    </div>
+
+    <!-- ═══ PROJECTS PANEL ═══ -->
+    <div id="projects-panel" class="vault-panel-hidden">
+      <div class="panel-header-row">
+        <div>
+          <h2 class="panel-title">📁 Project Hub</h2>
+          <p class="panel-subtitle">Structure your work world</p>
+        </div>
+        <button class="btn-save" onclick="openProjectModal()">+ New Project</button>
+      </div>
+      <div class="projects-grid" id="projects-grid"></div>
     </div>
 
     <!-- ═══ SECURE VAULT PANEL ═══ -->
@@ -1190,7 +2449,7 @@
         <p class="pw-error" id="pw-error">Wrong password. Try again.</p>
         <p class="lock-hint">First use? Any password you enter becomes your master password permanently.</p>
       </div>
-      <div id="vault-unlocked" style="display:none">
+      <div id="vault-unlocked" class="vault-unlocked-hidden">
         <div class="secrets-header">
           <h3><span>🔐</span> Secure Vault</h3>
           <div class="secrets-actions">
@@ -1202,95 +2461,112 @@
       </div>
     </div>
 
-    <!-- ═══ ACCESS MAP PANEL ═══ -->
-    <div id="access-panel">
-      <div style="margin-bottom:16px">
-        <div style="font-size:18px;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px">📡 API Access Map</div>
-        <div style="font-size:13px;color:var(--text2)">All endpoints available in MemVault v2 • Server: <code
-            style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)">http://127.0.0.1:7799</code>
-        </div>
+    <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/add</span><span
+        class="ep-desc">Add diary/conversation/worklog</span></div>
+    <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/search?q=…</span><span
+        class="ep-desc">Full-text search</span></div>
+    <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/list</span><span
+        class="ep-desc">List all entries</span></div>
+    <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/clear</span><span
+        class="ep-desc">Delete all entries</span></div>
+    <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/upload</span><span
+        class="ep-desc">Upload file attachment</span></div>
+    </div>
+    <div class="access-card">
+      <h4>🔐 Encrypted Secrets</h4>
+      <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/verify</span><span
+          class="ep-desc">Check/set master password</span></div>
+      <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/add</span><span
+          class="ep-desc">Encrypt & store secret</span></div>
+      <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/get</span><span
+          class="ep-desc">Decrypt & return secret</span></div>
+      <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/secrets/list</span><span
+          class="ep-desc">List labels (no decrypt)</span></div>
+      <div class="endpoint-row"><span class="method del">DEL</span><span class="ep-path">/secrets/delete/:id</span><span
+          class="ep-desc">Remove a secret</span></div>
+    </div>
+    <div class="access-card">
+      <h4>🔒 Encryption Details</h4>
+      <div class="endpoint-row"><span class="ep-path">Algorithm</span><span class="ep-desc">AES-256-GCM</span></div>
+      <div class="endpoint-row"><span class="ep-path">Key derivation</span><span class="ep-desc">PBKDF2 SHA-256
+          (100k iters)</span></div>
+      <div class="endpoint-row"><span class="ep-path">IV</span><span class="ep-desc">12-byte random per
+          secret</span></div>
+      <div class="endpoint-row"><span class="ep-path">Stored</span><span class="ep-desc">{ iv, authTag, ciphertext
+          }</span></div>
+      <div class="endpoint-row"><span class="ep-path">Password</span><span class="ep-desc">Never stored
+          anywhere</span></div>
+    </div>
+    <div class="access-card">
+      <h4>🔄 Sync Scripts</h4>
+      <div class="endpoint-row"><span class="ep-path">sync-antigravity.mjs</span><span class="ep-desc">AI
+          conversations</span></div>
+      <div class="endpoint-row"><span class="ep-path">sync-browser.mjs</span><span class="ep-desc">Chrome/Edge
+          history + bookmarks</span></div>
+      <div class="endpoint-row"><span class="ep-path">--dry-run flag</span><span class="ep-desc">Preview without
+          posting</span></div>
+      <div class="endpoint-row"><span class="ep-path">--chrome / --edge</span><span class="ep-desc">Single browser
+          sync</span></div>
+    </div>
+    <div class="access-card">
+      <h4>🗄️ Secret Categories</h4>
+      <div class="endpoint-row"><span class="ep-path">🔑 apikey</span><span class="ep-desc">API Key +
+          environment</span></div>
+      <div class="endpoint-row"><span class="ep-path">🔐 password</span><span class="ep-desc">Username + password +
+          URL</span></div>
+      <div class="endpoint-row"><span class="ep-path">👤 userid</span><span class="ep-desc">User ID + service</span>
       </div>
-      <div class="access-grid">
-        <div class="access-card">
-          <h4>📋 Knowledge Entries</h4>
-          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/health</span><span
-              class="ep-desc">Server status</span></div>
-          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/add</span><span
-              class="ep-desc">Add diary/conversation/worklog</span></div>
-          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/search?q=…</span><span
-              class="ep-desc">Full-text search</span></div>
-          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/list</span><span
-              class="ep-desc">List all entries</span></div>
-          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/clear</span><span
-              class="ep-desc">Delete all entries</span></div>
-          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/upload</span><span
-              class="ep-desc">Upload file attachment</span></div>
-        </div>
-        <div class="access-card">
-          <h4>🔐 Encrypted Secrets</h4>
-          <div class="endpoint-row"><span class="method post">POST</span><span
-              class="ep-path">/secrets/verify</span><span class="ep-desc">Check/set master password</span></div>
-          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/add</span><span
-              class="ep-desc">Encrypt & store secret</span></div>
-          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/secrets/get</span><span
-              class="ep-desc">Decrypt & return secret</span></div>
-          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/secrets/list</span><span
-              class="ep-desc">List labels (no decrypt)</span></div>
-          <div class="endpoint-row"><span class="method del">DEL</span><span
-              class="ep-path">/secrets/delete/:id</span><span class="ep-desc">Remove a secret</span></div>
-        </div>
-        <div class="access-card">
-          <h4>🔒 Encryption Details</h4>
-          <div class="endpoint-row"><span class="ep-path">Algorithm</span><span class="ep-desc">AES-256-GCM</span></div>
-          <div class="endpoint-row"><span class="ep-path">Key derivation</span><span class="ep-desc">PBKDF2 SHA-256
-              (100k iters)</span></div>
-          <div class="endpoint-row"><span class="ep-path">IV</span><span class="ep-desc">12-byte random per
-              secret</span></div>
-          <div class="endpoint-row"><span class="ep-path">Stored</span><span class="ep-desc">{ iv, authTag, ciphertext
-              }</span></div>
-          <div class="endpoint-row"><span class="ep-path">Password</span><span class="ep-desc">Never stored
-              anywhere</span></div>
-        </div>
-        <div class="access-card">
-          <h4>🔄 Sync Scripts</h4>
-          <div class="endpoint-row"><span class="ep-path">sync-antigravity.mjs</span><span class="ep-desc">AI
-              conversations</span></div>
-          <div class="endpoint-row"><span class="ep-path">sync-browser.mjs</span><span class="ep-desc">Chrome/Edge
-              history + bookmarks</span></div>
-          <div class="endpoint-row"><span class="ep-path">--dry-run flag</span><span class="ep-desc">Preview without
-              posting</span></div>
-          <div class="endpoint-row"><span class="ep-path">--chrome / --edge</span><span class="ep-desc">Single browser
-              sync</span></div>
-        </div>
-        <div class="access-card">
-          <h4>🗄️ Secret Categories</h4>
-          <div class="endpoint-row"><span class="ep-path">🔑 apikey</span><span class="ep-desc">API Key +
-              environment</span></div>
-          <div class="endpoint-row"><span class="ep-path">🔐 password</span><span class="ep-desc">Username + password +
-              URL</span></div>
-          <div class="endpoint-row"><span class="ep-path">👤 userid</span><span class="ep-desc">User ID + service</span>
-          </div>
-          <div class="endpoint-row"><span class="ep-path">💳 payment</span><span class="ep-desc">Card label + last4 +
-              expiry</span></div>
-          <div class="endpoint-row"><span class="ep-path">📱 phone</span><span class="ep-desc">Name + number</span>
-          </div>
-          <div class="endpoint-row"><span class="ep-path">📝 custom</span><span class="ep-desc">Any label + value</span>
-          </div>
-        </div>
-        <div class="access-card">
-          <h4>📁 Storage Paths</h4>
-          <div class="endpoint-row"><span class="ep-path">Vault root</span><span class="ep-desc">/mnt/d/AG/Vault</span>
-          </div>
-          <div class="endpoint-row"><span class="ep-path">SQLite DB</span><span class="ep-desc">db/index.sqlite</span>
-          </div>
-          <div class="endpoint-row"><span class="ep-path">File uploads</span><span class="ep-desc">files/</span></div>
-          <div class="endpoint-row"><span class="ep-path">GitHub</span><span class="ep-desc">MrChartist/memvault</span>
-          </div>
-        </div>
+      <div class="endpoint-row"><span class="ep-path">💳 payment</span><span class="ep-desc">Card label + last4 +
+          expiry</span></div>
+      <div class="endpoint-row"><span class="ep-path">📱 phone</span><span class="ep-desc">Name + number</span>
       </div>
+      <div class="endpoint-row"><span class="ep-path">📝 custom</span><span class="ep-desc">Any label + value</span>
+      </div>
+    </div>
+    <div class="access-card">
+      <h4>📂 Projects Overview</h4>
+      <div id="project-stats-list" class="mt-8">
+        <div class="empty-project-msg">No projects tracked yet</div>
+      </div>
+    </div>
+    <div class="access-card">
+      <h4>📁 Storage Paths</h4>
+      <div class="endpoint-row"><span class="ep-path">Vault root</span><span class="ep-desc">/mnt/d/AG/Vault</span>
+      </div>
+      <div class="endpoint-row"><span class="ep-path">SQLite DB</span><span class="ep-desc">db/index.sqlite</span>
+      </div>
+      <div class="endpoint-row"><span class="ep-path">File uploads</span><span class="ep-desc">files/</span></div>
+      <div class="endpoint-row"><span class="ep-path">GitHub</span><span class="ep-desc">MrChartist/memvault</span>
+      </div>
+    </div>
+    </div>
     </div>
 
   </main>
+
+  <!-- Edit Entry Modal -->
+  <div class="modal-overlay" id="edit-entry-modal">
+    <div class="modal">
+      <div class="modal-title"><span class="title-icon">✏️</span> Edit Entry</div>
+      <input type="hidden" id="edit-entry-id" />
+      <div class="field-group">
+        <label for="edit-entry-title">Title</label>
+        <input id="edit-entry-title" class="field-input" type="text" />
+      </div>
+      <div class="field-group">
+        <label for="edit-entry-project">Project</label>
+        <select id="edit-entry-project" class="field-input" title="Select Project"></select>
+      </div>
+      <div class="field-group">
+        <label for="edit-entry-content">Content</label>
+        <textarea id="edit-entry-content" class="field-input" style="height:120px;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeEditModal()">Cancel</button>
+        <button class="btn-save" onclick="updateEntry()">Save Changes</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Add Secret Modal -->
   <div class="modal-overlay" id="add-modal">
@@ -1309,7 +2585,7 @@
         </select>
       </div>
       <div class="field-group">
-        <label>Label <span style="color:var(--text3);font-weight:400">(e.g. "OpenAI API Key")</span></label>
+        <label>Label <span class="label-hint">(e.g. "OpenAI API Key")</span></label>
         <input id="m-label" class="field-input" type="text" placeholder="Descriptive label" aria-label="Secret label" />
       </div>
       <div id="m-fields-container"></div>
@@ -1320,15 +2596,99 @@
     </div>
   </div>
 
-  <!-- Reveal Secret Modal -->
-  <div class="modal-overlay" id="reveal-modal">
-    <div class="modal">
-      <div class="modal-title" id="reveal-title">🔓 Secret</div>
-      <div id="reveal-fields"></div>
-      <p style="font-size:11px;color:var(--text3);margin-top:10px">💡 Click any value to copy to clipboard</p>
-      <div class="modal-footer">
-        <button class="btn-cancel" onclick="closeRevealModal()">Close</button>
+  <!-- Shortcuts Modal -->
+  <div class="modal-overlay" id="shortcuts-modal">
+    <div class="modal" style="max-width: 450px;">
+      <div class="modal-title"><span class="title-icon">⌨️</span> Keyboard Shortcuts</div>
+      <div class="kbd-list">
+        <div class="kbd-row"><span class="kbd-desc">Global Search</span>
+          <div class="kbd-keys"><span class="kbd">Ctrl</span><span class="kbd">/</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Quick Entry</span>
+          <div class="kbd-keys"><span class="kbd">Alt</span><span class="kbd">N</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Timeline View</span>
+          <div class="kbd-keys"><span class="kbd">1</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Diary View</span>
+          <div class="kbd-keys"><span class="kbd">2</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Brain View</span>
+          <div class="kbd-keys"><span class="kbd">3</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Work logs</span>
+          <div class="kbd-keys"><span class="kbd">4</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Secure Vault</span>
+          <div class="kbd-keys"><span class="kbd">V</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Activity Calendar</span>
+          <div class="kbd-keys"><span class="kbd">C</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Toggle Theme</span>
+          <div class="kbd-keys"><span class="kbd">T</span></div>
+        </div>
+        <div class="kbd-row"><span class="kbd-desc">Close Modal</span>
+          <div class="kbd-keys"><span class="kbd">Esc</span></div>
+        </div>
       </div>
+      <div class="modal-footer" style="margin-top:20px;">
+        <button class="btn-cancel"
+          onclick="document.getElementById('shortcuts-modal').classList.remove('open')">Dismiss</button>
+        <a href="/docs.html?file=shortcuts"
+          style="text-decoration:none; font-size:12px; color:var(--accent); font-weight:600;">View in Detail</a>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="project-modal">
+    <div class="modal">
+      <div class="modal-title"><span class="title-icon">📁</span> Create New Project</div>
+      <div class="field-group">
+        <label>Project Name</label>
+        <input id="p-name" class="field-input" type="text" placeholder="e.g. MemVault Chronicles" />
+      </div>
+      <div class="field-group">
+        <label>Theme Color</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;padding:8px 0;">
+          <button class="color-btn" title="Indigo" data-color="#6366f1"
+            onclick="selProjColor('#6366f1', this)"></button>
+          <button class="color-btn" title="Emerald" data-color="#10b981"
+            onclick="selProjColor('#10b981', this)"></button>
+          <button class="color-btn" title="Amber" data-color="#f59e0b" onclick="selProjColor('#f59e0b', this)"></button>
+          <button class="color-btn" title="Rose" data-color="#ef4444" onclick="selProjColor('#ef4444', this)"></button>
+          <button class="color-btn" title="Pink" data-color="#ec4899" onclick="selProjColor('#ec4899', this)"></button>
+          <button class="color-btn" title="Violet" data-color="#a78bfa"
+            onclick="selProjColor('#a78bfa', this)"></button>
+        </div>
+        <input id="p-color" type="hidden" value="#6366f1" />
+      </div>
+      <div class="field-group">
+        <label>Icon (Emoji)</label>
+        <input id="p-icon" class="field-input" type="text" placeholder="e.g. 🛠️" value="📁" />
+      </div>
+      <div class="field-group">
+        <label>Description</label>
+        <textarea id="p-desc" class="field-input" style="height:60px;resize:none;"
+          placeholder="What is this project about?"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="closeProjectModal()">Cancel</button>
+        <button class="btn-save" onclick="saveProjectMeta()">Create Project</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Viewer Modal -->
+  <div class="modal-overlay" id="viewer-modal">
+    <div class="modal" id="viewer-modal-box">
+      <div class="modal-title"
+        style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 0;">
+        <div id="viewer-title" style="display:flex; align-items:center; gap: 8px;"></div>
+        <button class="btn-icon" onclick="closeViewerModal()"
+          style="color: var(--text2); font-size: 20px; line-height: 1;">×</button>
+      </div>
+      <div id="viewer-badges" style="display:flex; gap: 8px; flex-wrap: wrap; padding: 16px 0 0 0;"></div>
+      <div id="viewer-content"></div>
     </div>
   </div>
 
@@ -1348,16 +2708,27 @@
     applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
     /* ═══ CONFIG ══════════════════════════════════════ */
-    const API = 'http://127.0.0.1:7799';
+    const API = 'http://127.0.0.1:7800';
     let currentFilter = 'all';
-    let activePanel = 'entries'; // 'entries' | 'secure' | 'access'
+    let currentProject = '';
+    let currentSource = '';
+    let activePanel = 'entries';
+    let calDate = new Date();
+    let activityData = {};
 
     /* ═══ DATE ═══════════════════════════════════════ */
-    const now = new Date();
-    document.getElementById('day-name').textContent =
-      ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
-    document.getElementById('full-date').textContent =
-      now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    function updateHero() {
+      const now = new Date();
+      const hrs = now.getHours();
+      let greeting = 'Good evening';
+      if (hrs < 12) greeting = 'Good morning';
+      else if (hrs < 17) greeting = 'Good afternoon';
+
+      document.getElementById('day-name').textContent = greeting;
+      document.getElementById('full-date').textContent =
+        now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+    updateHero();
 
     /* ═══ CHAR COUNTER + KEYBOARD SHORTCUT ══════════ */
     document.getElementById('diary-input').addEventListener('input', function () {
@@ -1392,6 +2763,7 @@
       }
     }
     checkStatus();
+    setInterval(checkStatus, 30000);
 
     /* ═══ SAVE DIARY ═════════════════════════════════ */
     async function saveDiary() {
@@ -1401,118 +2773,503 @@
       btn.disabled = true; btn.innerHTML = '⏳ Saving…';
       try {
         const ts = new Date();
-        const dateStr = ts.toISOString().slice(0, 10);
-        const timeStr = ts.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
         const res = await fetch(`${API}/add`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             type: 'diary', source: 'manual',
-            title: `Diary · ${dateStr} ${timeStr}`, content: text, tags: 'diary,manual'
+            project: currentProject || null,
+            title: `Log · ${ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            content: text,
+            tags: 'diary,manual'
           })
         });
-        if (!res.ok) throw new Error('Server error: ' + res.status);
+        if (!res.ok) throw new Error('Server error');
         document.getElementById('diary-input').value = '';
         document.getElementById('char-count').textContent = '0 / 5000';
         toast('✅ Saved to Vault!');
-        // switch to All tab and refresh
-        currentFilter = 'all';
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.getElementById('tab-all').classList.add('active');
-        showOnlyPanel('entries');
-        await loadEntries();
-      } catch (e) { toast('❌ Save failed — ' + e.message, 'error'); }
+        loadEntries();
+      } catch (e) { toast('❌ Save failed', 'error'); }
       btn.disabled = false; btn.innerHTML = '<span>💾</span> Save to Vault';
     }
 
     /* ═══ PANEL SWITCHING ════════════════════════════ */
-    function showOnlyPanel(panel) {
-      document.getElementById('entries-wrapper').style.display = panel === 'entries' ? '' : 'none';
-      document.getElementById('secure-panel').classList.toggle('visible', panel === 'secure');
-      document.getElementById('access-panel').classList.toggle('visible', panel === 'access');
+    function showOnlyPanel(panelId) {
+      const panels = ['entries-wrapper', 'calendar-panel', 'projects-panel', 'secure-panel', 'access-panel'];
+      panels.forEach(p => {
+        const el = document.getElementById(p);
+        if (el) el.classList.remove('visible-panel');
+      });
+
+      const target = document.getElementById(panelId);
+      if (target) target.classList.add('visible-panel');
+
       const composeCard = document.getElementById('compose-card');
       const statsRow = document.getElementById('stats-row');
       const searchRow = document.getElementById('search-row');
-      if (composeCard) composeCard.style.display = panel === 'entries' ? '' : 'none';
-      if (statsRow) statsRow.style.display = panel === 'entries' ? '' : 'none';
-      if (searchRow) searchRow.style.display = panel === 'entries' ? '' : 'none';
-      activePanel = panel;
+      const shouldShowMain = panelId === 'entries-wrapper';
+
+      if (composeCard) composeCard.style.display = shouldShowMain ? '' : 'none';
+      if (statsRow) statsRow.style.display = shouldShowMain ? '' : 'none';
+      if (searchRow) searchRow.style.display = shouldShowMain ? '' : 'none';
+
+      activePanel = panelId;
     }
 
     function switchTab(f, el) {
+      document.querySelectorAll('.tab-link').forEach(t => t.classList.remove('active'));
+      if (el) el.classList.add('active');
+      else {
+        // Find tab by id if el not provided
+        const target = document.getElementById(`tab-${f}`);
+        if (target) target.classList.add('active');
+      }
+      currentFilter = f;
+      showOnlyPanel('entries-wrapper');
+      loadEntries();
+    }
+
+    async function clearSearch() {
+      document.getElementById('search-input').value = '';
+      currentProject = '';
+      currentSource = '';
+      currentFilter = 'all';
+
+      const projSel = document.getElementById('project-filter');
+      if (projSel) projSel.value = '';
+
+      const srcSel = document.getElementById('source-filter');
+      if (srcSel) srcSel.value = '';
+
+      document.querySelectorAll('.tab-link').forEach(t => t.classList.remove('active'));
+      const allTab = document.getElementById('tab-all');
+      if (allTab) allTab.classList.add('active');
+
+      refreshList();
+    }
+
+    function openCalendar(el) {
+      if (el) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        el.classList.add('active');
+      }
+      showOnlyPanel('calendar-panel');
+      renderCalendar();
+    }
+
+    function openCalendarFromHero() {
+      // Find the calendar button if it exists in tabs, or just trigger it
+      showOnlyPanel('calendar-panel');
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      renderCalendar();
+    }
+
+    function openProjects(el) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
-      currentFilter = f;
-      document.getElementById('search-input').value = '';
-      showOnlyPanel('entries');
-      loadEntries();
+      showOnlyPanel('projects-panel');
+      loadProjects();
     }
 
     function openSecureVault(el) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
-      showOnlyPanel('secure');
+      showOnlyPanel('secure-panel');
       if (vaultSession) showUnlocked();
     }
 
     function openAccessMap(el) {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
-      showOnlyPanel('access');
+      showOnlyPanel('access-panel');
     }
 
-    /* ═══ SEARCH / LOAD ENTRIES ══════════════════════ */
-    async function doSearch() {
-      const q = document.getElementById('search-input').value.trim();
-      if (!q) return loadEntries();
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('entries-list').style.display = 'none';
+    /* ═══ CALENDAR LOGIC ══════════════════════════════ */
+    async function renderCalendar() {
+      const grid = document.getElementById('calendar-days');
+      const myLabel = document.getElementById('calendar-month-year');
+
+      myLabel.textContent = calDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+      // Load activity data first
       try {
-        const type = currentFilter === 'all' ? '' : `&type=${currentFilter}`;
-        const r = await fetch(`${API}/search?q=${encodeURIComponent(q)}${type}`);
+        const res = await fetch(`${API}/activity`);
+        const data = await res.json();
+        activityData = {};
+        data.results.forEach(r => { activityData[r.date] = r.count; });
+      } catch (e) { }
+
+      grid.innerHTML = '';
+
+      // Add day labels
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      days.forEach(d => {
+        const el = document.createElement('div');
+        el.className = 'cal-day-label';
+        el.textContent = d;
+        grid.appendChild(el);
+      });
+
+      const year = calDate.getFullYear();
+      const month = calDate.getMonth();
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      // Padding
+      for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('div');
+        empty.className = 'cal-day outside';
+        grid.appendChild(empty);
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dayEl = document.createElement('div');
+        dayEl.className = 'cal-day';
+        if (dateStr === todayStr) dayEl.classList.add('today');
+
+        const count = activityData[dateStr] || 0;
+        let activityHtml = '';
+        if (count > 0) {
+          const intensity = count > 5 ? 'high' : '';
+          activityHtml = `<div class="cal-activity has-work ${intensity}"></div>`;
+        }
+
+        dayEl.innerHTML = `
+          <div class="cal-date-num">${d}</div>
+          ${activityHtml}
+        `;
+
+        dayEl.onclick = () => selectDay(dateStr, dayEl);
+        grid.appendChild(dayEl);
+      }
+    }
+
+    function prevMonth() { calDate.setMonth(calDate.getMonth() - 1); renderCalendar(); }
+    function nextMonth() { calDate.setMonth(calDate.getMonth() + 1); renderCalendar(); }
+
+    async function selectDay(dateStr, el) {
+      document.querySelectorAll('.cal-day').forEach(d => d.classList.remove('active'));
+      el.classList.add('active');
+
+      const detailEl = document.getElementById('day-details');
+      const listEl = document.getElementById('day-entries-list');
+      const labelEl = document.getElementById('selected-day-label');
+
+      labelEl.textContent = `Logs for ${new Date(dateStr).toLocaleDateString('default', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+      detailEl.style.display = 'block';
+      listEl.innerHTML = 'Loading...';
+
+      try {
+        const r = await fetch(`${API}/list?date=${dateStr}`);
         const d = await r.json();
+        if (d.results.length === 0) {
+          listEl.innerHTML = '<div class="empty-project-msg">No activity recorded for this day.</div>';
+        } else {
+          listEl.innerHTML = d.results.map(e => {
+            const time = new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return `
+            <div class="entry-card">
+              <div class="entry-header">
+                <span class="type-badge type-${e.type}">${e.type}</span>
+                <span class="entry-time">${time}</span>
+              </div>
+              <div class="entry-title">${e.title || 'Untitled'}</div>
+              ${e.snippet ? `<div class="entry-content">${e.snippet}</div>` : ''}
+            </div>`;
+          }).join('');
+        }
+      } catch (e) { listEl.innerHTML = 'Error loading logs.'; }
+    }
+
+    /* ═══ PROJECTS LOGIC ══════════════════════════════ */
+    async function loadProjects() {
+      const grid = document.getElementById('projects-grid');
+      grid.innerHTML = 'Loading projects...';
+
+      try {
+        const r = await fetch(`${API}/projects`);
+        const d = await r.json();
+        if (!d.results.length) {
+          grid.innerHTML = '<div class="empty-state"><div class="icon">📁</div><p>No projects yet. Create one to stay organized!</p></div>';
+          return;
+        }
+
+        grid.innerHTML = d.results.map(p => {
+          const pColor = p.color || 'var(--accent)';
+          return `
+          <div class="project-card" onclick="setProject('${p.project}')">
+            <div class="p-card-header">
+              <div class="p-icon" style="background: ${pColor}1a; color: ${pColor}">${p.icon || '📁'}</div>
+              <div class="p-glow" style="background: ${pColor}"></div>
+              <div class="p-actions">
+                <button class="btn-icon" onclick="summarizeProject('${p.project}', event)" title="Auto-Summarize with AI">✨</button>
+                <button class="btn-icon del" onclick="deleteProject('${p.project}', event)" title="Delete Project">🗑</button>
+              </div>
+            </div>
+            <div class="p-title">${p.project}</div>
+            <div class="p-desc">${p.description || 'No description provided.'}</div>
+            <div class="p-stats">
+              <div class="p-stat">📊 ${p.count} entries</div>
+            </div>
+          </div>`;
+        }).join('');
+      } catch (e) { grid.innerHTML = 'Error loading projects.'; }
+    }
+
+    function openProjectModal() { document.getElementById('project-modal').classList.add('open'); }
+    function closeProjectModal() { document.getElementById('project-modal').classList.remove('open'); }
+
+    let selectedColor = '#6366f1';
+    function selProjColor(col, btn) {
+      selectedColor = col;
+      document.getElementById('p-color').value = col;
+      document.querySelectorAll('.color-btn').forEach(b => b.style.borderColor = 'transparent');
+      btn.style.borderColor = 'white';
+    }
+
+    async function saveProjectMeta() {
+      const name = document.getElementById('p-name').value.trim();
+      const icon = document.getElementById('p-icon').value.trim();
+      const description = document.getElementById('p-desc').value.trim();
+
+      if (!name) return toast('Project name is required', 'error');
+
+      try {
+        const r = await fetch(`${API}/projects/meta`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, color: selectedColor, icon, description })
+        });
+        if (r.ok) {
+          toast('✅ Project created!');
+          closeProjectModal();
+          loadProjects();
+          updateStats();
+        }
+      } catch (e) { toast('Error saving project', 'error'); }
+    }
+
+    async function deleteProject(name, e) {
+      if (e) e.stopPropagation();
+      if (!confirm(`Delete project "${name}"? Entries will not be deleted but will lose their project tag.`)) return;
+      try {
+        const r = await fetch(`${API}/projects/meta/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        if (r.ok) {
+          toast('🗑️ Project deleted');
+          if (currentProject === name) currentProject = '';
+          loadProjects();
+          updateStats();
+        }
+      } catch (e) { toast('Delete failed', 'error'); }
+    }
+
+    async function summarizeProject(name, e) {
+      if (e) e.stopPropagation();
+      const btn = e.currentTarget;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳';
+      btn.disabled = true;
+      try {
+        const r = await fetch(`${API}/projects/${encodeURIComponent(name)}/summarize`, { method: 'POST' });
+        const d = await r.json();
+        if (r.ok) {
+          toast('✨ Summary generated!');
+          loadProjects();
+        } else {
+          toast(d.error || 'Failed to summarize', 'error');
+        }
+      } catch (err) {
+        toast('Error connecting to Server/AI', 'error');
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    /* ═══ ENTRIES CRUD ════════════════════════════════ */
+    async function deleteEntry(id) {
+      if (!confirm('Delete this entry forever?')) return;
+      try {
+        const r = await fetch(`${API}/entries/${id}`, { method: 'DELETE' });
+        if (r.ok) {
+          toast('🗑️ Entry deleted');
+          loadEntries();
+          if (activePanel === 'calendar-panel') renderCalendar(); // Refresh heatmap
+        }
+      } catch (e) { toast('Delete failed', 'error'); }
+    }
+
+    let editingEntry = null;
+    async function openEditModal(e) {
+      editingEntry = e;
+      document.getElementById('edit-entry-id').value = e.id;
+      document.getElementById('edit-entry-title').value = e.title || '';
+      document.getElementById('edit-entry-content').value = ''; // We need to fetch full content
+
+      // Fetch full entry for content
+      try {
+        const r = await fetch(`${API}/list?limit=1`); // Simple list doesn't have full content necessarily
+        // We'll use a hack to get the full content from a search for now, or just trust the snippet if it's small.
+        // Better: let's assume snippet is truncated and we just edit title/project for now unless we add GET /entries/:id
+        // For now, I'll just use the snippet or title
+        document.getElementById('edit-entry-content').value = e.snippet || '';
+      } catch (err) { }
+
+      // Populate project list
+      const projects = await fetch(`${API}/projects`).then(r => r.json());
+      const pSel = document.getElementById('edit-entry-project');
+      pSel.innerHTML = '<option value="">(No Project)</option>' +
+        projects.results.map(p => `<option value="${p.project}" ${p.project === e.project ? 'selected' : ''}>${p.project}</option>`).join('');
+
+      document.getElementById('edit-entry-modal').classList.add('open');
+    }
+
+    function setSource(s) {
+      currentSource = s;
+      const sel = document.getElementById('source-filter');
+      if (sel) sel.value = s;
+      refreshList();
+    }
+
+    async function updateEntry() {
+      const id = document.getElementById('edit-entry-id').value;
+      const title = document.getElementById('edit-entry-title').value;
+      const project = document.getElementById('edit-entry-project').value;
+      const content = document.getElementById('edit-entry-content').value;
+
+      try {
+        const r = await fetch(`${API}/entries/${id}`, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, project, content })
+        });
+        if (r.ok) {
+          toast('✅ Entry updated');
+          closeEditModal();
+          loadEntries();
+        }
+      } catch (e) { toast('Update failed', 'error'); }
+    }
+
+    /* ═══ REFRESH LIST (Uified Search & Load) ════════ */
+    async function refreshList() {
+      const q = document.getElementById('search-input').value.trim();
+      const loading = document.getElementById('loading');
+      const list = document.getElementById('entries-list');
+
+      if (loading) loading.style.display = 'block';
+      if (list) list.style.display = 'none';
+
+      try {
+        const type = (currentFilter === 'all' || !currentFilter) ? '' : `&type=${currentFilter}`;
+        const proj = currentProject ? `&project=${encodeURIComponent(currentProject)}` : '';
+        const src = currentSource ? `&source=${encodeURIComponent(currentSource)}` : '';
+
+        // If 'doc' tab selected, we use source='doc' filter
+        let filterParams = `${type}${proj}${src}`;
+        if (currentFilter === 'doc') {
+          filterParams = `&type=file&source=doc${proj}`;
+        }
+
+        let url = `${API}/list?limit=100${filterParams}`;
+        if (q) {
+          url = `${API}/search?q=${encodeURIComponent(q)}${filterParams}`;
+        }
+
+        const r = await fetch(url);
+        const d = await r.json();
+
+        if (loading) loading.style.display = 'none';
+        if (list) list.style.display = 'flex';
+
         if (d.results?.length === 0) {
-          renderEntries([]);
-          // show "no results" with clear option
-          document.getElementById('entries-list').innerHTML =
-            `<div class="empty-state"><div class="icon">🔍</div><p>No results for "${q.replace(/</g, '&lt;')}" — <a href="#" onclick="clearSearch()" style="color:var(--accent)">clear search</a></p></div>`;
+          list.innerHTML = q
+            ? `<div class="empty-state"><div class="icon">🔍</div><p>No results for "${q}" with current filters — <a href="#" onclick="clearSearch()" class="txt-accent">clear all</a></p></div>`
+            : `<div class="empty-state"><div class="icon">🌌</div><p>No entries found matching filters.</p></div>`;
         } else {
           renderEntries(d.results);
         }
-      } catch { toast('Search failed', 'error'); }
+        updateStats();
+      } catch (err) {
+        if (loading) loading.innerHTML = '❌ Cannot connect to vault server';
+      }
+    }
+
+    async function doSearch() {
+      refreshList();
+    }
+
+    async function loadEntries() {
+      refreshList();
     }
 
     async function clearSearch() {
       document.getElementById('search-input').value = '';
-      loadEntries();
-    }
+      currentProject = '';
+      currentSource = '';
+      currentFilter = 'all';
 
-    async function loadEntries() {
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('entries-list').style.display = 'none';
-      try {
-        const type = currentFilter === 'all' ? '' : `&type=${currentFilter}`;
-        const r = await fetch(`${API}/list?limit=200${type}`);
-        const d = await r.json();
-        if (!d.ok) throw new Error('API error');
-        await updateStats();
-        renderEntries(d.results);
-      } catch (err) {
-        document.getElementById('loading').innerHTML = '❌ Cannot connect to vault server — <a href="#" onclick="loadEntries()" style="color:var(--accent)">retry</a>';
-        document.getElementById('loading').style.display = 'block';
-        document.getElementById('entries-list').style.display = 'none';
-      }
+      const projSel = document.getElementById('project-filter');
+      if (projSel) projSel.value = '';
+
+      const srcSel = document.getElementById('source-filter');
+      if (srcSel) srcSel.value = '';
+
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      const allTab = document.getElementById('tab-all');
+      if (allTab) allTab.classList.add('active');
+
+      refreshList();
     }
 
     async function updateStats() {
-      for (const type of ['diary', 'conversation', 'worklog']) {
+      // Basic counts
+      ['diary', 'conversation', 'worklog'].forEach(async t => {
         try {
-          const r = await fetch(`${API}/list?limit=500&type=${type}`);
-          const d = await r.json();
-          const id = type === 'conversation' ? 'stat-convo' : `stat-${type}`;
-          const el = document.getElementById(id);
-          if (el) el.textContent = d.results?.length ?? '—';
-        } catch { }
-      }
+          const r = await fetch(`${API}/list?limit=1&type=${t}`);
+          // Note: we need a count endpoint for accuracy, but this works for now
+        } catch (e) { }
+      });
+
+      // Project filter sync
+      try {
+        const r = await fetch(`${API}/projects`);
+        const d = await r.json();
+        if (d.ok) {
+          const sel = document.getElementById('project-filter');
+          sel.innerHTML = '<option value="">📁 All Projects</option>' +
+            d.results.map(p => `<option value="${p.project}" ${p.project === currentProject ? 'selected' : ''}>${p.project}</option>`).join('');
+
+          // Legacy access map stats
+          const container = document.getElementById('project-stats-list');
+          if (container) {
+            container.innerHTML = d.results.map(p => `
+              <div class="endpoint-row clickable-row" onclick="setProject('${p.project}')">
+                <span class="ep-path" style="color:${p.color || 'var(--accent)'}">📁 ${p.project}</span>
+                <span class="ep-desc">${p.count} entries</span>
+              </div>
+            `).join('');
+          }
+        }
+      } catch (e) { }
+    }
+
+    function setProject(p) {
+      currentProject = p;
+      const sel = document.getElementById('project-filter');
+      if (sel) sel.value = p;
+      showOnlyPanel('entries-wrapper');
+      refreshList();
+    }
+
+    function setSource(s) {
+      currentSource = s;
+      const sel = document.getElementById('source-filter');
+      if (sel) sel.value = s;
+      showOnlyPanel('entries-wrapper');
+      refreshList();
     }
 
     function renderEntries(entries) {
@@ -1520,24 +3277,123 @@
       const list = document.getElementById('entries-list');
       list.style.display = 'flex';
       if (!entries?.length) {
-        list.innerHTML = `<div class="empty-state"><div class="icon">🌌</div><p>No entries found. Start writing!</p></div>`;
+        list.innerHTML = `<div class="empty-state"><div class="icon">🌌</div><p>No entries found.</p></div>`;
         return;
       }
       list.innerHTML = entries.map(e => {
-        const source = e.source ? `· ${e.source}` : '';
         const time = new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const snippet = e.snippet ? e.snippet.replace(/</g, '&lt;') : '';
-        return `<div class="entry-card">
-        <div class="entry-header">
-          <span class="type-badge type-${e.type}">${e.type}</span>
-          <span class="entry-source">${source}</span>
-          <span class="entry-time">${time}</span>
-        </div>
-        <div class="entry-title">${(e.title || 'Untitled').replace(/</g, '&lt;')}</div>
-        ${snippet ? `<div class="entry-content">${snippet}</div>` : ''}
-      </div>`;
+        const pColor = e.project_color || 'var(--accent-soft)';
+        const pIcon = e.project_icon ? `<span class="badge-icon">${e.project_icon}</span>` : '';
+        const project = e.project ? `<span class="project-badge" style="background:${pColor}22; color:${pColor}; border-color:${pColor}44">${pIcon}${e.project}</span>` : '';
+
+        const entryData = JSON.stringify(e).replace(/'/g, "\\'");
+
+        const sourceIcons = {
+          manual: '✍️',
+          antigravity: '🚀',
+          browser: '🌐',
+          chrome: '🌐',
+          edge: '🌐',
+          github: '🐙',
+          telegram: '📡',
+          doc: '📄'
+        };
+        const sourceLabel = e.source || 'manual';
+        const sourceHtml = `<span class="source-badge source-${sourceLabel}">${sourceIcons[sourceLabel] || '🧩'} ${sourceLabel}</span>`;
+
+        const isDoc = e.source === 'doc' || e.type === 'doc';
+        const docName = e.title ? e.title.replace(/\.md$/, '') : '';
+        const clickAttr = isDoc ? `onclick="openViewerModal(${entryData})"` : '';
+        const cardClass = isDoc ? 'entry-card doc-entry' : 'entry-card';
+
+        // Render full markdown for normal entries. If it's a doc, just show snippet and say click to read.
+        let displayContent = '';
+        if (isDoc) {
+          displayContent = e.snippet ? `<div class="entry-content">${e.snippet}</div>` : '';
+          displayContent += `<div class="doc-hint">📄 Click to read full documentation</div>`;
+        } else {
+          // Normal entry: Parse full content
+          displayContent = e.content ? `<div class="entry-content markdown-body" style="max-height: 500px; overflow-y: auto; padding-right:8px;">${marked.parse(e.content)}</div>` : (e.snippet ? `<div class="entry-content">${e.snippet}</div>` : '');
+        }
+
+        return `<div class="${cardClass}" ${clickAttr} style="${isDoc ? 'cursor:pointer' : ''}">
+          <div class="entry-header">
+            <span class="type-badge type-${e.type}" onclick="event.stopPropagation();switchTab('${e.type}', document.getElementById('tab-${e.type}'))">${e.type}</span>
+            ${sourceHtml}
+            ${project}
+            <span class="entry-time">${time}</span>
+            <div class="entry-actions">
+              <button class="btn-icon" onclick='event.stopPropagation();openEditModal(${entryData})' title="Edit">✏️</button>
+              <button class="btn-icon del" onclick='event.stopPropagation();deleteEntry("${e.id}")' title="Delete">🗑</button>
+            </div>
+          </div>
+          <div class="entry-title">${e.title || 'Untitled'}</div>
+          ${displayContent}
+        </div>`;
       }).join('');
     }
+
+    /* ═══ VIEWER MODAL ════════════════════════════════ */
+    const renderer = new marked.Renderer();
+    renderer.code = function (codeObj) {
+      if (typeof codeObj === 'object' && codeObj !== null) {
+        const text = codeObj.text || '';
+        const lang = codeObj.lang || '';
+        if (lang && Prism.languages[lang]) {
+          try {
+            return `<pre><code class="language-${lang}">${Prism.highlight(text, Prism.languages[lang], lang)}</code></pre>`;
+          } catch (e) { }
+        }
+        return `<pre><code>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+      }
+      return `<pre><code>${String(codeObj)}</code></pre>`;
+    };
+    marked.setOptions({ renderer: renderer });
+
+    async function openViewerModal(entry) {
+      const modal = document.getElementById('viewer-modal');
+      const titleEl = document.getElementById('viewer-title');
+      const contentEl = document.getElementById('viewer-content');
+      const badgesEl = document.getElementById('viewer-badges');
+
+      titleEl.innerHTML = `<h3>${entry.title || 'Untitled'}</h3>`;
+      contentEl.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text2);">Loading...</div>';
+
+      const sourceIcons = { manual: '✍️', antigravity: '🚀', browser: '🌐', chrome: '🌐', edge: '🌐', github: '🐙', telegram: '📡', doc: '📄' };
+      const sourceLabel = entry.source || 'manual';
+      const time = new Date(entry.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      badgesEl.innerHTML = `
+        <span class="type-badge type-${entry.type}">${entry.type}</span>
+        <span class="source-badge source-${sourceLabel}">${sourceIcons[sourceLabel] || '🧩'} ${sourceLabel}</span>
+        ${entry.project ? `<span class="project-badge" style="background:var(--accent-soft); color:var(--accent);">${entry.project}</span>` : ''}
+        <span class="entry-time" style="font-size:11px; color:var(--text3); margin-left: auto;">${time}</span>
+      `;
+
+      modal.classList.add('open');
+
+      if (entry.type === 'doc' || entry.source === 'doc') {
+        try {
+          const docName = entry.title.replace(/\.md$/, '');
+          const r = await fetch(`${API}/api/docs/${encodeURIComponent(docName + '.md')}`);
+          const d = await r.json();
+          if (r.ok) {
+            contentEl.innerHTML = marked.parse(d.content);
+          } else {
+            contentEl.innerHTML = marked.parse(entry.content || 'Failed to load document content.');
+          }
+        } catch (e) {
+          contentEl.innerHTML = marked.parse(entry.content || 'Error connecting to server.');
+        }
+      } else {
+        contentEl.innerHTML = marked.parse(entry.content || 'No content available.');
+      }
+    }
+
+    function closeViewerModal() {
+      document.getElementById('viewer-modal').classList.remove('open');
+    }
+
     loadEntries();
 
     /* ═══ SECURE VAULT ════════════════════════════════ */
@@ -1570,139 +3426,152 @@
         } else {
           document.getElementById('pw-error').style.display = 'block';
         }
-      } catch { toast('Cannot reach vault server', 'error'); }
+      } catch { toast('Connection failed', 'error'); }
     }
 
-    function lockVault() {
-      vaultSession = null;
-      document.getElementById('vault-unlocked').style.display = 'none';
-      document.getElementById('lock-screen').style.display = 'block';
-    }
-
-    async function showUnlocked() {
-      document.getElementById('lock-screen').style.display = 'none';
-      document.getElementById('vault-unlocked').style.display = 'block';
-      await loadSecrets();
-    }
+    function lockVault() { vaultSession = null; document.getElementById('vault-unlocked').style.display = 'none'; document.getElementById('lock-screen').style.display = 'block'; }
+    function showUnlocked() { document.getElementById('lock-screen').style.display = 'none'; document.getElementById('vault-unlocked').style.display = 'block'; loadSecrets(); }
 
     async function loadSecrets() {
-      try {
-        const r = await fetch(`${API}/secrets/list`);
-        const d = await r.json();
-        renderSecrets(d.secrets || []);
-      } catch { document.getElementById('secrets-list').textContent = 'Failed to load.'; }
-    }
-
-    function renderSecrets(secrets) {
+      const r = await fetch(`${API}/secrets/list`);
+      const d = await r.json();
       const el = document.getElementById('secrets-list');
-      if (!secrets.length) {
-        el.innerHTML = '<div class="empty-state"><div class="icon">🔒</div><p>No secrets yet. Click "+ Add Secret" to get started.</p></div>';
+      if (!d.secrets.length) {
+        el.innerHTML = '<div class="empty-state"><p>No secrets.</p></div>';
         return;
       }
       const groups = {};
-      for (const s of secrets) { if (!groups[s.category]) groups[s.category] = []; groups[s.category].push(s); }
+      d.secrets.forEach(s => { if (!groups[s.category]) groups[s.category] = []; groups[s.category].push(s); });
       el.innerHTML = Object.entries(groups).map(([cat, items]) => `
-      <div class="category-group">
-        <div class="cat-label">${CAT_ICONS[cat] || '📝'} ${CAT_LABELS[cat] || cat}</div>
-        ${items.map(s => `
-          <div class="secret-card" onclick="revealSecret('${s.id}')">
-            <div class="secret-icon">${CAT_ICONS[s.category] || '📝'}</div>
-            <div class="secret-info">
-              <div class="secret-label">${s.label.replace(/</g, '&lt;')}</div>
-              <div class="secret-meta">${new Date(s.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-            </div>
-            <button class="secret-del" onclick="event.stopPropagation();deleteSecret('${s.id}')" title="Delete">🗑</button>
-          </div>`).join('')}
-      </div>`).join('');
+        <div class="category-group">
+          <div class="cat-label">${CAT_ICONS[cat]} ${CAT_LABELS[cat]}</div>
+          ${items.map(s => `
+            <div class="secret-card" onclick="revealSecret('${s.id}')">
+              <div class="secret-icon">${CAT_ICONS[s.category]}</div>
+              <div class="secret-info">
+                <div class="secret-label">${s.label}</div>
+              </div>
+              <button class="secret-del" onclick="event.stopPropagation();deleteSecret('${s.id}')">🗑</button>
+            </div>`).join('')}
+        </div>`).join('');
     }
 
     async function revealSecret(id) {
       if (!vaultSession) return;
-      try {
-        const r = await fetch(`${API}/secrets/get`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ id, password: vaultSession }),
-        });
-        const d = await r.json();
-        if (!d.ok) return toast('Decryption failed', 'error');
-        document.getElementById('reveal-title').textContent = `${CAT_ICONS[d.category] || '🔓'} ${d.label}`;
-        document.getElementById('reveal-fields').innerHTML = Object.entries(d.fields).map(([k, v]) => `
+      const r = await fetch(`${API}/secrets/get`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, password: vaultSession }),
+      });
+      const d = await r.json();
+      document.getElementById('reveal-title').textContent = `${CAT_ICONS[d.category]} ${d.label}`;
+      document.getElementById('reveal-fields').innerHTML = Object.entries(d.fields).map(([k, v]) => `
         <div class="reveal-field">
           <div class="reveal-lbl">${k}</div>
-          <div class="reveal-val" onclick="copyVal(this,'${encodeURIComponent(v)}')">${v.replace(/</g, '&lt;')}</div>
+          <div class="reveal-val" onclick="copyVal(this,'${v}')">${v}</div>
         </div>`).join('');
-        document.getElementById('reveal-modal').classList.add('open');
-      } catch { toast('Error revealing secret', 'error'); }
+      document.getElementById('reveal-modal').classList.add('open');
     }
 
-    function copyVal(el, encoded) {
-      navigator.clipboard.writeText(decodeURIComponent(encoded)).then(() => {
-        const orig = el.style.borderColor;
-        el.style.borderColor = 'var(--success)';
-        setTimeout(() => el.style.borderColor = orig, 1000);
-        toast('✅ Copied!');
-      });
-    }
+    function copyVal(el, v) { navigator.clipboard.writeText(v); toast('✅ Copied!'); }
+    function closeRevealModal() { document.getElementById('reveal-modal').classList.remove('open'); }
+    async function deleteSecret(id) { if (!confirm('Delete?')) return; await fetch(`${API}/secrets/delete/${id}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: vaultSession }) }); loadSecrets(); }
 
-    function closeRevealModal() {
-      document.getElementById('reveal-modal').classList.remove('open');
-      document.getElementById('reveal-fields').innerHTML = '';
-    }
-
-    async function deleteSecret(id) {
-      if (!vaultSession || !confirm('Delete this secret? This cannot be undone.')) return;
-      await fetch(`${API}/secrets/delete/${id}`, {
-        method: 'DELETE', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ password: vaultSession }),
-      });
-      await loadSecrets();
-    }
-
-    // Add Modal
-    function openAddModal() {
-      document.getElementById('add-modal').classList.add('open');
-      renderCategoryFields();
-    }
-    function closeAddModal() {
-      document.getElementById('add-modal').classList.remove('open');
-      document.getElementById('m-label').value = '';
-    }
+    function openAddModal() { document.getElementById('add-modal').classList.add('open'); renderCategoryFields(); }
+    function closeAddModal() { document.getElementById('add-modal').classList.remove('open'); }
     function renderCategoryFields() {
       const cat = document.getElementById('m-category').value;
-      const fields = CAT_FIELDS[cat] || [['value', 'Value'], ['notes', 'Notes']];
+      const fields = CAT_FIELDS[cat] || [['value', 'Value']];
       document.getElementById('m-fields-container').innerHTML = fields.map(([k, lbl]) => `
-      <div class="field-group">
-        <label>${lbl}</label>
-        <input id="mf-${k}" class="field-input" type="${k === 'password' ? 'password' : 'text'}" placeholder="${lbl}" aria-label="${lbl}" />
-      </div>`).join('');
+        <div class="field-group"><label>${lbl}</label><input id="mf-${k}" class="field-input" type="${k === 'password' ? 'password' : 'text'}" /></div>`).join('');
     }
     async function saveSecret() {
-      if (!vaultSession) return;
       const category = document.getElementById('m-category').value;
       const label = document.getElementById('m-label').value.trim();
-      if (!label) return toast('Label is required', 'error');
       const fields = {};
-      for (const [k] of CAT_FIELDS[category] || [['value', 'Value']]) {
-        const el = document.getElementById(`mf-${k}`);
-        if (el?.value.trim()) fields[k] = el.value.trim();
-      }
-      if (!Object.keys(fields).length) return toast('Fill at least one field', 'error');
-      try {
-        const r = await fetch(`${API}/secrets/add`, {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ password: vaultSession, category, label, fields }),
-        });
-        const d = await r.json();
-        if (d.ok) { toast('🔐 Secret encrypted & saved!'); closeAddModal(); await loadSecrets(); }
-        else toast('Failed: ' + (d.error || 'unknown'), 'error');
-      } catch { toast('Server error', 'error'); }
+      CAT_FIELDS[category].forEach(([k]) => { const v = document.getElementById(`mf-${k}`).value; if (v) fields[k] = v; });
+      await fetch(`${API}/secrets/add`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: vaultSession, category, label, fields }) });
+      toast('🔐 Saved!'); closeAddModal(); loadSecrets();
     }
 
-    // Close modals on overlay click
-    ['add-modal', 'reveal-modal'].forEach(id => {
-      document.getElementById(id).addEventListener('click', e => {
-        if (e.target.id === id) { id === 'add-modal' ? closeAddModal() : closeRevealModal(); }
-      });
+    // Modal close clicks
+    ['project-modal', 'add-modal', 'reveal-modal', 'shortcuts-modal'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', e => { if (e.target.id === id) el.classList.remove('open'); });
+    });
+
+    function openShortcutsModal() { document.getElementById('shortcuts-modal').classList.add('open'); }
+
+    // KEYBOARD SHORTCUTS ENGINE
+    document.addEventListener('keydown', e => {
+      // Don't trigger if user is typing in an input/textarea unless it's the Escape key
+      const activeEl = document.activeElement;
+      const isInput = activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable;
+
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+        return;
+      }
+
+      if (isInput) return;
+
+      // Global Shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      if (e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        const diaryInput = document.getElementById('diary-input');
+        if (diaryInput) {
+          diaryInput.focus();
+          diaryInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case '1': switchTab('all', document.getElementById('tab-all')); break;
+        case '2': switchTab('diary', document.getElementById('tab-diary')); break;
+        case '3': switchTab('conversation', document.getElementById('tab-conversation')); break;
+        case '4': switchTab('worklog', document.getElementById('tab-worklog')); break;
+        case '5':
+          const docTab = document.getElementById('tab-doc');
+          if (docTab) switchTab('doc', docTab);
+          else window.location.href = '/docs.html';
+          break;
+        case '6':
+          const projTab = document.getElementById('tab-projects');
+          if (projTab) {
+            document.querySelectorAll('.tab-link').forEach(t => t.classList.remove('active'));
+            projTab.classList.add('active');
+          }
+          showOnlyPanel('projects-panel');
+          break;
+        case 'v':
+          const vaultTab = document.getElementById('tab-vault');
+          if (vaultTab) {
+            document.querySelectorAll('.tab-link').forEach(t => t.classList.remove('active'));
+            vaultTab.classList.add('active');
+          }
+          showOnlyPanel('secure-panel');
+          break;
+        case 'c':
+          const calTab = document.getElementById('tab-calendar');
+          if (calTab) openCalendar(calTab);
+          else {
+            showOnlyPanel('calendar-panel');
+            renderCalendar();
+          }
+          break;
+        case 't': toggleTheme(); break;
+        case '?': openShortcutsModal(); break;
+      }
     });
   </script>
 </body>

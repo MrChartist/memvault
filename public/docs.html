@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MemVault Documentation Explorer</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <!-- Prism for code highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <!-- Marked -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        :root {
+            --accent: #8b5cf6;
+            --secondary: #06b6d4;
+            --gold: #f59e0b;
+            --bg: #05070a;
+            --sidebar-bg: #0a0c12;
+            --surface: rgba(17, 19, 26, 0.85);
+            --border: rgba(255, 255, 255, 0.08);
+            --text: #f8fafc;
+            --text2: #94a3b8;
+            --text3: #475569;
+            --sidebar-width: 280px;
+            --nav-height: 70px;
+            --font-main: 'Inter', system-ui, sans-serif;
+            --shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            z-index: 20;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 18px;
+            letter-spacing: -0.02em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .version-tag {
+            background: #1e293b;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--text2);
+            font-weight: 600;
+        }
+
+        .nav-group {
+            margin-top: 24px;
+        }
+
+        .nav-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text3);
+            font-weight: 700;
+            padding: 0 24px;
+            margin-bottom: 12px;
+        }
+
+        .nav-item {
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--text2);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s;
+            cursor: pointer;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text);
+        }
+
+        .nav-item.active {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--accent);
+            border-left-color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Content Area */
+        .page-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .top-nav {
+            height: var(--nav-height);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 40px;
+            background: rgba(5, 7, 10, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .search-box {
+            background: #0f1117;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 16px;
+            color: var(--text2);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 300px;
+        }
+
+        .back-btn {
+            background: var(--accent);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 600;
+            transition: opacity 0.2s;
+        }
+
+        .back-btn:hover {
+            opacity: 0.9;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 60px 40px;
+            display: flex;
+            justify-content: center;
+            background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.05), transparent);
+        }
+
+        .content-inner {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        /* Category Breadcrumb */
+        .category-breadcrumb {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 8px;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .btn-copy {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text2);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-copy:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+
+        /* Markdown Rendering */
+        #doc-content h1 {
+            font-size: 42px;
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 32px;
+            line-height: 1.1;
+            color: var(--text);
+        }
+
+        #doc-content h2 {
+            font-size: 26px;
+            font-weight: 700;
+            margin-top: 48px;
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+            color: var(--text);
+        }
+
+        #doc-content p {
+            margin-bottom: 24px;
+            font-size: 16px;
+            line-height: 1.7;
+            color: var(--text2);
+        }
+
+        #doc-content pre {
+            background: #0f1117;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin: 32px 0;
+            overflow-x: auto;
+            position: relative;
+            box-shadow: var(--shadow);
+        }
+
+        #doc-content code {
+            font-family: 'DM Mono', monospace;
+            font-size: 0.9em;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--gold);
+        }
+
+        #doc-content pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+
+        #doc-content blockquote {
+            border-left: 4px solid var(--accent);
+            padding: 16px 24px;
+            margin: 32px 0;
+            background: rgba(139, 92, 246, 0.05);
+            border-radius: 0 12px 12px 0;
+            color: var(--text2);
+            font-style: italic;
+        }
+
+        #doc-content ul,
+        #doc-content ol {
+            margin-bottom: 24px;
+            padding-left: 24px;
+            color: var(--text2);
+        }
+
+        #doc-content li {
+            margin-bottom: 12px;
+        }
+
+        .code-copy {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text2);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            opacity: 0;
+        }
+
+        pre:hover .code-copy {
+            opacity: 1;
+        }
+
+        .code-copy:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <span class="logo-mark">📄</span>
+                <span class="logo-text">MemVault Docs</span>
+            </div>
+            <div class="version-tag">v2.1</div>
+        </div>
+
+        <div id="sidebar-nav">
+            <!-- Populated via JS -->
+        </div>
+
+        <div class="sidebar-footer" style="padding: 24px; border-top: 1px solid var(--border); margin-top: auto;">
+            <div
+                style="font-size: 11px; color: var(--text3); font-weight: 700; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.05em;">
+                Keyboard Help</div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text2);">
+                    <span>Search</span> <span
+                        style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-family: monospace;">/</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text2);">
+                    <span>Go Back</span> <span
+                        style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-family: monospace;">Esc</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-wrapper">
+        <div class="top-nav">
+            <div class="search-box">
+                <span>🔍</span> Search documentation...
+            </div>
+            <div class="nav-links">
+                <a href="/" class="back-btn">← Back to Dashboard</a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="content-inner" id="doc-content">
+                <div style="text-align: center; margin-top: 100px; color: var(--text2);">
+                    <div style="font-size: 40px; margin-bottom: 20px;">🔭</div>
+                    Select a document from the sidebar to view detailed guides and references.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        marked.setOptions({
+            gfm: true,
+            breaks: true,
+            highlight: function (code, lang) {
+                if (Prism.languages[lang]) {
+                    return Prism.highlight(code, Prism.languages[lang], lang);
+                } else {
+                    return Prism.highlight(code, Prism.languages.bash, 'bash');
+                }
+            }
+        });
+
+        const renderer = new marked.Renderer();
+        renderer.code = function ({ text, lang }) {
+            return `
+            <pre><code class="language-${lang || 'bash'}">${text}</code><button class="code-copy" onclick="copyToClipboard(this)">📋 Copy</button></pre>
+            `;
+        };
+        marked.use({ renderer });
+
+        let currentDocs = [];
+
+        async function loadNav() {
+            try {
+                const res = await fetch("/api/docs");
+                const data = await res.json();
+                if (data.ok) {
+                    currentDocs = data.docs;
+                    renderSidebar(data.docs);
+
+                    // Check URL for specific file
+                    const params = new URLSearchParams(window.location.search);
+                    const file = params.get('file');
+                    if (file) {
+                        const target = data.docs.find(d => d.file === file || d.file === file + '.md');
+                        if (target) {
+                            loadDocument(target.file, target.title);
+                            return;
+                        }
+                    }
+
+                    if (data.docs.length > 0) {
+                        loadDocument(data.docs[0].file, data.docs[0].title);
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load nav", e);
+            }
+        }
+
+        function renderSidebar(docs) {
+            const navContainer = document.getElementById("sidebar-nav");
+            navContainer.innerHTML = `
+                <div class="nav-group">
+                    <div class="nav-title">Developer Guides</div>
+                    ${docs.map(d => `
+                        <a class="nav-item" id="nav-${d.file}"
+                           onclick="loadDocument('${d.file}', '${d.title}', this)">
+                           📄 ${d.title}
+                        </a>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function loadDocument(filename, title, element) {
+            document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+            if (element) {
+                element.classList.add('active');
+            } else {
+                const el = document.getElementById(`nav-${filename}`);
+                if (el) el.classList.add('active');
+            }
+
+            try {
+                const res = await fetch("/api/docs/" + filename);
+                const data = await res.json();
+                if (data.ok) {
+                    let rawContent = data.content;
+                    const lines = rawContent.split('\n');
+                    let actualTitle = title;
+
+                    if (lines[0].startsWith('# ')) {
+                        actualTitle = lines[0].replace('# ', '').trim();
+                        lines.shift();
+                        rawContent = lines.join('\n');
+                    }
+
+                    const htmlContent = marked.parse(rawContent);
+                    document.getElementById("doc-content").innerHTML = `
+                        <div class="category-breadcrumb">Developer Guides</div>
+                        <div class="page-header">
+                            <h1>${actualTitle}</h1>
+                            <button class="btn-copy" onclick="copyPageToClipboard()">📑 Copy URL</button>
+                        </div>
+                        ${htmlContent}
+                    `;
+                    // Smooth scroll to top
+                    document.querySelector('.main-content').scrollTop = 0;
+                }
+            } catch (e) {
+                document.getElementById("doc-content").innerHTML = "<p>Failed to load document.</p>";
+            }
+        }
+
+        // Global Keyboard Support
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                window.location.href = '/';
+                return;
+            }
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
+                e.preventDefault();
+                document.querySelector('.search-box').click(); // Or focus if it were an input
+            }
+        });
+
+        function copyToClipboard(button) {
+            const code = button.parentElement.querySelector('code');
+            navigator.clipboard.writeText(code.innerText);
+            const originalText = button.innerHTML;
+            button.innerHTML = "✅ Copied!";
+            setTimeout(() => { button.innerHTML = originalText; }, 2000);
+        }
+
+        function copyPageToClipboard() {
+            navigator.clipboard.writeText(window.location.href);
+            toast("✅ Link copied to clipboard");
+        }
+
+        function toast(msg) {
+            // Simple alert if no toast UI exists here, but we could add one
+            const t = document.createElement('div');
+            t.style = "position:fixed; bottom:20px; right:20px; background:#8b5cf6; color:white; padding:12px 24px; border-radius:10px; z-index:100; font-weight:600; box-shadow:0 10px 30px rgba(0,0,0,0.5); animation: slideIn 0.3s ease-out;";
+            t.innerText = msg;
+            document.body.appendChild(t);
+            setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 3000);
+        }
+
+        loadNav();
+    </script>
+    <style>
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</body>
+
+</html>

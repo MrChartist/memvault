@@ -22,25 +22,34 @@
 import fs from "fs";
 import path from "path";
 
-const API = "http://127.0.0.1:7799";
+const API = process.env.VAULT_API || "http://127.0.0.1:7800";
 
-// Windows path to Antigravity brain directory (accessible from WSL as /mnt/c/...)
-const BRAIN_DIR = process.env.BRAIN_DIR || "/mnt/c/Users/rohit/.gemini/antigravity/brain";
+// Detect environment
+const USERNAME = process.env.USERNAME || process.env.USER || "rohit";
+const isWsl = process.env.WSL_DISTRO_NAME !== undefined;
 
-// Conversation summary file (updated per session by conversation_summaries)
-const CONV_SUMMARY_FILE = process.env.CONV_SUMMARY ||
-  "/mnt/c/Users/rohit/.gemini/antigravity/.system_generated/conversation_summaries.json";
+// Windows path to Antigravity brain directory
+const WINDOWS_BRAIN_DIR = `C:\\Users\\${USERNAME}\\.gemini\\antigravity\\brain`;
+const WSL_BRAIN_DIR = `/mnt/c/Users/${USERNAME}/.gemini/antigravity/brain`;
+
+const BRAIN_DIR = process.env.BRAIN_DIR || (isWsl ? WSL_BRAIN_DIR : WINDOWS_BRAIN_DIR);
+
+// Conversation summary file
+const WINDOWS_CONV_SUMMARY = `C:\\Users\\${USERNAME}\\.gemini\\antigravity\\.system_generated\\conversation_summaries.json`;
+const WSL_CONV_SUMMARY = `/mnt/c/Users/${USERNAME}/.gemini/antigravity/.system_generated/conversation_summaries.json`;
+
+const CONV_SUMMARY_FILE = process.env.CONV_SUMMARY || (isWsl ? WSL_CONV_SUMMARY : WINDOWS_CONV_SUMMARY);
 
 // Parse flags
 const args = process.argv.slice(2);
-const DRY_RUN  = args.includes("--dry-run");
+const DRY_RUN = args.includes("--dry-run");
 const NO_CLEAR = args.includes("--no-clear");
 
 // Artifact types we care about
 const ARTIFACT_TYPES = [
-  { file: "walkthrough.md",         type: "worklog",      label: "Walkthrough" },
-  { file: "task.md",                type: "worklog",      label: "Task"        },
-  { file: "implementation_plan.md", type: "conversation", label: "Plan"        },
+  { file: "walkthrough.md", type: "worklog", label: "Walkthrough" },
+  { file: "task.md", type: "worklog", label: "Task" },
+  { file: "implementation_plan.md", type: "conversation", label: "Plan" },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -67,9 +76,13 @@ async function apiPost(endpoint, body) {
 async function clearAllData() {
   console.log("🗑️  Clearing existing vault data...");
   try {
-    const res = await fetch(`${API}/clear`, { method: "POST" });
+    const res = await fetch(`${API}/clear`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: "antigravity" })
+    });
     if (res.ok) {
-      console.log("   ✅ Cleared.");
+      console.log("   ✅ Cleared previous antigravity syncs.");
     } else {
       // Endpoint may not exist, do it manually via the reset endpoint
       console.log("   ⚠️  /clear not available, trying /reset...");
@@ -129,7 +142,7 @@ async function main() {
         }
       }
       console.log(`📋 Loaded ${Object.keys(convSummaries).length} conversation summaries.\n`);
-    } catch {}
+    } catch { }
   }
 
   const entries = fs.readdirSync(BRAIN_DIR, { withFileTypes: true });
@@ -163,7 +176,7 @@ async function main() {
 
       const title = `[${art.label}] ${convTitle}`;
       const createdAt = meta.updatedAt || new Date().toISOString();
-      const tags = `antigravity,${art.type},${art.label.toLowerCase()},conv:${convId.slice(0,8)}`;
+      const tags = `antigravity,${art.type},${art.label.toLowerCase()},conv:${convId.slice(0, 8)}`;
       const summary = meta.summary || "";
 
       // Combine summary + content (cap at 8000 chars to avoid huge entries)
@@ -180,6 +193,7 @@ async function main() {
       try {
         const result = await apiPost("/add", {
           type: art.type,
+          project: convTitle,
           source: "antigravity",
           title,
           content: fullContent,
@@ -208,7 +222,7 @@ async function main() {
   console.log(`⏭  Skipped: ${skipped} folders (no artifacts)`);
   if (errors) console.log(`❌ Errors : ${errors}`);
   console.log(`═══════════════════════════════════════\n`);
-  console.log(`🌐 Open http://127.0.0.1:7799 to view your vault.`);
+  console.log(`🌐 Open http://127.0.0.1:7800 to view your vault.`);
 }
 
 main().catch(console.error);
