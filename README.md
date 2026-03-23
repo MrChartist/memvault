@@ -50,18 +50,18 @@ AI:     "I found 3 relevant entries. The auth bug was in middleware/session.js..
 <tr>
 <td width="50%">
 
-### 🧠 14 MCP Tools
+### 🧠 20 MCP Tools
 Your AI gets superpowers:
+- **`vault_smart_search`** — Intent-driven semantic search
 - **`vault_smart_context`** — Relevance-ranked results
-- **`vault_remember`** — AI saves facts for later
-- **`vault_daily_digest`** — Auto-generated day summary
+- **`vault_capture_prompt`** — Auto-logs every prompt to any AI tool
 - **`vault_project_context`** — Full project intelligence
-- ...and 10 more tools
+- ...and 16 more tools
 
 </td>
 <td width="50%">
 
-### 🕸️ 7 Data Capture Engines  
+### 🕸️ 7 Data Capture Engines + 4 AI Importers  
 Reads everything from your computer:
 - 📦 **Git commits** from all local repos
 - 💻 **VS Code** projects, extensions, settings
@@ -69,7 +69,7 @@ Reads everything from your computer:
 - 📁 **File changes** across project directories
 - 🖥️ **System info** (OS, RAM, CPU, dev tools)
 - 🌐 **Browser** history (Chrome/Edge)
-- 🤖 **AI conversations** (Antigravity)
+- 🤖 **AI conversations** (Antigravity & Universal Importers)
 
 </td>
 </tr>
@@ -219,14 +219,27 @@ Add to `~/.gemini/antigravity/mcp_config.json`:
 
 ---
 
-## 🛠️ All 14 MCP Tools
+## 🛠️ All 20 MCP Tools
+
+### Phase 5B: AI Intelligence Layer (Gemini-Powered)
 
 | Tool | Category | Description |
 |------|----------|-------------|
-| `vault_smart_context` | 🧠 Smart | **Best tool.** Relevance-ranked, auto-tagged, deduplicated context |
-| `vault_project_context` | 🧠 Smart | Full background on a specific project — tech stack, timeline, activity |
-| `vault_daily_digest` | 🧠 Smart | Auto-generated summary of the day's activity |
-| `vault_remember` | 🧠 Smart | AI proactively saves facts, decisions, preferences for future sessions |
+| `vault_capture_prompt` | 🧠 AI | Auto-logs every prompt you send to ANY AI |
+| `vault_log_conversation` | 🧠 AI | Saves conversation summaries to vault |
+| `vault_ai_summarize` | 🧠 AI | AI-powered entry summarization (Gemini) |
+| `vault_ai_insights` | 🧠 AI | Pattern & productivity insights |
+| `vault_smart_search` | 🧠 AI | Semantic search with AI re-ranking |
+| `vault_weekly_digest` | 🧠 AI | AI-generated weekly activity digest |
+
+### Phase 1-3: Core & Smart Context
+
+| Tool | Category | Description |
+|------|----------|-------------|
+| `vault_smart_context` | 💡 Context | **Best core tool.** Relevance-ranked, auto-tagged, deduplicated context |
+| `vault_project_context` | 💡 Context | Full background on a specific project — tech stack, timeline, activity |
+| `vault_daily_digest` | 💡 Context | Auto-generated summary of the day's activity |
+| `vault_remember` | 💡 Context | AI proactively saves facts, decisions, preferences for future sessions |
 | `vault_git_log` | 📦 Data | Recent Git commits across all tracked repositories |
 | `vault_recent_files` | 📦 Data | Files modified recently, grouped by project |
 | `vault_system_info` | 📦 Data | OS, hardware, dev tools versions, running processes |
@@ -251,18 +264,36 @@ The intelligence layer that makes entries useful:
 | **Session Memory** | Tracks what the AI already saw — avoids repeating context |
 | **Daily Digest** | Aggregates your day's activity with project + tech stack breakdown |
 
+### 🤖 AI Data Importers (Phase 5A)
+
+MemVault natively understands data exports from major AI platforms. Import your entire chat history with one command:
+
+```bash
+memvault import ./chatgpt-export/
+memvault import ./claude-export/
+memvault import ./google-takeout/
+memvault import ./perplexity-export/
+```
+
 ---
 
 ## 📁 Project Structure
 
 ```
 memvault/
-├── mcp-server.mjs        # MCP server (14 tools, 5 resources, 3 prompts)
+├── mcp-server.mjs         # MCP server (20 tools, 5 resources, 3 prompts)
+├── ai-engine.mjs          # Gemini API intelligence (summarization, insights, search)
 ├── context-engine.mjs     # Smart context: auto-tag, score, dedup, digest
 ├── server.mjs             # Express API + web UI server
 ├── config.mjs             # Centralized configuration (~/.memvaultrc.json)
 ├── cli.mjs                # CLI entry point (npx memvault <cmd>)
 ├── init.mjs               # Interactive setup wizard
+│
+├── import-all.mjs         # Universal AI conversation importer
+├── import-chatgpt.mjs     # ChatGPT import logic
+├── import-claude.mjs      # Claude import logic
+├── import-gemini.mjs      # Gemini import logic
+├── import-perplexity.mjs  # Perplexity import logic
 │
 ├── sync-git.mjs           # Git commit capture
 ├── sync-clipboard.mjs     # Clipboard content capture
@@ -296,6 +327,11 @@ MemVault uses `~/.memvaultrc.json` for per-user settings. Run `node init.mjs` to
     "filesEnabled": true,
     "clipboardEnabled": false,
     "browserEnabled": true
+  },
+  "ai": {
+    "enabled": true,
+    "apiKey": "YOUR_GEMINI_API_KEY",
+    "model": "gemini-2.0-flash"
   }
 }
 ```
@@ -353,7 +389,7 @@ node vault.mjs worklog "Fixed CORS headers in API server"
 - [x] **Phase 2** — Universal Data Capture (7 sync engines)
 - [x] **Phase 3** — Smart Context Engine (auto-tag, relevance, dedup, memory)
 - [x] **Phase 4** — CLI Wizard & Configuration
-- [ ] **Phase 5** — npm publish (`npx memvault init`)
+- [x] **Phase 5** — AI Intelligence (Gemini + Importers for ChatGPT, Claude, Gemini, Perplexity)
 - [ ] **Phase 6** — Auto-start on boot (Task Scheduler / systemd / launchd)
 - [ ] **Phase 7** — Ollama integration for local AI summarization
 

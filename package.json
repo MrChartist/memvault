@@ -19,7 +19,8 @@
     "sync:files": "node sync-files.mjs",
     "sync:system": "node sync-system.mjs",
     "sync:all": "node sync-all.mjs",
-    "dev": "node --watch server.mjs"
+    "dev": "node --watch server.mjs",
+    "test": "vitest run"
   },
   "keywords": [
     "personal-knowledge-base",
@@ -46,5 +47,8 @@
     "multer": "^2.1.1",
     "sql.js": "^1.14.1",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.0"
   }
 }
