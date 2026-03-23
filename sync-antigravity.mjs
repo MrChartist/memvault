@@ -22,7 +22,7 @@
 import fs from "fs";
 import path from "path";
 
-const API = "http://127.0.0.1:7799";
+import { API_URL as API } from "./config.mjs";
 
 // Windows path to Antigravity brain directory (accessible from WSL as /mnt/c/...)
 const BRAIN_DIR = process.env.BRAIN_DIR || "/mnt/c/Users/rohit/.gemini/antigravity/brain";

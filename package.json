@@ -2,11 +2,22 @@
   "name": "memvault",
   "version": "1.0.0",
   "description": "Self-hosted personal knowledge vault — capture AI agent work, diary entries, and conversations with full-text search.",
+  "bin": {
+    "memvault": "./cli.mjs",
+    "memvault-mcp": "./mcp-server.mjs"
+  },
   "type": "module",
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
+    "mcp": "node mcp-server.mjs",
     "sync": "node sync-antigravity.mjs",
+    "sync:git": "node sync-git.mjs",
+    "sync:clipboard": "node sync-clipboard.mjs",
+    "sync:vscode": "node sync-vscode.mjs",
+    "sync:files": "node sync-files.mjs",
+    "sync:system": "node sync-system.mjs",
+    "sync:all": "node sync-all.mjs",
     "dev": "node --watch server.mjs"
   },
   "keywords": [
@@ -29,6 +40,7 @@
   },
   "homepage": "https://github.com/MrChartist/memvault#readme",
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "express": "^5.2.1",
     "multer": "^2.1.1",
     "sql.js": "^1.14.1",

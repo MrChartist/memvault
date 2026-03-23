@@ -1,207 +1,98 @@
-<div align="center">
+<p align="center">
+  <img src="docs/images/hero-banner.png" alt="MemVault — Your AI's Persistent Memory Layer" width="100%">
+</p>
 
-<img src="https://img.shields.io/badge/MemVault-v2.0-6366f1?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAxTDMgNXY2YzAgNS41NSAzLjg0IDEwLjc0IDkgMTIgNS4xNi0xLjI2IDktNi40NSA5LTEyVjVsLTktNHoiLz48L3N2Zz4=" />
-<img src="https://img.shields.io/badge/AES--256--GCM-Encrypted-f59e0b?style=for-the-badge" />
-<img src="https://img.shields.io/badge/Self--Hosted-Local_First-10b981?style=for-the-badge" />
-<img src="https://img.shields.io/badge/Node.js-ESM-339933?style=for-the-badge&logo=node.js" />
-<img src="https://img.shields.io/badge/SQLite-FTS5-003B57?style=for-the-badge&logo=sqlite" />
+<h1 align="center">MemVault</h1>
 
-# 🗄️ MemVault
+<p align="center">
+  <strong>Your AI's Persistent Memory Layer</strong><br>
+  A self-hosted MCP server that gives Claude, Cursor, and every AI tool<br>
+  persistent memory about <em>you</em> — your code, projects, habits, and preferences.
+</p>
 
-**Your personal, self-hosted knowledge vault — with AES-256-GCM encrypted secrets, browser sync, and full AI work-log support.**
-
-*Everything you know. Everything you've done. Searchable in milliseconds. Fully private.*
-
-[Features](#-features) · [Use Cases](#-use-cases) · [Architecture](#-architecture) · [API Reference](#-api-reference) · [Quick Start](#-quick-start) · [Security](#-security-model) · [Roadmap](#-roadmap)
-
-</div>
+<p align="center">
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/Get%20Started-2%20min-brightgreen?style=for-the-badge" alt="Get Started"></a>
+  <a href="https://github.com/MrChartist/memvault/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="MIT License"></a>
+  <a href="#-mcp-integration"><img src="https://img.shields.io/badge/MCP-Compatible-purple?style=for-the-badge" alt="MCP Compatible"></a>
+  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
+</p>
 
 ---
 
-## 🧭 What is MemVault?
+## 🤔 What is MemVault?
 
-MemVault is a **local-first personal knowledge management system** built for developers, AI power-users, and anyone who works with large amounts of information daily and needs a **private, portable, and searchable place to store it all**.
+Every time you start a new AI conversation, your assistant forgets everything. **MemVault fixes that.**
 
-Unlike cloud-based tools (Notion, Obsidian Sync, Roam), **MemVault runs entirely on your machine**. Your data never leaves your computer unless you explicitly export it. Sensitive information — API keys, passwords, user IDs, payment details — is stored with **military-grade AES-256-GCM encryption** and your master password is never written anywhere.
+It silently captures your digital footprint — Git commits, VS Code projects, clipboard content, file changes, system info, browser history, and AI conversations — then serves this context to **any AI tool** via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io).
 
-Think of it as your own **private second brain** that your AI assistant can read and write to, making every future interaction smarter and more context-aware.
+> **Think of it as a second brain for your AI assistants.**
+
+### The Problem
+
+```
+You:    "Fix the login bug we discussed yesterday"
+AI:     "I don't have any context about previous conversations..."
+```
+
+### With MemVault
+
+```
+You:    "Fix the login bug we discussed yesterday"
+AI:     (queries MemVault) → finds yesterday's conversation, related commits, and file changes
+AI:     "I found 3 relevant entries. The auth bug was in middleware/session.js..."
+```
 
 ---
 
 ## ✨ Features
 
-### 📔 Knowledge Entry System
+<table>
+<tr>
+<td width="50%">
 
-- **Daily Diary** — Write freeform personal notes with a clean, distraction-free editor
-- **Conversation Logs** — Store AI conversation exports (ChatGPT, Gemini, Claude) for future reference
-- **Work Logs** — Record development sessions, decisions, bugs fixed, and project progress
-- **File Attachments** — Upload any file (up to 200MB) and attach it to an entry
-- **Full-Text Search** — SQLite FTS5 full-text search across all 100k+ entries in milliseconds
-- **Auto-Sync** — Pull all Antigravity AI conversation histories automatically
+### 🧠 14 MCP Tools
+Your AI gets superpowers:
+- **`vault_smart_context`** — Relevance-ranked results
+- **`vault_remember`** — AI saves facts for later
+- **`vault_daily_digest`** — Auto-generated day summary
+- **`vault_project_context`** — Full project intelligence
+- ...and 10 more tools
 
-### 🔐 Encrypted Secure Vault
+</td>
+<td width="50%">
 
-- **AES-256-GCM** encryption — the same standard used by banks and governments
-- **6 secret categories**: API Keys, Passwords, User IDs, Payment Details, Phone Numbers, Custom
-- **PBKDF2** key derivation (100,000 iterations) from your master password
-- **Per-secret random IV** — even identical values produce different ciphertext
-- **Master password never stored** — verified via encrypted sentinel pattern
-- **Click-to-copy** — click any revealed field to copy to clipboard instantly
-- **Session-scoped unlock** — re-lock with one click, or on page refresh
+### 🕸️ 7 Data Capture Engines  
+Reads everything from your computer:
+- 📦 **Git commits** from all local repos
+- 💻 **VS Code** projects, extensions, settings
+- 📋 **Clipboard** history (with classification)
+- 📁 **File changes** across project directories
+- 🖥️ **System info** (OS, RAM, CPU, dev tools)
+- 🌐 **Browser** history (Chrome/Edge)
+- 🤖 **AI conversations** (Antigravity)
 
-### 🌐 Browser Activity Sync
+</td>
+</tr>
+</table>
 
-- **Chrome history** — automatically imports visited sites (deduped by URL + date)
-- **Edge history** — cross-browser support
-- **Bookmarks** — folder structure preserved as tags
-- **Smart filtering** — skips `localhost`, `chrome://`, `about:`, and extension pages
-- **Dry-run mode** — preview what would sync before committing
+### 🏗️ Architecture
 
-### 🎨 Modern Web UI
+<p align="center">
+  <img src="docs/images/architecture.png" alt="MemVault Architecture" width="100%">
+</p>
 
-- **Dark + Light theme** — instant toggle, preference saved to localStorage
-- **Inter + DM Mono** typography — clean, professional, readable
-- **Responsive** — works on any screen size
-- **Access Map** — built-in API documentation panel showing all endpoints live
-- **Real-time stats** — live entry counts per category
+### 🎨 Beautiful Web UI
 
----
+<p align="center">
+  <img src="docs/images/web-ui.png" alt="MemVault Web Interface" width="100%">
+</p>
 
-## 🎯 Use Cases
-
-### Use Case 1: AI Developer with Multiple Projects
-
-**Problem**: You work with 10+ AI tools daily (ChatGPT, Claude, Gemini, Copilot). After a session, you close the tab and the context is gone. Next week when you're debugging the same issue, you start from scratch.
-
-**Solution with MemVault**:
-
-- Run `node sync-antigravity.mjs` — all 88+ past AI conversations are indexed in SQLite
-- Search "React hydration bug" → instantly find the exact session where you fixed it 3 months ago
-- AI reads your vault before answering → responses always build on your existing work
-
----
-
-### Use Case 2: Freelancer Managing Multiple Client Credentials
-
-**Problem**: You have 30+ client API keys, login credentials, and payment details scattered across sticky notes, emails, and text files. One data breach = catastrophe.
-
-**Solution with MemVault**:
-
-- Store every API key under `🔑 API Keys` → encrypted with AES-256-GCM
-- Passwords under `🔐 Passwords` with username, URL, and notes
-- Payment info under `💳 Payment Details` → last 4 digits + expiry only
-- Everything behind ONE master password that's never written down or stored
-- Local-only → no cloud company can be breached to expose your data
-
----
-
-### Use Case 3: Daily Journaling with Search
-
-**Problem**: You journal daily in a notes app but searching old entries is slow, unreliable, or locked behind a subscription.
-
-**Solution with MemVault**:
-
-- Write directly in the web UI → `Save to Vault` stores entries in SQLite
-- Search "feeling anxious about" → all relevant diary entries surfaced in milliseconds
-- Export-friendly: all data is in a local SQLite file you can open with any DB browser
-
----
-
-### Use Case 4: Knowledge Worker Building a Personal Wiki
-
-**Problem**: You read dozens of articles and try tools weekly. Within 3 months you've forgotten 90% of what you learned.
-
-**Solution with MemVault**:
-
-- Browser sync captures every article you visited (Chrome/Edge history → vault)
-- Add notes as diary entries with context on what you learned
-- Search "kubernetes init containers" → find the article you read + your own notes on it
-- Nothing is cloud-locked — your knowledge stays permanently accessible
-
----
-
-### Use Case 5: Developer Tracking Progress
-
-**Problem**: At stand-up, you struggle to remember what you did yesterday. Your PR history doesn't capture design decisions or dead-ends you explored.
-
-**Solution with MemVault**:
-
-- End each work session: write a brief worklog entry in the UI
-- Sync your AI coding assistant conversations → context preserved
-- Search by date or keyword to reconstruct any past work session
-- Build a queryable history of every technical decision you've ever made
-
----
-
-## 🏗️ Architecture
-
-```
-MemVault
-├── server.mjs              # Node.js ESM API server (Express)
-│   ├── /add                # Store knowledge entries
-│   ├── /search             # FTS5 full-text search
-│   ├── /list               # List entries by type
-│   ├── /clear              # Delete all entries
-│   ├── /upload             # File attachment handler
-│   └── /secrets/*          # AES-256-GCM encrypted secrets API
-│
-├── public/index.html       # Single-file web UI
-│   ├── Dark + Light themes (CSS variables)
-│   ├── Inter + DM Mono typography
-│   ├── Entry browser (All / Diary / Conversations / Worklogs)
-│   ├── Secure Vault tab (master password → session unlock)
-│   └── API Access Map (live documentation panel)
-│
-├── sync-antigravity.mjs    # Ingest Antigravity AI conversation histories
-├── sync-browser.mjs        # Chrome/Edge history + bookmarks importer
-│
-└── Vault Storage (D:\AG\Vault)
-    ├── db/index.sqlite     # SQLite: items table (FTS5) + secrets table (AES-GCM)
-    ├── entries/            # Flat-file diary backups
-    ├── conversations/      # Conversation backups
-    ├── worklogs/           # Worklog backups
-    └── files/              # File attachments (up to 200MB each)
-```
-
-### Storage layers
-
-| Layer | What | Where |
-|---|---|---|
-| Primary index | SQLite FTS5 | `db/index.sqlite` |
-| Encrypted secrets | AES-256-GCM blobs in SQLite | `db/index.sqlite` (secrets table) |
-| File attachments | Raw files | `files/` directory |
-| UI | Served as static HTML | `public/index.html` |
-
----
-
-## 🔑 API Reference
-
-All endpoints available at `http://127.0.0.1:7799`
-
-### Knowledge Entries
-
-| Method | Endpoint | Body / Params | Description |
-|--------|----------|--------------|-------------|
-| `GET` | `/health` | — | Server health check |
-| `POST` | `/add` | `{type, source, title, content, tags}` | Add entry |
-| `GET` | `/search?q=…&type=…` | Query string | Full-text search with optional type filter |
-| `GET` | `/list?type=…&limit=…` | Query string | List entries |
-| `POST` | `/clear` | — | Delete all knowledge entries |
-| `POST` | `/upload` | `multipart/form-data` | Upload file attachment |
-
-**Entry types**: `diary` · `conversation` · `worklog` · `file`
-
-### Encrypted Secrets
-
-| Method | Endpoint | Body | Description |
-|--------|----------|------|-------------|
-| `POST` | `/secrets/verify` | `{password}` | Verify/register master password |
-| `POST` | `/secrets/add` | `{password, category, label, fields}` | Encrypt & store a secret |
-| `POST` | `/secrets/get` | `{password, id}` | Decrypt & return a secret |
-| `GET` | `/secrets/list` | — | List labels + categories (no decryption) |
-| `DELETE` | `/secrets/delete/:id` | `{password}` | Delete a secret (password required) |
-
-**Secret categories**: `apikey` · `password` · `userid` · `payment` · `phone` · `custom`
+A sleek dark-mode dashboard with:
+- 📔 Diary entry writer  
+- 🔍 Full-text search across all entries  
+- 📊 Vault statistics  
+- 🔐 Encrypted secrets manager  
+- 🗺️ Access map visualization  
 
 ---
 
@@ -209,181 +100,283 @@ All endpoints available at `http://127.0.0.1:7799`
 
 ### Prerequisites
 
-- **Windows** with WSL2 (Ubuntu 20.04+)
-- **Node.js 18+** in WSL
-- Git
+- **Node.js** 18+ ([download](https://nodejs.org))
+- **Git** (for sync-git)
 
-### 1. Clone & Install
+### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/MrChartist/memvault.git
 cd memvault
+
+# Install dependencies
 npm install
+
+# Run the setup wizard
+node init.mjs
 ```
 
-### 2. Set Vault Root (optional, defaults to `/mnt/d/AG/Vault`)
+The wizard will ask you:
+1. Where to store your vault data
+2. Which capture engines to enable
+3. Show you the MCP config for your AI clients
+
+### Start the Server
 
 ```bash
-export VAULT_ROOT=/your/path/to/vault
+# Start the web UI + API server
+npm start
+
+# Open the dashboard
+# → http://localhost:7799
 ```
 
-### 3. Start the Server
+### Sync Your Data
 
 ```bash
-# From WSL
-node server.mjs
+# Sync everything at once
+npm run sync:all
 
-# From Windows PowerShell (runs hidden)
-Start-Process wsl -ArgumentList "-d Ubuntu-24.04 -- bash -c `"cd /path/to/vault && node server.mjs`"" -WindowStyle Hidden
-```
-
-### 4. Open the UI
-
-Navigate to **<http://127.0.0.1:7799>** in your browser.
-
-### 5. First-time Secure Vault Setup
-
-Click **🔒 Secure Vault** tab → enter any password → it becomes your master password permanently. **Write it down somewhere safe offline.** If lost, encrypted secrets cannot be recovered.
-
-### 6. Sync Your Data
-
-```bash
-# Sync AI conversation histories (Antigravity)
-node sync-antigravity.mjs
-
-# Preview browser history (dry run)
-node sync-browser.mjs --dry-run
-
-# Live browser sync
-node sync-browser.mjs
+# Or sync individually
+npm run sync:git         # Git commit history
+npm run sync:vscode      # VS Code projects & extensions
+npm run sync:system      # System information snapshot
+npm run sync:files       # Recently modified files
 ```
 
 ---
 
-## 🔒 Security Model
+## 🔌 MCP Integration
 
-### What is encrypted
+MemVault speaks the [Model Context Protocol](https://modelcontextprotocol.io) — the universal standard for connecting AI tools to data sources.
 
-Everything in the **Secure Vault** (API keys, passwords, user IDs, payment details, phone numbers, custom secrets) is encrypted with AES-256-GCM before being stored in SQLite.
+### Claude Desktop
 
-### Encryption chain
+Add to `claude_desktop_config.json`:
 
-```
-Your Master Password
-       │
-       ▼
-PBKDF2(SHA-256, 100,000 iterations, static salt)
-       │
-       ▼
-256-bit AES key (never stored, derived on-demand)
-       │
-       ▼  ┌─ 12-byte random IV (unique per secret)
-AES-256-GCM
-       │
-       ▼
-{ iv: "base64", authTag: "base64", ciphertext: "base64" }
-       │
-       ▼
-Stored in SQLite secrets table
+```json
+{
+  "mcpServers": {
+    "memvault": {
+      "command": "node",
+      "args": ["/path/to/memvault/mcp-server.mjs"],
+      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
+    }
+  }
+}
 ```
 
-### What is NOT stored
+### Cursor
 
-- ❌ Your master password (never written anywhere)
-- ❌ The derived AES key (computed fresh each request, discarded immediately)
-- ❌ Plaintext versions of any secret
+In Cursor Settings → Features → MCP Servers, add:
 
-### What IS stored (safely)
+```json
+{
+  "mcpServers": {
+    "memvault": {
+      "command": "node",
+      "args": ["/path/to/memvault/mcp-server.mjs"],
+      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
+    }
+  }
+}
+```
 
-- ✅ AES-256-GCM ciphertext (base64)
-- ✅ Random IV per secret (base64)
-- ✅ GCM authentication tag (prevents tampering)
-- ✅ Secret labels (plaintext) — only the label, not the value
+### VS Code (Cline / Roo Code)
 
-### Password verification mechanism
+Add to your MCP settings file:
 
-On first use, MemVault encrypts a known test value (`"memvault-ok"`) with your password and stores it as a special `__sentinel__` record. On subsequent unlocks, it attempts to decrypt this sentinel — a match confirms your password is correct without storing the password itself.
+```json
+{
+  "mcpServers": {
+    "memvault": {
+      "command": "node",
+      "args": ["/path/to/memvault/mcp-server.mjs"],
+      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
+    }
+  }
+}
+```
 
-### What's excluded from GitHub (`.gitignore`)
+### Antigravity
 
-- `db/` — your entire SQLite database (entries + encrypted secrets)
-- `entries/`, `conversations/`, `worklogs/`, `files/` — all personal vault content
-- `.env`, `*.key`, `*.pem`, `credentials.json` — any credential files
-- `test-add.json`, `test-secrets.sh` — any test data with real credentials
+Add to `~/.gemini/antigravity/mcp_config.json`:
 
-> **⚠️ Important**: Never commit `db/index.sqlite`. It contains your encrypted secrets. Even though they're encrypted, exposing the ciphertext unnecessarily is bad practice.
+```json
+{
+  "mcpServers": {
+    "memvault": {
+      "command": "node",
+      "args": ["/path/to/memvault/mcp-server.mjs"],
+      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
+    }
+  }
+}
+```
+
+> **💡 Tip:** Replace `/path/to/memvault` and `/path/to/your/vault/data` with your actual paths. On Windows, use forward slashes in JSON: `"D:/projects/memvault/mcp-server.mjs"`.
 
 ---
 
-## 📁 .gitignore Coverage
+## 🛠️ All 14 MCP Tools
 
-The following are always excluded from version control:
+| Tool | Category | Description |
+|------|----------|-------------|
+| `vault_smart_context` | 🧠 Smart | **Best tool.** Relevance-ranked, auto-tagged, deduplicated context |
+| `vault_project_context` | 🧠 Smart | Full background on a specific project — tech stack, timeline, activity |
+| `vault_daily_digest` | 🧠 Smart | Auto-generated summary of the day's activity |
+| `vault_remember` | 🧠 Smart | AI proactively saves facts, decisions, preferences for future sessions |
+| `vault_git_log` | 📦 Data | Recent Git commits across all tracked repositories |
+| `vault_recent_files` | 📦 Data | Files modified recently, grouped by project |
+| `vault_system_info` | 📦 Data | OS, hardware, dev tools versions, running processes |
+| `vault_projects` | 📦 Data | VS Code recent workspaces and installed extensions |
+| `vault_search` | 🔧 Core | Full-text search across all vault entries |
+| `vault_add` | 🔧 Core | Add diary, worklog, or conversation entries |
+| `vault_list` | 🔧 Core | List recent entries by type |
+| `vault_get_context` | 🔧 Core | Get vault context for a topic |
+| `vault_stats` | 🔧 Core | Vault statistics — entry counts by type, storage info |
+| `vault_secret_list` | 🔧 Core | List encrypted secret labels (no values exposed) |
 
-```gitignore
-db/              # SQLite database (your data lives here)
-*.sqlite         # Any SQLite files
-entries/         # Diary entries
-conversations/   # Conversation exports
-worklogs/        # Work logs
-files/           # File attachments
-.env             # Environment variables / secrets
-*.key, *.pem     # Cryptographic keys
-credentials.json # Any credential files
+### Smart Context Engine
+
+The intelligence layer that makes entries useful:
+
+| Feature | How It Works |
+|---------|-------------|
+| **Auto-Tagging** | 30+ regex patterns detect `react`, `python`, `trading`, `bugfix`, etc. |
+| **Relevance Scoring** | Combines keyword match strength + recency bonus for precision results |
+| **Project Detection** | Auto-recognizes your projects by name and context |
+| **Deduplication** | Jaccard similarity filters duplicate entries across data sources |
+| **Session Memory** | Tracks what the AI already saw — avoids repeating context |
+| **Daily Digest** | Aggregates your day's activity with project + tech stack breakdown |
+
+---
+
+## 📁 Project Structure
+
+```
+memvault/
+├── mcp-server.mjs        # MCP server (14 tools, 5 resources, 3 prompts)
+├── context-engine.mjs     # Smart context: auto-tag, score, dedup, digest
+├── server.mjs             # Express API + web UI server
+├── config.mjs             # Centralized configuration (~/.memvaultrc.json)
+├── cli.mjs                # CLI entry point (npx memvault <cmd>)
+├── init.mjs               # Interactive setup wizard
+│
+├── sync-git.mjs           # Git commit capture
+├── sync-clipboard.mjs     # Clipboard content capture
+├── sync-vscode.mjs        # VS Code activity capture
+├── sync-files.mjs         # File change capture
+├── sync-system.mjs        # System info capture
+├── sync-browser.mjs       # Browser history capture
+├── sync-antigravity.mjs   # AI conversation capture
+├── sync-all.mjs           # Run all sync engines
+│
+├── vault.mjs              # CLI tool (add/search entries)
+├── public/                # Web UI assets (HTML/CSS/JS)
+├── docs/images/           # README screenshots & diagrams
+└── package.json
+```
+
+---
+
+## ⚙️ Configuration
+
+MemVault uses `~/.memvaultrc.json` for per-user settings. Run `node init.mjs` to create it interactively, or create manually:
+
+```json
+{
+  "vaultRoot": "~/.memvault/data",
+  "port": 7799,
+  "sync": {
+    "gitDirs": ["/home/you/projects"],
+    "vscodeEnabled": true,
+    "systemEnabled": true,
+    "filesEnabled": true,
+    "clipboardEnabled": false,
+    "browserEnabled": true
+  }
+}
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VAULT_ROOT` | `~/.memvault/data` | Where vault data is stored |
+| `PORT` | `7799` | API server port |
+
+---
+
+## 🔒 Security
+
+MemVault is **local-first** and **privacy-focused**:
+
+- ⚡ **stdio transport** — MCP communicates via stdin/stdout, never over the network
+- 🔐 **Encrypted secrets** — API keys and passwords are AES-256-GCM encrypted
+- 🏠 **No cloud** — All data stays on your machine, in your SQLite database
+- 🚫 **No telemetry** — Zero analytics, zero tracking, zero network calls
+- 📋 **Clipboard opt-in** — Clipboard capture is disabled by default
+
+---
+
+## 🧰 CLI Commands
+
+```bash
+# Setup
+node init.mjs              # Interactive setup wizard
+
+# Server
+npm start                   # Start API + web UI (http://localhost:7799)
+npm run mcp                 # Start MCP server (stdio)
+npm run dev                 # Dev mode with auto-reload
+
+# Sync engines
+npm run sync:all            # Run all sync engines
+npm run sync:git            # Sync Git commits
+npm run sync:vscode         # Sync VS Code data
+npm run sync:system         # Capture system snapshot
+npm run sync:files          # Scan recent file changes
+npm run sync:clipboard      # Start clipboard daemon
+
+# CLI vault
+node vault.mjs diary "Today I shipped the new auth system"
+node vault.mjs worklog "Fixed CORS headers in API server"
 ```
 
 ---
 
 ## 🗺️ Roadmap
 
-### v2.1 — Sync Expansion
-
-- [ ] ChatGPT JSON export importer (`sync-chatgpt.mjs`)
-- [ ] Daily auto-summary (AI-generated day summary at midnight)
-- [ ] Clipboard quick-capture (`vault.mjs clip "paste text here"`)
-- [ ] Tags and manual categories for entries
-
-### v2.2 — Enhanced Search
-
-- [ ] Date range filtering in search
-- [ ] Saved search queries / bookmarks
-- [ ] Entry tagging + tag-based filtering
-- [ ] Semantic search via local embeddings (ONNX)
-
-### v2.3 — AI Integration
-
-- [ ] Context API — serve relevant vault entries to local AI tools
-- [ ] Auto-ingestion of new AI sessions via file-watcher
-- [ ] Summarization of long entries via local LLM
-
-### v3.0 — Multi-device
-
-- [ ] Optional sync backend (self-hosted, end-to-end encrypted)
-- [ ] Mobile companion app (read-only)
-- [ ] Export/import between vault instances
+- [x] **Phase 1** — Core MCP Server (14 tools, 5 resources, 3 prompts)
+- [x] **Phase 2** — Universal Data Capture (7 sync engines)
+- [x] **Phase 3** — Smart Context Engine (auto-tag, relevance, dedup, memory)
+- [x] **Phase 4** — CLI Wizard & Configuration
+- [ ] **Phase 5** — npm publish (`npx memvault init`)
+- [ ] **Phase 6** — Auto-start on boot (Task Scheduler / systemd / launchd)
+- [ ] **Phase 7** — Ollama integration for local AI summarization
 
 ---
 
-## 🛠️ Tech Stack
+## 🤝 Contributing
 
-| Component | Technology | Why |
-|---|---|---|
-| API Server | Node.js 20 ESM, Express | Fast, portable, zero-config |
-| Database | SQLite (via sql.js) + FTS5 | Serverless, single-file, full-text search |
-| Encryption | Node.js built-in `crypto` | No external deps, audited, AES-256-GCM |
-| Key Derivation | PBKDF2 SHA-256 100k iters | Brute-force resistant |
-| UI | Vanilla HTML/CSS/JS | No framework = zero attack surface, fast |
-| Typography | Inter + DM Mono (Google Fonts) | Professional, legible |
-| Browser Sync | Direct SQLite read of Chrome/Edge | No extension needed |
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/cool-thing`)
+3. Commit your changes (`git commit -m 'Add cool thing'`)
+4. Push to the branch (`git push origin feature/cool-thing`)
+5. Open a Pull Request
 
 ---
 
 ## 📄 License
 
-MIT — use it, fork it, self-host it. Your data is yours.
+MIT © [Rohit](https://github.com/MrChartist)
 
 ---
 
-<div align="center">
-<strong>Built for developers who value privacy, speed, and full ownership of their data.</strong><br>
-<sub>MemVault — Everything you know. Searchable. Private. Yours.</sub>
-</div>
+<p align="center">
+  <strong>Built with ❤️ for developers who want their AI to actually understand them.</strong>
+</p>

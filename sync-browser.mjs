@@ -17,7 +17,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-const API = process.env.VAULT_API || "http://127.0.0.1:7799";
+import { API_URL as API } from "./config.mjs";
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONLY_CHROME = args.includes("--chrome");

@@ -1,10 +1,7 @@
 // /mnt/d/AG/Vault/apps/vault/vault.mjs
 import fs from "fs";
 import path from "path";
-
-const VAULT_ROOT = process.env.VAULT_ROOT || "/mnt/d/AG/Vault";
-const API = process.env.VAULT_API || "http://127.0.0.1:7799";
-
+import { VAULT_ROOT, API_URL as API } from "./config.mjs";
 function isoDate() {
     const d = new Date();
     const yyyy = d.getFullYear();
