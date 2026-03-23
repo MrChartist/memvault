@@ -128,14 +128,15 @@ server.tool(
   "Search across all vault entries (diary, conversations, worklogs) using full-text search. Returns matching entries with snippets. Use this when the user asks about past work, projects, decisions, or any historical information.",
   {
     query: z.string().describe("Search query — keywords, phrases, project names, or topics"),
-    type: z.enum(["diary", "conversation", "worklog", "file", ""]).optional().describe("Filter by entry type: diary, conversation, worklog, file. Leave empty for all."),
+    type: z.enum(["diary", "conversation", "worklog", "file"]).optional().describe("Filter by entry type: diary, conversation, worklog, or file. Omit to search all types."),
     limit: z.number().min(1).max(50).optional().describe("Maximum results to return (default: 20)"),
   },
   async ({ query, type, limit }) => {
     const maxResults = limit || 20;
     const like = `%${query}%`;
-    const where = type ? `AND type = ?` : "";
-    const params = type ? [like, like, like, type] : [like, like, like];
+    const validType = type && ["diary", "conversation", "worklog", "file"].includes(type) ? type : null;
+    const where = validType ? `AND type = ?` : "";
+    const params = validType ? [like, like, like, validType] : [like, like, like];
 
     const rows = queryAll(
       `SELECT id, type, source, title, substr(content, 1, 500) as snippet, tags, created_at
@@ -209,13 +210,14 @@ server.tool(
   "vault_list",
   "List recent entries from the vault. Use this to browse what's been stored recently — diary entries, conversations, or worklogs. Good for getting an overview of recent activity.",
   {
-    type: z.enum(["diary", "conversation", "worklog", "file", ""]).optional().describe("Filter by type. Leave empty for all types."),
+    type: z.enum(["diary", "conversation", "worklog", "file"]).optional().describe("Filter by type: diary, conversation, worklog, or file. Omit for all types."),
     limit: z.number().min(1).max(50).optional().describe("Maximum entries to return (default: 15)"),
   },
   async ({ type, limit }) => {
     const maxResults = limit || 15;
-    const where = type ? `WHERE type = ?` : "";
-    const params = type ? [type] : [];
+    const validType = type && ["diary", "conversation", "worklog", "file"].includes(type) ? type : null;
+    const where = validType ? `WHERE type = ?` : "";
+    const params = validType ? [validType] : [];
 
     const rows = queryAll(
       `SELECT id, type, source, title, substr(content, 1, 300) as snippet, tags, created_at
