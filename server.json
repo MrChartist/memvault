@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.MrChartist/memvault",
+  "name": "io.github.mrchartist/memvault",
   "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client.",
   "repository": {
     "url": "https://github.com/MrChartist/memvault",
@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "memvault",
+      "identifier": "@mrchartist/memvault",
       "version": "2.0.0",
       "transport": {
         "type": "stdio"

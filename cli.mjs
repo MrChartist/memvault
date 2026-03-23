@@ -14,28 +14,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const [,, command, ...args] = process.argv;
 
 const commands = {
-  init: { script: "init.mjs", desc: "Run the interactive setup wizard" },
-  serve: { script: "server.mjs", desc: "Start the API & Web server (localhost:7799)" },
-  mcp: { script: "mcp-server.mjs", desc: "Start the MCP stdio server" },
-  sync: { script: "sync-all.mjs", desc: "Run all enabled sync engines" },
-  vault: { script: "vault.mjs", desc: "CLI tool to add/search items (alias for vault.mjs)" },
+  init:    { script: "init.mjs",       desc: "Run the interactive setup wizard" },
+  serve:   { script: "server.mjs",     desc: "Start the API & Web server (localhost:7799)" },
+  mcp:     { script: "mcp-server.mjs", desc: "Start the MCP stdio server" },
+  sync:    { script: "sync-all.mjs",   desc: "Run all enabled sync engines" },
+  import:  { script: "import-all.mjs", desc: "Import AI conversations (ChatGPT, Claude, Gemini, Perplexity)" },
+  vault:   { script: "vault.mjs",      desc: "CLI tool to add/search items" },
 };
 
 function showHelp() {
   console.log(`
-🗄️  MemVault CLI
+🗄️  MemVault CLI — Universal AI Memory Layer
 
-Usage: memvault <command>
+Usage: memvault <command> [options]
 
 Commands:`);
   for (const [cmd, info] of Object.entries(commands)) {
-    console.log(`  ${cmd.padEnd(8)} ${info.desc}`);
+    console.log(`  ${cmd.padEnd(10)} ${info.desc}`);
   }
   console.log(`
 Examples:
-  npx memvault init
-  npx memvault sync
-  memvault serve
+  memvault init                          # Setup wizard
+  memvault serve                         # Start web server
+  memvault sync                          # Run all sync engines
+  memvault import ~/Downloads/export/    # Import AI conversations
+  memvault import ./chatgpt/ --dry-run   # Preview import
 `);
   process.exit(1);
 }

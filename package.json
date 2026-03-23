@@ -1,11 +1,11 @@
 {
-  "name": "memvault",
+  "name": "@mrchartist/memvault",
   "version": "2.0.0",
-  "mcpName": "io.github.MrChartist/memvault",
+  "mcpName": "io.github.mrchartist/memvault",
   "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client.",
   "bin": {
-    "memvault": "./cli.mjs",
-    "memvault-mcp": "./mcp-server.mjs"
+    "memvault": "cli.mjs",
+    "memvault-mcp": "mcp-server.mjs"
   },
   "type": "module",
   "main": "server.mjs",
@@ -37,7 +37,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MrChartist/memvault.git"
+    "url": "git+https://github.com/MrChartist/memvault.git"
   },
   "homepage": "https://github.com/MrChartist/memvault#readme",
   "dependencies": {

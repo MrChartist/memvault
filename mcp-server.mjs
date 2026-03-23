@@ -844,6 +844,253 @@ server.prompt(
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  AI-POWERED TOOLS — Phase 5B
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 📝 vault_capture_prompt — Auto-log prompts from any AI tool
+server.tool(
+  "vault_capture_prompt",
+  "Automatically capture and store the user's prompt/request in the vault. AI clients should call this at the START of every conversation to build a complete prompt history across all AI tools. This creates a searchable log of everything the user has asked ANY AI.",
+  {
+    prompt: z.string().describe("The user's original prompt or request text"),
+    aiTool: z.string().optional().describe("Which AI tool captured this (e.g. 'claude', 'cursor', 'antigravity')"),
+    project: z.string().optional().describe("Related project context, if known"),
+  },
+  async ({ prompt: userPrompt, aiTool, project }) => {
+    const now = new Date().toISOString();
+    const source = aiTool || "unknown-ai";
+    const tags = ["prompt-log", `ai:${source}`, ...(project ? [`project:${project}`] : [])].join(",");
+    const title = `[Prompt:${source}] ${userPrompt.slice(0, 80)}${userPrompt.length > 80 ? "..." : ""}`;
+
+    const content = [
+      `## 📝 Prompt Captured from ${source}`,
+      "",
+      userPrompt,
+      "",
+      "---",
+      `**AI Tool**: ${source}`,
+      project ? `**Project**: ${project}` : "",
+      `**Captured**: ${now}`,
+    ].filter(Boolean).join("\n");
+
+    const { API_URL } = await import("./config.mjs");
+    try {
+      const res = await fetch(`${API_URL}/add`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "conversation", source: `prompt-${source}`, title, content, tags }),
+      });
+      const result = await res.json();
+      if (result.ok) {
+        return { content: [{ type: "text", text: `📝 Prompt logged from ${source}` }] };
+      }
+    } catch { /* API not running */ }
+
+    return { content: [{ type: "text", text: "⚠️ Could not log prompt — MemVault API not running" }] };
+  }
+);
+
+// 💬 vault_log_conversation — Save current AI conversation
+server.tool(
+  "vault_log_conversation",
+  "Save a summary of the current AI conversation to the vault. Call this when the user says 'save this conversation' or at the end of an important session. Builds persistent memory across AI tools.",
+  {
+    summary: z.string().describe("A concise summary of the conversation"),
+    keyPoints: z.string().optional().describe("Key decisions, insights, or outcomes from the conversation"),
+    aiTool: z.string().optional().describe("Which AI tool this conversation was with"),
+    project: z.string().optional().describe("Related project name"),
+  },
+  async ({ summary, keyPoints, aiTool, project }) => {
+    const now = new Date().toISOString();
+    const source = aiTool || "ai-conversation";
+    const tags = ["conversation-log", `ai:${source}`, ...(project ? [`project:${project}`] : [])].join(",");
+    const title = `[Conv:${source}] ${summary.slice(0, 80)}`;
+
+    const content = [
+      `## 💬 Conversation Log — ${source}`,
+      "",
+      `**Summary**: ${summary}`,
+      "",
+      keyPoints ? `### Key Points\n${keyPoints}` : "",
+      "",
+      "---",
+      project ? `**Project**: ${project}` : "",
+      `**Logged**: ${now}`,
+    ].filter(Boolean).join("\n");
+
+    const { API_URL } = await import("./config.mjs");
+    try {
+      const res = await fetch(`${API_URL}/add`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "conversation", source, title, content, tags }),
+      });
+      const result = await res.json();
+      if (result.ok) {
+        return { content: [{ type: "text", text: `💬 Conversation saved to vault!` }] };
+      }
+    } catch { /* API not running */ }
+
+    return { content: [{ type: "text", text: "⚠️ Could not save — MemVault API not running" }] };
+  }
+);
+
+// 🧠 vault_ai_summarize — AI-powered summarization
+server.tool(
+  "vault_ai_summarize",
+  "Use AI (Gemini) to generate a smart summary of vault entries matching a query. Highlights key points, decisions, and action items.",
+  {
+    query: z.string().describe("Search query to find entries to summarize"),
+    limit: z.number().optional().describe("Max entries to include (default: 5)"),
+  },
+  async ({ query, limit }) => {
+    try {
+      const { isAIEnabled, summarize } = await import("./ai-engine.mjs");
+      if (!isAIEnabled()) {
+        return { content: [{ type: "text", text: "⚠️ AI features not configured. Add your Gemini API key to ~/.memvaultrc.json under ai.apiKey" }] };
+      }
+
+      const rows = queryAll(
+        `SELECT title, content FROM items_fts WHERE items_fts MATCH '${query.replace(/'/g, "''")}' ORDER BY rank LIMIT ${limit || 5};`
+      );
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text", text: `No entries found for "${query}"` }] };
+      }
+
+      const combinedText = rows.map(r => `## ${r.title}\n${r.content}`).join("\n\n---\n\n");
+      const summary = await summarize(combinedText, { context: `Search: ${query}` });
+
+      return { content: [{ type: "text", text: `🧠 **AI Summary for "${query}"**\n\n${summary}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ AI error: ${e.message}` }] };
+    }
+  }
+);
+
+// 📊 vault_ai_insights — Pattern discovery
+server.tool(
+  "vault_ai_insights",
+  "Use AI to analyze your vault data and discover patterns, productivity insights, and focus areas. Great for weekly reviews.",
+  {
+    timeframe: z.enum(["today", "this week", "this month"]).optional().describe("Time period to analyze (default: this week)"),
+    topic: z.string().optional().describe("Optional topic to focus insights on"),
+  },
+  async ({ timeframe, topic }) => {
+    try {
+      const { isAIEnabled, generateInsights } = await import("./ai-engine.mjs");
+      if (!isAIEnabled()) {
+        return { content: [{ type: "text", text: "⚠️ AI not configured. Add Gemini API key to ~/.memvaultrc.json" }] };
+      }
+
+      const tf = timeframe || "this week";
+      let dateFilter = "";
+      const now = new Date();
+      if (tf === "today") {
+        dateFilter = `AND created_at LIKE '${now.toISOString().split("T")[0]}%'`;
+      } else if (tf === "this week") {
+        const weekAgo = new Date(now - 7 * 86400000).toISOString().split("T")[0];
+        dateFilter = `AND created_at >= '${weekAgo}'`;
+      } else {
+        const monthAgo = new Date(now - 30 * 86400000).toISOString().split("T")[0];
+        dateFilter = `AND created_at >= '${monthAgo}'`;
+      }
+
+      const topicFilter = topic ? `AND (title LIKE '%${topic}%' OR content LIKE '%${topic}%')` : "";
+
+      const rows = queryAll(
+        `SELECT type, title, substr(content, 1, 200) as snippet, tags, created_at FROM items WHERE 1=1 ${dateFilter} ${topicFilter} ORDER BY created_at DESC LIMIT 50;`
+      );
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text", text: `No entries found for ${tf}` }] };
+      }
+
+      const insights = await generateInsights(rows, { timeframe: tf });
+      return { content: [{ type: "text", text: insights }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ AI error: ${e.message}` }] };
+    }
+  }
+);
+
+// 🔍 vault_smart_search — Semantic search with AI re-ranking
+server.tool(
+  "vault_smart_search",
+  "AI-powered semantic search — understands the INTENT of your query, not just keywords. Uses Gemini to re-rank FTS results by true relevance.",
+  {
+    query: z.string().describe("Natural language search query"),
+    limit: z.number().optional().describe("Max results (default: 10)"),
+  },
+  async ({ query, limit }) => {
+    try {
+      const { isAIEnabled, semanticRerank } = await import("./ai-engine.mjs");
+
+      // First: standard FTS search
+      const rows = queryAll(
+        `SELECT id, type, source, title, substr(content, 1, 300) as snippet, tags, created_at
+         FROM items_fts WHERE items_fts MATCH '${query.replace(/'/g, "''")}'
+         ORDER BY rank LIMIT ${(limit || 10) * 2};`
+      );
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text", text: `No results for "${query}"` }] };
+      }
+
+      // If AI enabled, re-rank semantically
+      let finalRows = rows;
+      if (isAIEnabled()) {
+        try {
+          finalRows = await semanticRerank(query, rows);
+        } catch { /* fallback to FTS order */ }
+      }
+
+      const maxResults = limit || 10;
+      const output = finalRows.slice(0, maxResults).map((r, i) => {
+        const date = r.created_at?.split("T")[0] || "?";
+        return `${i + 1}. **${r.title}** [${r.type}] — ${date}\n   ${(r.snippet || "").slice(0, 150)}...`;
+      }).join("\n\n");
+
+      const aiLabel = isAIEnabled() ? " (AI-ranked)" : "";
+      return { content: [{ type: "text", text: `🔍 **Smart Search${aiLabel}**: "${query}"\n\n${output}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ Search error: ${e.message}` }] };
+    }
+  }
+);
+
+// 📰 vault_weekly_digest — AI-generated weekly summary
+server.tool(
+  "vault_weekly_digest",
+  "Generate an AI-powered weekly digest of all your vault activity — projects, conversations, insights, and recommended actions.",
+  {},
+  async () => {
+    try {
+      const { isAIEnabled, weeklyDigest } = await import("./ai-engine.mjs");
+      if (!isAIEnabled()) {
+        return { content: [{ type: "text", text: "⚠️ AI not configured. Add Gemini API key to ~/.memvaultrc.json" }] };
+      }
+
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+      const rows = queryAll(
+        `SELECT type, title, substr(content, 1, 200) as content, tags, created_at
+         FROM items WHERE created_at >= '${weekAgo}'
+         ORDER BY created_at DESC LIMIT 50;`
+      );
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text", text: "No activity found this week!" }] };
+      }
+
+      const digest = await weeklyDigest(rows);
+      return { content: [{ type: "text", text: digest }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ AI error: ${e.message}` }] };
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  START SERVER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -854,3 +1101,4 @@ await server.connect(transport);
 process.stderr.write(`[MemVault MCP] Server started — stdio transport\n`);
 process.stderr.write(`[MemVault MCP] VAULT_ROOT=${VAULT_ROOT}\n`);
 process.stderr.write(`[MemVault MCP] DB_PATH=${DB_PATH}\n`);
+
