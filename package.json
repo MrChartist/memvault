@@ -1,7 +1,8 @@
 {
   "name": "memvault",
-  "version": "1.0.0",
-  "description": "Self-hosted personal knowledge vault — capture AI agent work, diary entries, and conversations with full-text search.",
+  "version": "2.0.0",
+  "mcpName": "io.github.MrChartist/memvault",
+  "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client.",
   "bin": {
     "memvault": "./cli.mjs",
     "memvault-mcp": "./mcp-server.mjs"

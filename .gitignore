@@ -35,6 +35,10 @@ config.local.*
 sync-output/
 .sync-state/
 
+# MCP Publisher binary
+mcp-publisher.exe
+mcp-publisher.tar.gz
+
 # ── OS artefacts ─────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
