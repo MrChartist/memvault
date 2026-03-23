@@ -390,7 +390,7 @@ node vault.mjs worklog "Fixed CORS headers in API server"
 - [x] **Phase 3** — Smart Context Engine (auto-tag, relevance, dedup, memory)
 - [x] **Phase 4** — CLI Wizard & Configuration
 - [x] **Phase 5** — AI Intelligence (Gemini + Importers for ChatGPT, Claude, Gemini, Perplexity)
-- [ ] **Phase 6** — Auto-start on boot (Task Scheduler / systemd / launchd)
+- [x] **Phase 6** — Auto-start on boot (Native Windows VBS in Startup + SchTasks)
 - [ ] **Phase 7** — Ollama integration for local AI summarization
 
 ---
