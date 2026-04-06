@@ -1,19 +1,22 @@
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:1a1a2e,100:6366f1&height=180&section=header&text=MemVault&fontSize=52&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=Your%20AI's%20Persistent%20Memory%20Layer&descSize=16&descAlignY=55&descColor=8b5cf6" width="100%" />
+
 <p align="center">
-  <img src="docs/images/hero-banner.png" alt="MemVault — Your AI's Persistent Memory Layer" width="100%">
+  <img src="docs/images/hero-banner.png" alt="MemVault -- Your AI's Persistent Memory Layer" width="100%">
 </p>
 
-<h1 align="center">MemVault</h1>
-
 <p align="center">
-  <strong>Your AI's Persistent Memory Layer</strong><br>
   A self-hosted MCP server that gives Claude, Cursor, and every AI tool<br>
-  persistent memory about <em>you</em> — your code, projects, habits, and preferences.
+  persistent memory about <em>you</em> -- your code, projects, habits, and preferences.
 </p>
 
 <p align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/Get%20Started-2%20min-brightgreen?style=for-the-badge" alt="Get Started"></a>
-  <a href="https://github.com/MrChartist/memvault/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue?style=for-the-badge" alt="MIT License"></a>
-  <a href="#-mcp-integration"><img src="https://img.shields.io/badge/MCP-Compatible-purple?style=for-the-badge" alt="MCP Compatible"></a>
+  Built by <a href="https://github.com/MrChartist"><strong>Mr. Chartist</strong></a> | Part of the <a href="https://mrchartist.com">Mr. Chartist Ecosystem</a>
+</p>
+
+<p align="center">
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/Get%20Started-2%20min-6366f1?style=for-the-badge" alt="Get Started"></a>
+  <a href="https://github.com/MrChartist/memvault/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
+  <a href="#-mcp-integration"><img src="https://img.shields.io/badge/MCP-Compatible-8b5cf6?style=for-the-badge" alt="MCP Compatible"></a>
   <img src="https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
 </p>
 
@@ -414,5 +417,10 @@ MIT © [Rohit](https://github.com/MrChartist)
 ---
 
 <p align="center">
-  <strong>Built with ❤️ for developers who want their AI to actually understand them.</strong>
+  <b>Made with care by <a href="https://github.com/MrChartist">Mr. Chartist</a></b><br>
+  <i>Built for developers who want their AI to actually understand them.</i><br><br>
+  <a href="https://mrchartist.com"><img src="https://img.shields.io/badge/mrchartist.com-6366f1?style=flat-square&logo=safari&logoColor=white" alt="Website"/></a>
+  <a href="https://github.com/MrChartist"><img src="https://img.shields.io/badge/More_Projects-0d1117?style=flat-square&logo=github&logoColor=white" alt="GitHub"/></a>
 </p>
+
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:1a1a2e,100:6366f1&height=100&section=footer" width="100%" />
