@@ -9,6 +9,9 @@
   },
   "type": "module",
   "main": "server.mjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.mjs",
     "mcp": "node mcp-server.mjs",

@@ -17,7 +17,7 @@
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Get%20Started-2%20min-6366f1?style=for-the-badge" alt="Get Started"></a>
   <a href="https://github.com/MrChartist/memvault/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
   <a href="#-mcp-integration"><img src="https://img.shields.io/badge/MCP-Compatible-8b5cf6?style=for-the-badge" alt="MCP Compatible"></a>
-  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
 </p>
 
 ---
@@ -110,7 +110,7 @@ A sleek dark-mode dashboard with:
 
 ### Prerequisites
 
-- **Node.js** 18+ ([download](https://nodejs.org))
+- **Node.js** 20+ ([download](https://nodejs.org))
 - **Git** (for sync-git)
 
 ### Installation

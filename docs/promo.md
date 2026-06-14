@@ -49,7 +49,7 @@ One of the biggest pain points I have with AI is that every new session starts w
 It gives your AI 20 different tools, including `vault_smart_search`, `vault_capture_prompt` (auto-logs what you ask), and `vault_remember` (lets the AI save facts for the future).
 
 **How to try it:**
-Requires Node.js 18+. Just run:
+Requires Node.js 20+. Just run:
 `npx @mrchartist/memvault init`
 
 Repo: [GitHub Link](https://github.com/MrChartist/memvault)
