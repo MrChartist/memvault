@@ -1,14 +1,17 @@
 {
   "name": "@mrchartist/memvault",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "mcpName": "io.github.mrchartist/memvault",
-  "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client.",
+  "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client. Backs up to Google Drive and bridges to other AI MCP servers.",
   "bin": {
     "memvault": "cli.mjs",
     "memvault-mcp": "mcp-server.mjs"
   },
   "type": "module",
   "main": "server.mjs",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.mjs",
     "mcp": "node mcp-server.mjs",
@@ -19,6 +22,10 @@
     "sync:files": "node sync-files.mjs",
     "sync:system": "node sync-system.mjs",
     "sync:all": "node sync-all.mjs",
+    "backup": "node storage.mjs backup",
+    "backup:list": "node storage.mjs list",
+    "bridge": "node mcp-bridge.mjs list",
+    "bridge:sync": "node mcp-bridge.mjs sync",
     "dev": "node --watch server.mjs",
     "test": "vitest run"
   },

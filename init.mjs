@@ -2,7 +2,8 @@
 /**
  * init.mjs — MemVault Setup Wizard
  * ─────────────────────────────────────────────────────────────────────────────
- * Interactive CLI prompt to configure ~/.memvaultrc.json
+ * Interactive CLI prompt to configure ~/.memvaultrc.json — vault location,
+ * capture engines, AI intelligence, Google Drive backup, and MCP bridges.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -11,72 +12,120 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
-const question = (query) => new Promise((resolve) => rl.question(query, resolve));
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
+const yes = (answer, dflt = true) => {
+  const a = (answer || "").trim().toLowerCase();
+  if (!a) return dflt;
+  return a === "y" || a === "yes";
+};
 
 async function main() {
   console.log("🗄️  MemVault Setup Wizard\n");
+  console.log("This configures your local MemVault installation (~/.memvaultrc.json).\n");
 
   const HOME = os.homedir();
-  const defaultConfigPath = path.join(HOME, ".memvaultrc.json");
-  const defaultVaultData = path.join(HOME, ".memvault", "data");
+  const configPath = path.join(HOME, ".memvaultrc.json");
+  const existing = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, "utf8")) : {};
+  const defaultVaultData = existing.vaultRoot || path.join(HOME, ".memvault", "data");
 
-  console.log("This will configure your local MemVault installation.\n");
+  // ── 1. Vault location ──────────────────────────────────────────────────────
+  const vaultRoot =
+    (await ask(`1. Where to store your vault data?\n   [default: ${defaultVaultData}]: `)).trim() || defaultVaultData;
 
-  // Vault Root
-  const vaultRootAns = await question(`1. Where do you want to store your vault data?\n   [default: ${defaultVaultData}]: `);
-  const vaultRoot = vaultRootAns.trim() || defaultVaultData;
-
+  // ── 2. Capture engines ─────────────────────────────────────────────────────
   console.log("\n2. Which auto-capture engines do you want to enable?");
-  const gitAns = await question("   - Git commits? (y/n) [y]: ");
-  const vscodeAns = await question("   - VS Code activity? (y/n) [y]: ");
-  const sysAns = await question("   - System environment? (y/n) [y]: ");
-  const filesAns = await question("   - Recent file changes? (y/n) [y]: ");
-  
-  let gitDirs = [HOME];
-  if (gitAns.toLowerCase() !== "n") {
-    const dirAns = await question(`\n   Let's configure Git. Which root directory contains your code projects?\n   We'll scan this folder up to 3 levels deep.\n   [default: ${HOME}]: `);
+  const gitOn = yes(await ask("   - Git commits?        (y/n) [y]: "));
+  const vscodeOn = yes(await ask("   - VS Code activity?   (y/n) [y]: "));
+  const sysOn = yes(await ask("   - System environment? (y/n) [y]: "));
+  const filesOn = yes(await ask("   - Recent file changes?(y/n) [y]: "));
+  const browserOn = yes(await ask("   - Browser history?    (y/n) [n]: "), false);
+  const clipOn = yes(await ask("   - Clipboard (daemon)? (y/n) [n]: "), false);
+
+  let gitDirs = existing.sync?.gitDirs || [HOME];
+  if (gitOn) {
+    const dirAns = await ask(`\n   Which root folder holds your code projects? (scanned 3 levels deep)\n   [default: ${gitDirs[0]}]: `);
     if (dirAns.trim()) gitDirs = [dirAns.trim()];
   }
 
+  // ── 3. AI intelligence (Gemini) ────────────────────────────────────────────
+  console.log("\n3. AI intelligence layer (Gemini) — optional, powers smart search & digests.");
+  const aiKey = (await ask("   Gemini API key (Enter to skip): ")).trim();
+
+  // ── 4. Google Drive backup ─────────────────────────────────────────────────
+  console.log("\n4. Storage & backup — your vault is always saved locally. Add Google Drive?");
+  const gdriveFolderOn = yes(await ask("   - Mirror to a Google Drive for Desktop folder? (y/n) [n]: "), false);
+  let gdriveFolderPath = existing.storage?.gdriveFolder?.path || "";
+  if (gdriveFolderOn) {
+    gdriveFolderPath =
+      (await ask(`   Path to your synced Drive folder (e.g. ${path.join(HOME, "Google Drive")}): `)).trim() || gdriveFolderPath;
+  }
+  const gdriveApiOn = yes(await ask("   - Upload backups via the Google Drive API (OAuth)? (y/n) [n]: "), false);
+  let gdriveApi = existing.storage?.gdriveApi || {};
+  if (gdriveApiOn) {
+    console.log("   (See docs/google-drive.md to create OAuth credentials.)");
+    gdriveApi = {
+      clientId: (await ask("   OAuth Client ID: ")).trim() || gdriveApi.clientId || "",
+      clientSecret: (await ask("   OAuth Client Secret: ")).trim() || gdriveApi.clientSecret || "",
+      refreshToken: (await ask("   OAuth Refresh Token: ")).trim() || gdriveApi.refreshToken || "",
+      folderId: (await ask("   Drive folder ID (Enter for My Drive root): ")).trim() || gdriveApi.folderId || "",
+    };
+  }
+
+  // ── 5. MCP bridges ─────────────────────────────────────────────────────────
+  console.log("\n5. Connect to other AI MCP servers (bridges) so all your AI tools share memory.");
+  console.log("   You can add these later in ~/.memvaultrc.json under \"mcpBridges\". (See docs/mcp-bridge.md)");
+
+  // ── Build config ───────────────────────────────────────────────────────────
   const config = {
+    ...existing,
     vaultRoot,
-    port: 7799,
+    port: existing.port || 7799,
     sync: {
       gitDirs,
-      vscodeEnabled: vscodeAns.toLowerCase() !== "n",
-      systemEnabled: sysAns.toLowerCase() !== "n",
-      filesEnabled: filesAns.toLowerCase() !== "n",
-      clipboardEnabled: false, // Default off for privacy
-    }
+      vscodeEnabled: vscodeOn,
+      systemEnabled: sysOn,
+      filesEnabled: filesOn,
+      browserEnabled: browserOn,
+      clipboardEnabled: clipOn,
+      antigravityEnabled: existing.sync?.antigravityEnabled ?? false,
+    },
+    ai: {
+      enabled: !!aiKey || existing.ai?.enabled || false,
+      apiKey: aiKey || existing.ai?.apiKey || "",
+      model: existing.ai?.model || "gemini-2.0-flash",
+    },
+    storage: {
+      local: { enabled: true },
+      gdriveFolder: { enabled: gdriveFolderOn, path: gdriveFolderPath },
+      gdriveApi: { enabled: gdriveApiOn, ...gdriveApi },
+      keepLocalBackups: existing.storage?.keepLocalBackups ?? 20,
+    },
+    mcpBridges: existing.mcpBridges || [],
   };
 
   try {
-    fs.writeFileSync(defaultConfigPath, JSON.stringify(config, null, 2), "utf8");
-    console.log(`\n✅ Settings saved to ${defaultConfigPath}`);
-    
-    // Create vault dir
-    if (!fs.existsSync(vaultRoot)) {
-      fs.mkdirSync(vaultRoot, { recursive: true });
-      fs.mkdirSync(path.join(vaultRoot, "db"), { recursive: true });
-      console.log(`✅ Created vault directory at ${vaultRoot}`);
-    }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+    console.log(`\n✅ Settings saved to ${configPath}`);
 
-    console.log(`\n🎉 MemVault is ready!`);
-    console.log(`\nNext steps:`);
-    console.log(`  1. Start the UI:       npx memvault serve`);
-    console.log(`  2. Sync data now:      npx memvault sync`);
-    console.log(`  3. Provide MCP context to AI clients.`);
-    console.log(`     Add the following to your Claude/Cursor MCP config:`);
+    for (const sub of ["db", "entries", "conversations", "worklogs", "backups"]) {
+      fs.mkdirSync(path.join(vaultRoot, sub), { recursive: true });
+    }
+    console.log(`✅ Vault directory ready at ${vaultRoot}`);
+
+    console.log(`\n🎉 MemVault is ready!\n`);
+    console.log(`Next steps:`);
+    console.log(`  1. Start the UI:       npx memvault serve   → http://localhost:${config.port}`);
+    console.log(`  2. Capture your data:  npx memvault sync`);
+    console.log(`  3. Back up:            npx memvault backup`);
+    console.log(`  4. Bridge other AIs:   npx memvault bridge list`);
+    console.log(`\n  Add this to your Claude/Cursor MCP config:`);
     console.log(`\n{
   "mcpServers": {
     "memvault": {
       "command": "npx",
-      "args": ["memvault", "mcp"]
+      "args": ["memvault", "mcp"],
+      "env": { "VAULT_ROOT": ${JSON.stringify(vaultRoot)} }
     }
   }
 }\n`);

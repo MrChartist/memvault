@@ -1093,6 +1093,112 @@ server.tool(
 );
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  STORAGE & BACKUP — local + Google Drive
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 💾 vault_backup — back up the vault to local + Google Drive
+server.tool(
+  "vault_backup",
+  "Back up the entire vault (database + entries) to all enabled storage backends — a local timestamped copy plus Google Drive (folder mirror and/or Drive API). Use when the user asks to back up, save, or sync their data to Google Drive.",
+  {},
+  async () => {
+    try {
+      const { backupVault, enabledBackends } = await import("./storage.mjs");
+      const results = await backupVault();
+      const lines = results.map((r) =>
+        r.ok ? `- ✅ **${r.backend}** → ${r.location}` : `- ❌ **${r.backend}** — ${r.error}`
+      );
+      return {
+        content: [{
+          type: "text",
+          text: `## 💾 Backup complete\n\nBackends: ${enabledBackends().join(", ")}\n\n${lines.join("\n")}`,
+        }],
+      };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ Backup error: ${e.message}` }] };
+    }
+  }
+);
+
+// 📜 vault_backups — list local backups available for restore
+server.tool(
+  "vault_backups",
+  "List local timestamped vault backups that are available to restore.",
+  {},
+  async () => {
+    const { listLocalBackups } = await import("./storage.mjs");
+    const backups = listLocalBackups();
+    if (backups.length === 0) {
+      return { content: [{ type: "text", text: "No local backups yet. Run vault_backup to create one." }] };
+    }
+    const lines = backups.map((b) => `- \`${b.name}\` — ${(b.size / 1024).toFixed(1)} KB, ${b.modified}`);
+    return { content: [{ type: "text", text: `## 📜 Local backups (${backups.length})\n\n${lines.join("\n")}` }] };
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MCP BRIDGES — connect to OTHER AI tools' MCP servers
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 🔌 vault_bridge_list — inspect connected MCP bridges
+server.tool(
+  "vault_bridge_list",
+  "List the other AI MCP servers MemVault is bridged to (configured under mcpBridges) and the tools/resources each one exposes. Use to see which external AI memories/tools are connected.",
+  {},
+  async () => {
+    try {
+      const { enabledBridges, inspectBridge } = await import("./mcp-bridge.mjs");
+      const bridges = enabledBridges();
+      if (bridges.length === 0) {
+        return { content: [{ type: "text", text: "No MCP bridges configured. Add them under \"mcpBridges\" in ~/.memvaultrc.json." }] };
+      }
+      const blocks = [];
+      for (const b of bridges) {
+        try {
+          const info = await inspectBridge(b);
+          blocks.push(`### 🔌 ${info.name}\n- Tools: ${info.tools.map((t) => t.name).join(", ") || "(none)"}\n- Resources: ${info.resources.map((r) => r.name || r.uri).join(", ") || "(none)"}`);
+        } catch (e) {
+          blocks.push(`### 🔌 ${b.name}\n- ❌ ${e.message}`);
+        }
+      }
+      return { content: [{ type: "text", text: `## Connected MCP Bridges\n\n${blocks.join("\n\n")}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ Bridge error: ${e.message}` }] };
+    }
+  }
+);
+
+// 🔄 vault_bridge_sync — pull data from other AI MCP servers into the vault
+server.tool(
+  "vault_bridge_sync",
+  "Pull data from connected AI MCP servers into the vault so all your AI tools share one memory. Optionally target a single bridge by name; otherwise syncs all enabled bridges.",
+  {
+    name: z.string().optional().describe("Name of a specific bridge to sync. Omit to sync all enabled bridges."),
+  },
+  async ({ name }) => {
+    try {
+      const { enabledBridges, syncBridge } = await import("./mcp-bridge.mjs");
+      const targets = name ? enabledBridges().filter((b) => b.name === name) : enabledBridges();
+      if (targets.length === 0) {
+        return { content: [{ type: "text", text: name ? `No enabled bridge named "${name}".` : "No MCP bridges configured." }] };
+      }
+      const lines = [];
+      for (const b of targets) {
+        try {
+          const r = await syncBridge(b);
+          lines.push(`- ✅ **${b.name}** — ingested ${r.ingested} item(s)${r.errors.length ? `, ${r.errors.length} error(s)` : ""}`);
+        } catch (e) {
+          lines.push(`- ❌ **${b.name}** — ${e.message}`);
+        }
+      }
+      return { content: [{ type: "text", text: `## 🔄 Bridge sync\n\n${lines.join("\n")}` }] };
+    } catch (e) {
+      return { content: [{ type: "text", text: `⚠️ Bridge error: ${e.message}` }] };
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  START SERVER
 // ═══════════════════════════════════════════════════════════════════════════
 

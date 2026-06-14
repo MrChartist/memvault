@@ -19,6 +19,8 @@ const commands = {
   mcp:     { script: "mcp-server.mjs", desc: "Start the MCP stdio server" },
   sync:    { script: "sync-all.mjs",   desc: "Run all enabled sync engines" },
   import:  { script: "import-all.mjs", desc: "Import AI conversations (ChatGPT, Claude, Gemini, Perplexity)" },
+  backup:  { script: "storage.mjs",    desc: "Back up the vault to local + Google Drive" },
+  bridge:  { script: "mcp-bridge.mjs", desc: "List/sync other AI MCP servers (list|sync|call)" },
   vault:   { script: "vault.mjs",      desc: "CLI tool to add/search items" },
 };
 
@@ -38,7 +40,9 @@ Examples:
   memvault serve                         # Start web server
   memvault sync                          # Run all sync engines
   memvault import ~/Downloads/export/    # Import AI conversations
-  memvault import ./chatgpt/ --dry-run   # Preview import
+  memvault backup                        # Back up to local + Google Drive
+  memvault bridge list                   # Inspect connected AI MCP servers
+  memvault bridge sync                   # Pull other AI memories into the vault
 `);
   process.exit(1);
 }

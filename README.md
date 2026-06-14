@@ -17,7 +17,7 @@
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Get%20Started-2%20min-6366f1?style=for-the-badge" alt="Get Started"></a>
   <a href="https://github.com/MrChartist/memvault/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
   <a href="#-mcp-integration"><img src="https://img.shields.io/badge/MCP-Compatible-8b5cf6?style=for-the-badge" alt="MCP Compatible"></a>
-  <img src="https://img.shields.io/badge/Node.js-18+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
 </p>
 
 ---
@@ -53,13 +53,14 @@ AI:     "I found 3 relevant entries. The auth bug was in middleware/session.js..
 <tr>
 <td width="50%">
 
-### 🧠 20 MCP Tools
+### 🧠 24 MCP Tools
 Your AI gets superpowers:
 - **`vault_smart_search`** — Intent-driven semantic search
 - **`vault_smart_context`** — Relevance-ranked results
 - **`vault_capture_prompt`** — Auto-logs every prompt to any AI tool
-- **`vault_project_context`** — Full project intelligence
-- ...and 16 more tools
+- **`vault_backup`** — Back up to Google Drive + local
+- **`vault_bridge_sync`** — Pull memory from other AI MCP servers
+- ...and 19 more tools
 
 </td>
 <td width="50%">
@@ -77,6 +78,12 @@ Reads everything from your computer:
 </td>
 </tr>
 </table>
+
+### ☁️ Storage everywhere &nbsp;•&nbsp; 🔌 One memory across every AI
+
+- **Local-first** SQLite vault, always on your machine
+- **Google Drive backup** — folder mirror *and/or* Drive API ([guide](docs/google-drive.md))
+- **MCP bridges** — MemVault connects OUT to other AI tools' MCP servers, pulls their context, and stores it in your vault so every AI shares one brain ([guide](docs/mcp-bridge.md))
 
 ### 🏗️ Architecture
 
@@ -103,7 +110,7 @@ A sleek dark-mode dashboard with:
 
 ### Prerequisites
 
-- **Node.js** 18+ ([download](https://nodejs.org))
+- **Node.js** 20+ ([download](https://nodejs.org))
 - **Git** (for sync-git)
 
 ### Installation
@@ -222,7 +229,16 @@ Add to `~/.gemini/antigravity/mcp_config.json`:
 
 ---
 
-## 🛠️ All 20 MCP Tools
+## 🛠️ All 24 MCP Tools
+
+### Phase 6: Storage & MCP Bridges
+
+| Tool | Category | Description |
+|------|----------|-------------|
+| `vault_backup` | ☁️ Storage | Back up the vault to local + Google Drive (folder mirror & API) |
+| `vault_backups` | ☁️ Storage | List local backups available to restore |
+| `vault_bridge_list` | 🔌 Bridge | List connected AI MCP servers and their tools/resources |
+| `vault_bridge_sync` | 🔌 Bridge | Pull data from other AI MCP servers into the vault |
 
 ### Phase 5B: AI Intelligence Layer (Gemini-Powered)
 
@@ -284,9 +300,11 @@ memvault import ./perplexity-export/
 
 ```
 memvault/
-├── mcp-server.mjs         # MCP server (20 tools, 5 resources, 3 prompts)
+├── mcp-server.mjs         # MCP server (24 tools, 5 resources, 3 prompts)
 ├── ai-engine.mjs          # Gemini API intelligence (summarization, insights, search)
 ├── context-engine.mjs     # Smart context: auto-tag, score, dedup, digest
+├── storage.mjs            # Storage backends: local backups + Google Drive
+├── mcp-bridge.mjs         # Outbound MCP client — connect to other AI MCP servers
 ├── server.mjs             # Express API + web UI server
 ├── config.mjs             # Centralized configuration (~/.memvaultrc.json)
 ├── cli.mjs                # CLI entry point (npx memvault <cmd>)
@@ -335,9 +353,30 @@ MemVault uses `~/.memvaultrc.json` for per-user settings. Run `node init.mjs` to
     "enabled": true,
     "apiKey": "YOUR_GEMINI_API_KEY",
     "model": "gemini-2.0-flash"
-  }
+  },
+  "storage": {
+    "local": { "enabled": true },
+    "gdriveFolder": { "enabled": true, "path": "C:/Users/you/My Drive" },
+    "gdriveApi": {
+      "enabled": false,
+      "clientId": "", "clientSecret": "", "refreshToken": "", "folderId": ""
+    },
+    "keepLocalBackups": 20
+  },
+  "mcpBridges": [
+    {
+      "name": "openmemory",
+      "command": "npx",
+      "args": ["-y", "openmemory"],
+      "enabled": true,
+      "importTool": "list_memories"
+    }
+  ]
 }
 ```
+
+> **☁️ Google Drive** — see [docs/google-drive.md](docs/google-drive.md).
+> **🔌 MCP bridges** — see [docs/mcp-bridge.md](docs/mcp-bridge.md).
 
 ### Environment Variables
 
@@ -354,8 +393,9 @@ MemVault is **local-first** and **privacy-focused**:
 
 - ⚡ **stdio transport** — MCP communicates via stdin/stdout, never over the network
 - 🔐 **Encrypted secrets** — API keys and passwords are AES-256-GCM encrypted
-- 🏠 **No cloud** — All data stays on your machine, in your SQLite database
-- 🚫 **No telemetry** — Zero analytics, zero tracking, zero network calls
+- 🏠 **Local-first** — All data lives on your machine in your SQLite database
+- ☁️ **Cloud is opt-in** — Google Drive backup only runs if you enable it; the Drive API uses the narrow `drive.file` scope (MemVault sees only files it created)
+- 🚫 **No telemetry** — Zero analytics, zero tracking. Network calls only to backends *you* configure (your Gemini key, your Google Drive)
 - 📋 **Clipboard opt-in** — Clipboard capture is disabled by default
 
 ---
@@ -379,6 +419,14 @@ npm run sync:system         # Capture system snapshot
 npm run sync:files          # Scan recent file changes
 npm run sync:clipboard      # Start clipboard daemon
 
+# Storage & backup
+npm run backup              # Back up vault to local + Google Drive
+npm run backup:list         # List local backups
+
+# MCP bridges (connect to other AI MCP servers)
+npm run bridge              # Inspect connected bridges
+npm run bridge:sync         # Pull other AI memories into the vault
+
 # CLI vault
 node vault.mjs diary "Today I shipped the new auth system"
 node vault.mjs worklog "Fixed CORS headers in API server"
@@ -394,7 +442,8 @@ node vault.mjs worklog "Fixed CORS headers in API server"
 - [x] **Phase 4** — CLI Wizard & Configuration
 - [x] **Phase 5** — AI Intelligence (Gemini + Importers for ChatGPT, Claude, Gemini, Perplexity)
 - [x] **Phase 6** — Auto-start on boot (Native Windows VBS in Startup + SchTasks)
-- [ ] **Phase 7** — Ollama integration for local AI summarization
+- [x] **Phase 7** — Google Drive backup (folder mirror + Drive API) & MCP bridges to other AI servers
+- [ ] **Phase 8** — Ollama integration for local AI summarization
 
 ---
 
