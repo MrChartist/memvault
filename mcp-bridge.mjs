@@ -33,9 +33,49 @@ import path from "path";
 import initSqlJs from "sql.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { API_URL, MCP_BRIDGES, VAULT_ROOT } from "./config.mjs";
+import { API_URL, MCP_BRIDGES, VAULT_ROOT, loadUserConfig, saveUserConfig } from "./config.mjs";
 
 const CONNECT_TIMEOUT_MS = 20000;
+
+// ─── Preset bridges ─────────────────────────────────────────────────────────
+// A curated catalog of popular, local, no-API-key AI memory MCP servers so
+// `memvault bridge list` shows useful options out of the box. Enable one with
+// `memvault bridge add <name>` (writes it into ~/.memvaultrc.json).
+export const PRESET_BRIDGES = [
+  {
+    name: "memory",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-memory"],
+    enabled: true,
+    importTool: "read_graph",
+    importArgs: {},
+    description: "Official MCP knowledge-graph memory (local file, no API key).",
+  },
+  {
+    name: "knowledge-graph",
+    command: "npx",
+    args: ["-y", "mcp-knowledge-graph"],
+    enabled: true,
+    importTool: "read_graph",
+    importArgs: {},
+    description: "Persistent knowledge-graph memory across chats (local file, no API key).",
+  },
+];
+
+/** Add a preset bridge to ~/.memvaultrc.json (idempotent). */
+export function addPreset(name) {
+  const preset = PRESET_BRIDGES.find((p) => p.name === name);
+  if (!preset) throw new Error(`Unknown preset "${name}". Available: ${PRESET_BRIDGES.map((p) => p.name).join(", ")}`);
+  const cfg = loadUserConfig();
+  cfg.mcpBridges = cfg.mcpBridges || [];
+  if (cfg.mcpBridges.some((b) => b.name === name)) {
+    return { added: false, name, reason: "already configured" };
+  }
+  const { description, ...entry } = preset; // don't persist the catalog blurb
+  cfg.mcpBridges.push(entry);
+  saveUserConfig(cfg);
+  return { added: true, name };
+}
 
 // ─── Bridge connection ──────────────────────────────────────────────────────
 
@@ -203,24 +243,42 @@ if (isMain) {
   const [cmd, ...rest] = process.argv.slice(2);
   const bridges = enabledBridges();
 
-  const run = async () => {
-    if (bridges.length === 0) {
-      console.log("ℹ️  No MCP bridges configured. Add them under \"mcpBridges\" in ~/.memvaultrc.json");
-      return;
+  const showPresets = () => {
+    const configured = new Set((loadUserConfig().mcpBridges || []).map((b) => b.name));
+    const available = PRESET_BRIDGES.filter((p) => !configured.has(p.name));
+    if (available.length) {
+      console.log(`\n📚 Available presets — enable with \`memvault bridge add <name>\`:`);
+      for (const p of available) console.log(`   • ${p.name.padEnd(16)} ${p.description}`);
     }
+  };
 
+  const run = async () => {
     if (!cmd || cmd === "list") {
-      for (const b of bridges) {
-        console.log(`\n🔌 ${b.name}  (${b.command} ${(b.args || []).join(" ")})`);
-        try {
-          const info = await inspectBridge(b);
-          console.log(`   Tools     : ${info.tools.map((t) => t.name).join(", ") || "(none)"}`);
-          console.log(`   Resources : ${info.resources.map((r) => r.name || r.uri).join(", ") || "(none)"}`);
-        } catch (e) {
-          console.log(`   ❌ ${e.message}`);
+      if (bridges.length === 0) {
+        console.log("ℹ️  No MCP bridges enabled yet.");
+      } else {
+        for (const b of bridges) {
+          console.log(`\n🔌 ${b.name}  (${b.command} ${(b.args || []).join(" ")})`);
+          try {
+            const info = await inspectBridge(b);
+            console.log(`   Tools     : ${info.tools.map((t) => t.name).join(", ") || "(none)"}`);
+            console.log(`   Resources : ${info.resources.map((r) => r.name || r.uri).join(", ") || "(none)"}`);
+          } catch (e) {
+            console.log(`   ❌ ${e.message}`);
+          }
         }
       }
+      showPresets();
+    } else if (cmd === "presets") {
+      console.log("📚 Preset AI memory servers:");
+      for (const p of PRESET_BRIDGES) console.log(`   • ${p.name.padEnd(16)} ${p.description}`);
+    } else if (cmd === "add") {
+      const name = rest[0];
+      if (!name) { console.error("Usage: node mcp-bridge.mjs add <preset-name>"); process.exit(1); }
+      const res = addPreset(name);
+      console.log(res.added ? `✅ Added bridge "${name}". Try: memvault bridge sync ${name}` : `ℹ️  "${name}" ${res.reason}.`);
     } else if (cmd === "sync") {
+      if (bridges.length === 0) { console.log("ℹ️  No bridges enabled. Run `memvault bridge add <name>` first."); return; }
       const targetName = rest[0];
       const targets = targetName ? bridges.filter((b) => b.name === targetName) : bridges;
       if (targets.length === 0) { console.error(`Bridge not found: ${targetName}`); process.exit(1); }

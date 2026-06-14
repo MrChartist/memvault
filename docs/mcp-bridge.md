@@ -10,6 +10,26 @@ MemVault works in **both directions**:
 
 ---
 
+## Quick start with presets
+
+MemVault ships a catalog of popular, **local, no-API-key** memory servers so
+bridging works out of the box. List them and enable one in a single command:
+
+```bash
+npx memvault bridge presets        # see the catalog
+npx memvault bridge add memory     # enable the official knowledge-graph memory
+npx memvault bridge sync memory    # pull its memories into your vault
+```
+
+| Preset | Package | Notes |
+|--------|---------|-------|
+| `memory` | `@modelcontextprotocol/server-memory` | Official MCP knowledge-graph memory (local file) |
+| `knowledge-graph` | `mcp-knowledge-graph` | Persistent knowledge graph across chats (local file) |
+
+`bridge add` writes the entry into `~/.memvaultrc.json`; `bridge list` shows any
+remaining presets you haven't enabled yet. The setup wizard (`memvault init`)
+can also enable them for you.
+
 ## Configure bridges
 
 Add a `mcpBridges` array to `~/.memvaultrc.json`. Each entry describes an
