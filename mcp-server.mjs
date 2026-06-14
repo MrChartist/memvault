@@ -1147,10 +1147,11 @@ server.tool(
   {},
   async () => {
     try {
-      const { enabledBridges, inspectBridge } = await import("./mcp-bridge.mjs");
+      const { enabledBridges, inspectBridge, PRESET_BRIDGES } = await import("./mcp-bridge.mjs");
       const bridges = enabledBridges();
+      const presetList = PRESET_BRIDGES.map((p) => `- \`${p.name}\` — ${p.description}`).join("\n");
       if (bridges.length === 0) {
-        return { content: [{ type: "text", text: "No MCP bridges configured. Add them under \"mcpBridges\" in ~/.memvaultrc.json." }] };
+        return { content: [{ type: "text", text: `No MCP bridges enabled yet.\n\n**Available presets** (enable with \`memvault bridge add <name>\`):\n${presetList}` }] };
       }
       const blocks = [];
       for (const b of bridges) {

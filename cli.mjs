@@ -20,7 +20,7 @@ const commands = {
   sync:    { script: "sync-all.mjs",   desc: "Run all enabled sync engines" },
   import:  { script: "import-all.mjs", desc: "Import AI conversations (ChatGPT, Claude, Gemini, Perplexity)" },
   backup:  { script: "storage.mjs",    desc: "Back up the vault to local + Google Drive" },
-  bridge:  { script: "mcp-bridge.mjs", desc: "List/sync other AI MCP servers (list|sync|call)" },
+  bridge:  { script: "mcp-bridge.mjs", desc: "Connect other AI MCP servers (list|presets|add|sync|call)" },
   vault:   { script: "vault.mjs",      desc: "CLI tool to add/search items" },
 };
 

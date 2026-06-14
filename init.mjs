@@ -74,7 +74,21 @@ async function main() {
 
   // ── 5. MCP bridges ─────────────────────────────────────────────────────────
   console.log("\n5. Connect to other AI MCP servers (bridges) so all your AI tools share memory.");
-  console.log("   You can add these later in ~/.memvaultrc.json under \"mcpBridges\". (See docs/mcp-bridge.md)");
+  const { PRESET_BRIDGES } = await import("./mcp-bridge.mjs");
+  console.log("   Popular local memory servers (no API key, run via npx):");
+  for (const p of PRESET_BRIDGES) console.log(`     • ${p.name} — ${p.description}`);
+  const bridgesOn = yes(await ask("   Enable these memory bridges now? (y/n) [n]: "), false);
+  let mcpBridges = existing.mcpBridges || [];
+  if (bridgesOn) {
+    const have = new Set(mcpBridges.map((b) => b.name));
+    for (const p of PRESET_BRIDGES) {
+      if (!have.has(p.name)) {
+        const { description, ...entry } = p;
+        mcpBridges.push(entry);
+      }
+    }
+  }
+  console.log("   (Add or edit more later under \"mcpBridges\" in ~/.memvaultrc.json — see docs/mcp-bridge.md)");
 
   // ── Build config ───────────────────────────────────────────────────────────
   const config = {
@@ -101,7 +115,7 @@ async function main() {
       gdriveApi: { enabled: gdriveApiOn, ...gdriveApi },
       keepLocalBackups: existing.storage?.keepLocalBackups ?? 20,
     },
-    mcpBridges: existing.mcpBridges || [],
+    mcpBridges,
   };
 
   try {
