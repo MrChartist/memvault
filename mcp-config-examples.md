@@ -38,6 +38,10 @@ Antigravity auto-loads MCP servers from its `mcp_config.json` in the tool's core
 }
 ```
 
+> **Connect MemVault to *other* AI MCP servers (bridges):** MemVault can also act
+> as an MCP client and pull context from other AI tools into your vault. See
+> [docs/mcp-bridge.md](docs/mcp-bridge.md).
+
 ## VS Code
 
 Currently, VS Code extensions like Cline or RooCode require providing the command in their respective MCP configuration files (often `mcp_settings.json` in the workspace root or global config):

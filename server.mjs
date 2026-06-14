@@ -1,4 +1,4 @@
-// /mnt/d/AG/Vault/apps/vault/server.mjs
+// server.mjs — MemVault API & Web UI server
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -7,12 +7,14 @@ import express from "express";
 import multer from "multer";
 import { z } from "zod";
 import initSqlJs from "sql.js";
+import { VAULT_ROOT, PORT } from "./config.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const VAULT_ROOT = process.env.VAULT_ROOT || "/mnt/d/AG/Vault";
+// VAULT_ROOT and PORT come from config.mjs so the web UI, the MCP server, and the
+// sync engines all read and write the SAME vault. Override via ~/.memvaultrc.json
+// or the VAULT_ROOT / PORT env vars.
 const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
-const PORT = Number(process.env.VAULT_PORT || 7799);
 
 const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
 
@@ -378,6 +380,67 @@ app.delete("/secrets/delete/:id", (req, res) => {
   db.run("DELETE FROM secrets WHERE id = ? AND id != ?", [req.params.id, SENTINEL_ID]);
   persistDb();
   res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════
+//  STORAGE / BACKUP  (local + Google Drive)
+// ═══════════════════════════════════════════════════════
+
+// POST /backup — back up the vault to every enabled backend
+app.post("/backup", async (req, res) => {
+  try {
+    const { backupVault, enabledBackends } = await import("./storage.mjs");
+    const results = await backupVault();
+    res.json({ ok: true, backends: enabledBackends(), results });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// GET /backups — list local timestamped backups
+app.get("/backups", async (req, res) => {
+  try {
+    const { listLocalBackups } = await import("./storage.mjs");
+    res.json({ ok: true, backups: listLocalBackups() });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+//  MCP BRIDGES  (connections to other AI MCP servers)
+// ═══════════════════════════════════════════════════════
+
+// GET /bridges — list configured outbound MCP bridges
+app.get("/bridges", async (req, res) => {
+  try {
+    const { enabledBridges } = await import("./mcp-bridge.mjs");
+    const bridges = enabledBridges().map((b) => ({
+      name: b.name,
+      command: `${b.command} ${(b.args || []).join(" ")}`.trim(),
+      importTool: b.importTool || null,
+    }));
+    res.json({ ok: true, bridges });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// POST /bridges/sync — pull data from one or all bridges into the vault
+app.post("/bridges/sync", async (req, res) => {
+  try {
+    const { enabledBridges, syncBridge } = await import("./mcp-bridge.mjs");
+    const { name } = req.body || {};
+    const targets = name ? enabledBridges().filter((b) => b.name === name) : enabledBridges();
+    const results = [];
+    for (const b of targets) {
+      try { results.push(await syncBridge(b)); }
+      catch (e) { results.push({ name: b.name, ingested: 0, errors: [e.message] }); }
+    }
+    res.json({ ok: true, results });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════
