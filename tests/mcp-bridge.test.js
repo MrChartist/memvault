@@ -57,3 +57,24 @@ describe('bridge command line', () => {
     }
   });
 });
+
+describe('bridge environment', () => {
+  it('does not hand the backup passphrase, access key or API keys to a third-party bridge', async () => {
+    const path = await import('path');
+    const { callBridgeTool } = await import('../mcp-bridge.mjs');
+    const fixture = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'env-bridge.mjs');
+    const saved = { ...process.env };
+    Object.assign(process.env, {
+      MEMVAULT_BACKUP_PASSPHRASE: 'correct horse battery staple', MEMVAULT_TOKEN: 'tok', OPENAI_API_KEY: 'sk-test', GITHUB_TOKEN: 'ghp_x',
+    });
+    try {
+      const keys = JSON.parse(await callBridgeTool({ name: 't', command: process.execPath, args: [fixture], env: { ONLY_FOR_THIS_BRIDGE: '1' } }, 'env'));
+      expect(keys).toContain('PATH');
+      expect(keys).toContain('ONLY_FOR_THIS_BRIDGE'); // what the user lists for this bridge still arrives
+      for (const secret of ['MEMVAULT_BACKUP_PASSPHRASE', 'MEMVAULT_TOKEN', 'OPENAI_API_KEY', 'GITHUB_TOKEN']) expect(keys).not.toContain(secret);
+    } finally {
+      for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+      Object.assign(process.env, saved);
+    }
+  });
+});

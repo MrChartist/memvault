@@ -62,7 +62,7 @@ external MCP server to connect to:
 | `name` | ✅ | Label used for tags/sources (`mcp:<name>`) |
 | `command` | ✅ | Executable to launch the external MCP server (stdio) |
 | `args` | | Arguments passed to the command |
-| `env` | | Extra environment variables (merged over your shell env) |
+| `env` | | Environment variables for this bridge. It gets a small safe set (PATH, HOME, proxy settings) plus these, never your whole shell environment, so the backup passphrase and other keys stay private |
 | `enabled` | | Set `false` to keep the config but skip it |
 | `importTool` | | A tool on that server to call when syncing. If omitted, MemVault reads **all** of the server's resources instead. |
 | `importArgs` | | Arguments for `importTool` |
