@@ -84,6 +84,25 @@ describe('mcp — owner mode', () => {
     expect(mirrors.join('\n')).not.toMatch(/ghp_abc/);
   });
 
+  it('masks secrets in tags and source as well, in the DB and in the markdown mirror', async () => {
+    await call(owner, 'vault_add', {
+      type: 'diary', title: 'Mirror tags check', content: 'plain text',
+      tags: 'deploy,sk-ant-abcdefghijklmnopqrstuvwxyz012345',
+      source: 'cli ghp_abcdefghijklmnopqrstuvwxyz0123456789',
+    });
+    const { openVaultDb } = await import('../db.mjs');
+    const row = openVaultDb({ root: ROOT }).query("SELECT source, tags FROM items WHERE title = 'Mirror tags check'")[0];
+    expect(row.tags).not.toMatch(/sk-ant-abc/);
+    expect(row.source).not.toMatch(/ghp_abc/);
+    const mirror = fs.readdirSync(path.join(ROOT, 'entries'), { recursive: true })
+      .filter((f) => String(f).includes('Mirror-tags-check'))
+      .map((f) => fs.readFileSync(path.join(ROOT, 'entries', String(f)), 'utf8'))
+      .join('\n');
+    expect(mirror).toMatch(/Mirror tags check/);
+    expect(mirror).not.toMatch(/sk-ant-abc|ghp_abc/);
+    expect(fs.readFileSync(path.join(ROOT, 'audit.log'), 'utf8')).not.toMatch(/sk-ant-abc|ghp_abc/);
+  });
+
   it('vault_smart_search works (it used to query a table that never existed)', async () => {
     await call(owner, 'vault_add', { type: 'worklog', title: 'Nifty retest plan', content: 'Support zone held after the breakout retest.' });
     const out = await call(owner, 'vault_smart_search', { query: 'breakout retest support' });

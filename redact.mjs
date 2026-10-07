@@ -150,7 +150,8 @@ export function redact(text, { disable = [] } = {}) {
 export function redactItem(item, opts) {
   const findings = new Map();
   const out = { ...item };
-  for (const field of ["title", "content", "tags"]) {
+  // `source` is free text too (an AI or importer can set it), so it is masked like the rest.
+  for (const field of ["title", "content", "tags", "source"]) {
     if (typeof out[field] !== "string") continue;
     const r = redact(out[field], opts);
     out[field] = r.text;

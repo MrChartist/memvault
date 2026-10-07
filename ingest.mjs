@@ -50,7 +50,8 @@ export function ingest(items, { vdb = getVaultDb(), actor = "api", security = SE
   const ids = vdb.addItems(prepared);
 
   if (security.audit !== false) {
-    const sources = [...new Set(list.map((i) => i.source).filter(Boolean))];
+    // From the masked items: the audit log must never hold what the database masked.
+    const sources = [...new Set(prepared.map((i) => i.source).filter(Boolean))];
     audit(
       {
         actor,

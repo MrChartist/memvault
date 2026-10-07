@@ -198,7 +198,7 @@ export async function cmdScrub(argv) {
 
   const changes = [];
   const byType = new Map();
-  for (const r of db.query("SELECT id, title, content, tags FROM items")) {
+  for (const r of db.query("SELECT id, title, content, tags, source FROM items")) {
     const { item, findings } = redactItem(r, { disable });
     if (!findings.length) continue;
     changes.push(item);
@@ -226,7 +226,7 @@ export async function cmdScrub(argv) {
   const backup = backupLocal();
   if (!backup.ok) { console.error(`${BAD} Backup failed (${backup.error}); nothing changed.`); process.exit(1); }
   db.transaction((tx) => {
-    for (const c of changes) tx.run("UPDATE items SET title = ?, content = ?, tags = ? WHERE id = ?", [c.title, c.content, c.tags, c.id]);
+    for (const c of changes) tx.run("UPDATE items SET title = ?, content = ?, tags = ?, source = ? WHERE id = ?", [c.title, c.content, c.tags, c.source, c.id]);
   });
   for (const f of files) fs.writeFileSync(f.file, f.text);
   audit({ actor: "owner", action: "scrub", detail: { items: changes.length, files: files.length, backup: path.basename(backup.location) } });

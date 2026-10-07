@@ -208,14 +208,14 @@ server.tool(
     const safeTitle = String(stored.title).replace(/[^a-z0-9]+/gi, "-").slice(0, 60);
     const backupFile = path.join(backupDir, `${day}_${safeTitle}.md`);
     if (scope === "shared") {
-      fs.writeFileSync(backupFile, `# ${stored.title}\n\n${stored.content}\n\n---\nSource: ${source || "mcp"}\nTags: ${tags || ""}\nCreated: ${created_at}\n`, { mode: 0o600 });
+      fs.writeFileSync(backupFile, `# ${stored.title}\n\n${stored.content}\n\n---\nSource: ${stored.source}\nTags: ${stored.tags || ""}\nCreated: ${created_at}\n`, { mode: 0o600 });
     }
     const note = redacted.length ? `\n🔒 Masked before saving: ${redacted.map((r) => `${r.count}× ${r.type}`).join(", ")}` : "";
     const where = scope === "shared" ? "shared vault" : `private to ${AGENT_ID}`;
     return {
       content: [{
         type: "text",
-        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${tags || "none"}${scope === "shared" ? `\n- **Backed up to**: ${backupFile}` : ""}${note}`,
+        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${stored.tags || "none"}${scope === "shared" ? `\n- **Backed up to**: ${backupFile}` : ""}${note}`,
       }],
     };
   }
