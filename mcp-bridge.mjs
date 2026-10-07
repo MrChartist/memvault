@@ -28,6 +28,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
@@ -210,7 +213,12 @@ export function enabledBridges() {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// Compare real file paths, not URL strings: a path with a space, non-Latin letters or a symlink
+// (an npm "bin" link) does not match a hand-built file:// URL, and the command would silently do nothing.
+const isMain = (() => {
+  try { return !!process.argv[1] && fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(path.resolve(process.argv[1])); }
+  catch { return false; }
+})();
 if (isMain) {
   const [cmd, ...rest] = process.argv.slice(2);
   const bridges = enabledBridges();

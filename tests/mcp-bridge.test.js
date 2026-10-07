@@ -33,3 +33,27 @@ describe('mcp-bridge — guards', () => {
     await expect(connectBridge({ name: 'broken' })).rejects.toThrow(/command/i);
   });
 });
+
+describe('bridge command line', () => {
+  it('runs from a folder whose name has spaces and non-Latin letters (it used to print nothing)', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const { spawnSync } = await import('child_process');
+    const here = path.dirname(new URL(import.meta.url).pathname);
+    const src = path.join(here, '..');
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault bridge-'));
+    const dir = path.join(base, 'Rohit Singh', 'मेमवॉल्ट');
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of fs.readdirSync(src).filter((x) => x.endsWith('.mjs') || x === 'package.json')) fs.copyFileSync(path.join(src, f), path.join(dir, f));
+    fs.symlinkSync(path.join(src, 'node_modules'), path.join(dir, 'node_modules'), 'junction');
+    try {
+      const r = spawnSync(process.execPath, [path.join(dir, 'mcp-bridge.mjs'), 'presets'], {
+        encoding: 'utf8', env: { ...process.env, HOME: base, USERPROFILE: base, VAULT_ROOT: path.join(base, 'v') },
+      });
+      expect(r.stdout).toMatch(/Preset AI memory servers/);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+});
