@@ -1,475 +1,243 @@
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:1a1a2e,100:6366f1&height=180&section=header&text=MemVault&fontSize=52&fontColor=ffffff&animation=fadeIn&fontAlignY=35&desc=Your%20AI's%20Persistent%20Memory%20Layer&descSize=16&descAlignY=55&descColor=8b5cf6" width="100%" />
-
 <p align="center">
-  <img src="docs/images/hero-banner.png" alt="MemVault -- Your AI's Persistent Memory Layer" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/brand/logo-horizontal-white.svg">
+    <img src="public/brand/logo-horizontal-black.svg" alt="Mr. Chartist" height="44">
+  </picture>
 </p>
 
-<p align="center">
-  A self-hosted MCP server that gives Claude, Cursor, and every AI tool<br>
-  persistent memory about <em>you</em> -- your code, projects, habits, and preferences.
-</p>
+<h1 align="center">MemVault</h1>
+
+<p align="center"><strong>One private memory, on your own computer, shared by every AI you use.</strong><br>
+Tell one AI something once. Every other AI can find it too.</p>
 
 <p align="center">
-  Built by <a href="https://github.com/MrChartist"><strong>Mr. Chartist</strong></a> | Part of the <a href="https://mrchartist.com">Mr. Chartist Ecosystem</a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f6f4f"></a>
+  <img alt="Node.js 20 or newer" src="https://img.shields.io/badge/node-20%2B-2f6f4f">
+  <img alt="Works with MCP" src="https://img.shields.io/badge/works%20with-MCP-b43f0e">
+  <img alt="No tracking" src="https://img.shields.io/badge/tracking-none-2f6f4f">
 </p>
 
-<p align="center">
-  <a href="#-quick-start"><img src="https://img.shields.io/badge/Get%20Started-2%20min-6366f1?style=for-the-badge" alt="Get Started"></a>
-  <a href="https://github.com/MrChartist/memvault/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"></a>
-  <a href="#-mcp-integration"><img src="https://img.shields.io/badge/MCP-Compatible-8b5cf6?style=for-the-badge" alt="MCP Compatible"></a>
-  <img src="https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js">
-</p>
+<p align="center"><img src="docs/images/dashboard.png" alt="The MemVault dashboard: counts of notes, conversations and agents, a box to write a note, and a list of recent memories." width="860"></p>
 
 ---
 
-## 🤔 What is MemVault?
+## What is MemVault?
 
-Every time you start a new AI conversation, your assistant forgets everything. **MemVault fixes that.**
+Every AI assistant starts each chat with an empty head. You explain who you are, what you are working on, and how you like answers, and then you do it all again in the next app.
 
-It silently captures your digital footprint — Git commits, VS Code projects, clipboard content, file changes, system info, browser history, and AI conversations — then serves this context to **any AI tool** via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io).
-
-> **Think of it as a second brain for your AI assistants.**
-
-### The Problem
+MemVault is a notebook that lives **on your own computer**. Your AI apps (Claude, Cursor, Antigravity, VS Code, and any app that supports [MCP](https://modelcontextprotocol.io)) can read it and write to it. So:
 
 ```
-You:    "Fix the login bug we discussed yesterday"
-AI:     "I don't have any context about previous conversations..."
+You, in Claude:   "Remember that I prefer short answers with one example."
+You, in Cursor:   "Help me write this email."
+Cursor:           (looks in MemVault) "Here is a short draft with one example..."
 ```
 
-### With MemVault
+It also lets you give each AI its own **agent**: a helper with a job, a voice, rules, and a clear limit on which memories it may see. A study helper does not need to see your work notes.
 
-```
-You:    "Fix the login bug we discussed yesterday"
-AI:     (queries MemVault) → finds yesterday's conversation, related commits, and file changes
-AI:     "I found 3 relevant entries. The auth bug was in middleware/session.js..."
-```
+**Who is it for?** Anyone who uses more than one AI assistant: students, writers, developers, researchers, and anyone who is tired of repeating themselves.
 
----
+## Get started
 
-## ✨ Features
-
-<table>
-<tr>
-<td width="50%">
-
-### 🧠 24 MCP Tools
-Your AI gets superpowers:
-- **`vault_smart_search`** — Intent-driven semantic search
-- **`vault_smart_context`** — Relevance-ranked results
-- **`vault_capture_prompt`** — Auto-logs every prompt to any AI tool
-- **`vault_backup`** — Back up to Google Drive + local
-- **`vault_bridge_sync`** — Pull memory from other AI MCP servers
-- ...and 19 more tools
-
-</td>
-<td width="50%">
-
-### 🕸️ 7 Data Capture Engines + 4 AI Importers  
-Reads everything from your computer:
-- 📦 **Git commits** from all local repos
-- 💻 **VS Code** projects, extensions, settings
-- 📋 **Clipboard** history (with classification)
-- 📁 **File changes** across project directories
-- 🖥️ **System info** (OS, RAM, CPU, dev tools)
-- 🌐 **Browser** history (Chrome/Edge)
-- 🤖 **AI conversations** (Antigravity & Universal Importers)
-
-</td>
-</tr>
-</table>
-
-### ☁️ Storage everywhere &nbsp;•&nbsp; 🔌 One memory across every AI
-
-- **Local-first** SQLite vault, always on your machine
-- **Google Drive backup** — folder mirror *and/or* Drive API ([guide](docs/google-drive.md))
-- **MCP bridges** — MemVault connects OUT to other AI tools' MCP servers, pulls their context, and stores it in your vault so every AI shares one brain ([guide](docs/mcp-bridge.md))
-
-### 🏗️ Architecture
-
-<p align="center">
-  <img src="docs/images/architecture.png" alt="MemVault Architecture" width="100%">
-</p>
-
-### 🎨 Beautiful Web UI
-
-<p align="center">
-  <img src="docs/images/web-ui.png" alt="MemVault Web Interface" width="100%">
-</p>
-
-A sleek dark-mode dashboard with:
-- 📔 Diary entry writer  
-- 🔍 Full-text search across all entries  
-- 📊 Vault statistics  
-- 🔐 Encrypted secrets manager  
-- 🗺️ Access map visualization  
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- **Node.js** 20+ ([download](https://nodejs.org))
-- **Git** (for sync-git)
-
-### Installation
+You need [Node.js](https://nodejs.org) 20 or newer (choose the "LTS" download). Then, in a terminal:
 
 ```bash
-# Clone the repository
+npx @mrchartist/memvault setup        # one step, no questions
+npx @mrchartist/memvault mcp-config   # prints what to paste into your AI app
+npx @mrchartist/memvault open         # opens the dashboard
+```
+
+<details>
+<summary>Installing from the source code instead</summary>
+
+```bash
 git clone https://github.com/MrChartist/memvault.git
 cd memvault
-
-# Install dependencies
 npm install
-
-# Run the setup wizard
-node init.mjs
+node cli.mjs setup
+node cli.mjs mcp-config
+node cli.mjs open
 ```
+After that, use `node cli.mjs` wherever this page says `memvault`.
+</details>
 
-The wizard will ask you:
-1. Where to store your vault data
-2. Which capture engines to enable
-3. Show you the MCP config for your AI clients
+The dashboard's **Get started** card walks you through connecting an app. Or run `memvault mcp-config` and paste the result into your app's MCP settings:
 
-### Start the Server
+| App | Usually found in |
+|-----|------------------|
+| Claude Desktop | `claude_desktop_config.json` (Settings → Developer → Edit Config) |
+| Cursor | `~/.cursor/mcp.json` |
+| Claude Code | run the `claude mcp add …` command the dashboard shows you |
+| Antigravity | `~/.gemini/antigravity/mcp_config.json` |
+| VS Code (Cline, Roo) | the extension's MCP settings file |
 
-```bash
-# Start the web UI + API server
-npm start
+Menus and file locations change between versions. If something looks different, search that app's help for "MCP servers".
 
-# Open the dashboard
-# → http://localhost:7799
-```
+Then try it. In your AI app, say: **"Remember that I prefer short answers."**
 
-### Sync Your Data
+## Agents: helpers with their own job and their own view
 
-```bash
-# Sync everything at once
-npm run sync:all
+An agent is a saved profile. It says who the helper is, how it should sound, what it must always and never do, and which memories it can see. Any AI becomes that helper by calling `agent_activate`.
 
-# Or sync individually
-npm run sync:git         # Git commit history
-npm run sync:vscode      # VS Code projects & extensions
-npm run sync:system      # System information snapshot
-npm run sync:files       # Recently modified files
-```
+| Starter helper | What it is for |
+|---|---|
+| Everyday Assistant | Plain-language help with questions and small jobs |
+| Study Buddy | Explains step by step, lets the learner try first |
+| Writing Helper | Plans and edits while keeping your own voice |
+| Planner | Turns goals into small, realistic steps |
+| Researcher | Separates what is known from what is assumed |
+| Software Engineer | Small, tested changes that match your code |
+| Coordinator | Splits a goal and hands each part to the right helper |
 
----
+`memvault agent packs` lists more starter sets. Make your own in the dashboard by describing the helper in your own words, or with `memvault agent create --from-file my-helper.txt --save`.
 
-## 🔌 MCP Integration
+<p align="center"><img src="docs/images/agents.png" alt="The Agents screen showing helper cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its briefing or its connection settings." width="760"></p>
 
-MemVault speaks the [Model Context Protocol](https://modelcontextprotocol.io) — the universal standard for connecting AI tools to data sources.
+**Memory spaces.** Every note lives in one space:
 
-### Claude Desktop
+| Space | Who can read it |
+|---|---|
+| `shared` | every agent (the common memory) |
+| `agent:<name>` | only that agent (and you) |
+| `project:<name>` | agents you allow, for one project |
 
-Add to `claude_desktop_config.json`:
+**Handoffs.** One agent can leave work for another (`agent_handoff`). The other finds it in its inbox the next time it starts (`agent_inbox`). They share memory, not chat history, so a brief must say everything the next helper needs.
 
-```json
-{
-  "mcpServers": {
-    "memvault": {
-      "command": "node",
-      "args": ["/path/to/memvault/mcp-server.mjs"],
-      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
-    }
-  }
-}
-```
+**Giving an AI app its own agent.** `memvault mcp-config --agent study-buddy` prints settings that bind that app to one agent. The agent is chosen by that setting, never by anything the AI says, so an AI cannot give itself more access. Full guide: [docs/agents.md](docs/agents.md).
 
-### Cursor
+## Is it safe?
 
-In Cursor Settings → Features → MCP Servers, add:
+MemVault is built so that your data stays with you, and it can check itself: run `memvault doctor` for a live report, or open the **Security** page in the dashboard.
 
-```json
-{
-  "mcpServers": {
-    "memvault": {
-      "command": "node",
-      "args": ["/path/to/memvault/mcp-server.mjs"],
-      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
-    }
-  }
-}
-```
+| What | How |
+|---|---|
+| Nothing is reachable from outside this computer | The server listens on `127.0.0.1` only. Every request needs a secret key, and web pages from other sites are refused. |
+| Passwords and ID numbers do not get stored | API keys, passwords, card numbers, one-time codes and national ID numbers (US, UK, Canada, EU/IBAN, India) are masked before saving. This includes the clipboard. |
+| Each AI sees only what it should | Agents read through a filtered copy of the memory. Other agents' private notes are not just hidden; they are not in that copy at all. |
+| Your secrets are locked | The Secure Vault uses AES-256 with a key made from your master password. Agents never receive secret values. |
+| Cloud backups are encrypted first | Without your passphrase, a cloud backup refuses to run. It never uploads plain text by default. |
+| You can see who used your memory | A tamper-evident log records which agent called what, and when. It never records the content. |
+| Automatic capture is opt-in | Git, files, browser and clipboard capture are all off until you turn them on. |
+| No tracking | No analytics, no telemetry, and the dashboard makes no requests to other websites. |
 
-### VS Code (Cline / Roo Code)
+**What no tool can promise.** When you ask an AI app to look something up in MemVault, the text it reads is sent to the company behind that AI, just like anything you type to it. Agents limit how much each AI can see; they cannot change that. Masking is a safety net that catches common patterns, not a guarantee. Malware running as your own user account can read your files. Turn on your system's disk encryption (BitLocker, FileVault, or LUKS) to protect a lost laptop. The full, honest list is in [SECURITY.md](SECURITY.md).
 
-Add to your MCP settings file:
+## What your AI can do with it
 
-```json
-{
-  "mcpServers": {
-    "memvault": {
-      "command": "node",
-      "args": ["/path/to/memvault/mcp-server.mjs"],
-      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
-    }
-  }
-}
-```
+29 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (about 23 by default, fewer if you restrict it), which also keeps each chat lighter.
 
-### Antigravity
+| Group | Tools |
+|---|---|
+| Remember and find | `vault_remember`, `vault_add`, `vault_search`, `vault_smart_search`, `vault_smart_context`, `vault_get_context`, `vault_list`, `vault_stats` |
+| Summaries | `vault_project_context`, `vault_daily_digest`, `vault_weekly_digest`, `vault_projects` |
+| Captured data | `vault_git_log`, `vault_recent_files`, `vault_system_info` |
+| Conversation logs | `vault_capture_prompt`, `vault_log_conversation` |
+| Agents | `agent_list`, `agent_activate`, `agent_define`, `agent_handoff`, `agent_inbox` |
+| With your own Gemini key (optional) | `vault_ai_summarize`, `vault_ai_insights` |
+| Owner only | `vault_backup`, `vault_backups`, `vault_bridge_list`, `vault_bridge_sync`, `vault_secret_list` |
 
-Add to `~/.gemini/antigravity/mcp_config.json`:
+Bound agents are never offered the owner-only tools, and `agent_define` (changing who an agent is) stays with you.
 
-```json
-{
-  "mcpServers": {
-    "memvault": {
-      "command": "node",
-      "args": ["/path/to/memvault/mcp-server.mjs"],
-      "env": { "VAULT_ROOT": "/path/to/your/vault/data" }
-    }
-  }
-}
-```
+## Optional: capture and import
 
-> **💡 Tip:** Replace `/path/to/memvault` and `/path/to/your/vault/data` with your actual paths. On Windows, use forward slashes in JSON: `"D:/projects/memvault/mcp-server.mjs"`.
+Everything here is **off** until you choose it (`memvault init`, or edit `~/.memvaultrc.json`).
 
----
+| Capture | What it reads |
+|---|---|
+| Git | commit messages and dates from folders you pick |
+| VS Code | recent projects and installed extensions |
+| Files | names of recently changed files (never their contents) |
+| Computer info | operating system, memory, installed developer tools |
+| Browser | history and bookmarks from Chrome, Edge, Brave or Chromium |
+| Clipboard | what you copy (secrets are masked) |
 
-## 🛠️ All 24 MCP Tools
+| Import your old chats | |
+|---|---|
+| ChatGPT, Claude, Gemini (Google Takeout), Perplexity | `memvault import <folder-with-the-export>` |
 
-### Phase 6: Storage & MCP Bridges
+Imports and capture write many items at once in a single step, so importing hundreds of conversations takes a moment instead of minutes.
 
-| Tool | Category | Description |
-|------|----------|-------------|
-| `vault_backup` | ☁️ Storage | Back up the vault to local + Google Drive (folder mirror & API) |
-| `vault_backups` | ☁️ Storage | List local backups available to restore |
-| `vault_bridge_list` | 🔌 Bridge | List connected AI MCP servers and their tools/resources |
-| `vault_bridge_sync` | 🔌 Bridge | Pull data from other AI MCP servers into the vault |
+## Backups
 
-### Phase 5B: AI Intelligence Layer (Gemini-Powered)
+A local backup is kept every time you run `memvault backup` (and before anything is deleted). To keep a copy in Google Drive, set a passphrase (`MEMVAULT_BACKUP_PASSPHRASE`, 10+ characters) and MemVault encrypts the backup *before* it leaves your computer. See [docs/google-drive.md](docs/google-drive.md). Restore with `node storage.mjs restore <name>` or `restore-encrypted <file>`.
 
-| Tool | Category | Description |
-|------|----------|-------------|
-| `vault_capture_prompt` | 🧠 AI | Auto-logs every prompt you send to ANY AI |
-| `vault_log_conversation` | 🧠 AI | Saves conversation summaries to vault |
-| `vault_ai_summarize` | 🧠 AI | AI-powered entry summarization (Gemini) |
-| `vault_ai_insights` | 🧠 AI | Pattern & productivity insights |
-| `vault_smart_search` | 🧠 AI | Semantic search with AI re-ranking |
-| `vault_weekly_digest` | 🧠 AI | AI-generated weekly activity digest |
+## Settings
 
-### Phase 1-3: Core & Smart Context
-
-| Tool | Category | Description |
-|------|----------|-------------|
-| `vault_smart_context` | 💡 Context | **Best core tool.** Relevance-ranked, auto-tagged, deduplicated context |
-| `vault_project_context` | 💡 Context | Full background on a specific project — tech stack, timeline, activity |
-| `vault_daily_digest` | 💡 Context | Auto-generated summary of the day's activity |
-| `vault_remember` | 💡 Context | AI proactively saves facts, decisions, preferences for future sessions |
-| `vault_git_log` | 📦 Data | Recent Git commits across all tracked repositories |
-| `vault_recent_files` | 📦 Data | Files modified recently, grouped by project |
-| `vault_system_info` | 📦 Data | OS, hardware, dev tools versions, running processes |
-| `vault_projects` | 📦 Data | VS Code recent workspaces and installed extensions |
-| `vault_search` | 🔧 Core | Full-text search across all vault entries |
-| `vault_add` | 🔧 Core | Add diary, worklog, or conversation entries |
-| `vault_list` | 🔧 Core | List recent entries by type |
-| `vault_get_context` | 🔧 Core | Get vault context for a topic |
-| `vault_stats` | 🔧 Core | Vault statistics — entry counts by type, storage info |
-| `vault_secret_list` | 🔧 Core | List encrypted secret labels (no values exposed) |
-
-### Smart Context Engine
-
-The intelligence layer that makes entries useful:
-
-| Feature | How It Works |
-|---------|-------------|
-| **Auto-Tagging** | 30+ regex patterns detect `react`, `python`, `trading`, `bugfix`, etc. |
-| **Relevance Scoring** | Combines keyword match strength + recency bonus for precision results |
-| **Project Detection** | Auto-recognizes your projects by name and context |
-| **Deduplication** | Jaccard similarity filters duplicate entries across data sources |
-| **Session Memory** | Tracks what the AI already saw — avoids repeating context |
-| **Daily Digest** | Aggregates your day's activity with project + tech stack breakdown |
-
-### 🤖 AI Data Importers (Phase 5A)
-
-MemVault natively understands data exports from major AI platforms. Import your entire chat history with one command:
-
-```bash
-memvault import ./chatgpt-export/
-memvault import ./claude-export/
-memvault import ./google-takeout/
-memvault import ./perplexity-export/
-```
-
----
-
-## 📁 Project Structure
-
-```
-memvault/
-├── mcp-server.mjs         # MCP server (24 tools, 5 resources, 3 prompts)
-├── ai-engine.mjs          # Gemini API intelligence (summarization, insights, search)
-├── context-engine.mjs     # Smart context: auto-tag, score, dedup, digest
-├── storage.mjs            # Storage backends: local backups + Google Drive
-├── mcp-bridge.mjs         # Outbound MCP client — connect to other AI MCP servers
-├── server.mjs             # Express API + web UI server
-├── config.mjs             # Centralized configuration (~/.memvaultrc.json)
-├── cli.mjs                # CLI entry point (npx memvault <cmd>)
-├── init.mjs               # Interactive setup wizard
-│
-├── import-all.mjs         # Universal AI conversation importer
-├── import-chatgpt.mjs     # ChatGPT import logic
-├── import-claude.mjs      # Claude import logic
-├── import-gemini.mjs      # Gemini import logic
-├── import-perplexity.mjs  # Perplexity import logic
-│
-├── sync-git.mjs           # Git commit capture
-├── sync-clipboard.mjs     # Clipboard content capture
-├── sync-vscode.mjs        # VS Code activity capture
-├── sync-files.mjs         # File change capture
-├── sync-system.mjs        # System info capture
-├── sync-browser.mjs       # Browser history capture
-├── sync-antigravity.mjs   # AI conversation capture
-├── sync-all.mjs           # Run all sync engines
-│
-├── vault.mjs              # CLI tool (add/search entries)
-├── public/                # Web UI assets (HTML/CSS/JS)
-├── docs/images/           # README screenshots & diagrams
-└── package.json
-```
-
----
-
-## ⚙️ Configuration
-
-MemVault uses `~/.memvaultrc.json` for per-user settings. Run `node init.mjs` to create it interactively, or create manually:
+Most people never need to edit this. `~/.memvaultrc.json` (private to your account):
 
 ```json
 {
   "vaultRoot": "~/.memvault/data",
   "port": 7799,
-  "sync": {
-    "gitDirs": ["/home/you/projects"],
-    "vscodeEnabled": true,
-    "systemEnabled": true,
-    "filesEnabled": true,
-    "clipboardEnabled": false,
-    "browserEnabled": true
-  },
-  "ai": {
-    "enabled": true,
-    "apiKey": "YOUR_GEMINI_API_KEY",
-    "model": "gemini-2.0-flash"
-  },
-  "storage": {
-    "local": { "enabled": true },
-    "gdriveFolder": { "enabled": true, "path": "C:/Users/you/My Drive" },
-    "gdriveApi": {
-      "enabled": false,
-      "clientId": "", "clientSecret": "", "refreshToken": "", "folderId": ""
-    },
-    "keepLocalBackups": 20
-  },
-  "mcpBridges": [
-    {
-      "name": "openmemory",
-      "command": "npx",
-      "args": ["-y", "openmemory"],
-      "enabled": true,
-      "importTool": "list_memories"
-    }
-  ]
+  "sync":     { "gitEnabled": false, "browserEnabled": false, "clipboardEnabled": false },
+  "security": { "host": "127.0.0.1", "redact": true, "audit": true },
+  "storage":  { "gdriveFolder": { "enabled": false, "path": "" }, "keepLocalBackups": 20 },
+  "projects": [ { "name": "Garden Shed", "match": ["shed", "garden build"], "tags": "garden,diy" } ],
+  "ai":       { "enabled": false, "apiKey": "" }
 }
 ```
 
-> **☁️ Google Drive** — see [docs/google-drive.md](docs/google-drive.md).
-> **🔌 MCP bridges** — see [docs/mcp-bridge.md](docs/mcp-bridge.md).
+`projects` are yours: notes that mention them are tagged automatically. Nothing is assumed by default. The optional `ai` feature sends the text it works on to Google Gemini with your key; it is off unless you add one.
 
-### Environment Variables
+## Commands
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VAULT_ROOT` | `~/.memvault/data` | Where vault data is stored |
-| `PORT` | `7799` | API server port |
-
----
-
-## 🔒 Security
-
-MemVault is **local-first** and **privacy-focused**:
-
-- ⚡ **stdio transport** — MCP communicates via stdin/stdout, never over the network
-- 🔐 **Encrypted secrets** — API keys and passwords are AES-256-GCM encrypted
-- 🏠 **Local-first** — All data lives on your machine in your SQLite database
-- ☁️ **Cloud is opt-in** — Google Drive backup only runs if you enable it; the Drive API uses the narrow `drive.file` scope (MemVault sees only files it created)
-- 🚫 **No telemetry** — Zero analytics, zero tracking. Network calls only to backends *you* configure (your Gemini key, your Google Drive)
-- 📋 **Clipboard opt-in** — Clipboard capture is disabled by default
-
----
-
-## 🧰 CLI Commands
-
-```bash
-# Setup
-node init.mjs              # Interactive setup wizard
-
-# Server
-npm start                   # Start API + web UI (http://localhost:7799)
-npm run mcp                 # Start MCP server (stdio)
-npm run dev                 # Dev mode with auto-reload
-
-# Sync engines
-npm run sync:all            # Run all sync engines
-npm run sync:git            # Sync Git commits
-npm run sync:vscode         # Sync VS Code data
-npm run sync:system         # Capture system snapshot
-npm run sync:files          # Scan recent file changes
-npm run sync:clipboard      # Start clipboard daemon
-
-# Storage & backup
-npm run backup              # Back up vault to local + Google Drive
-npm run backup:list         # List local backups
-
-# MCP bridges (connect to other AI MCP servers)
-npm run bridge              # Inspect connected bridges
-npm run bridge:sync         # Pull other AI memories into the vault
-
-# CLI vault
-node vault.mjs diary "Today I shipped the new auth system"
-node vault.mjs worklog "Fixed CORS headers in API server"
+```text
+memvault setup           one-step setup, no questions
+memvault mcp-config      print settings to paste into an AI app   (--agent <id>, --all-agents)
+memvault open            open the dashboard
+memvault doctor          check how your vault is set up
+memvault scrub           preview masking of secrets already stored   (--apply to do it)
+memvault agent …         list | create | edit | brief | export | import | delete | starter | packs
+memvault audit           who used your memory   (--verify checks the log is untampered)
+memvault token           show the dashboard key   (--rotate to replace it)
+memvault backup          back up now
+memvault sync / import  capture and import (only what you turned on)
+memvault init            the full setup wizard (capture, backups, bridges)
+memvault serve           start the dashboard server by itself
 ```
 
----
+## Built for everyone
 
-## 🗺️ Roadmap
+- **Text size** buttons (A−, A+) scale everything; the dashboard also follows your browser's text setting.
+- **Keyboard**: every control works without a mouse, with visible focus and a "skip to content" link.
+- **Screen readers**: labelled controls, announcements for saves and errors, a proper page heading.
+- **Colour and contrast**: light and dark themes that follow your system; text meets WCAG 2.1 AA contrast; nothing relies on colour alone; Windows High Contrast is supported.
+- **Large touch targets** and a layout that works on a phone.
+- **Many languages**: notes can be in any language and any direction (Arabic, Hebrew, Hindi, Japanese and more display correctly). The interface text is **English only today**; translations are welcome (see [Contributing](#contributing)). Dates and times follow your system's locale.
+- **Plain wording** in messages and in the dashboard, with the technical detail kept in the docs.
 
-- [x] **Phase 1** — Core MCP Server (14 tools, 5 resources, 3 prompts)
-- [x] **Phase 2** — Universal Data Capture (7 sync engines)
-- [x] **Phase 3** — Smart Context Engine (auto-tag, relevance, dedup, memory)
-- [x] **Phase 4** — CLI Wizard & Configuration
-- [x] **Phase 5** — AI Intelligence (Gemini + Importers for ChatGPT, Claude, Gemini, Perplexity)
-- [x] **Phase 6** — Auto-start on boot (Native Windows VBS in Startup + SchTasks)
-- [x] **Phase 7** — Google Drive backup (folder mirror + Drive API) & MCP bridges to other AI servers
-- [ ] **Phase 8** — Ollama integration for local AI summarization
+The dashboard is tested automatically with an accessibility checker (axe-core) on every screen, in light, dark and phone layouts. Automated checks cannot find every problem; if something does not work for you, please [open an issue](https://github.com/MrChartist/memvault/issues).
 
----
+## Upgrading from 2.x
 
-## 🤝 Contributing
+3.0 changes some defaults to keep you safe. Your data is migrated automatically.
 
-Contributions are welcome! Please:
+- The server now listens on `127.0.0.1` only and needs a key. Scripts that called the API directly must send it (`memvault token`). The built-in sync and import tools no longer need the server running at all.
+- Cloud backups need a passphrase (`MEMVAULT_BACKUP_PASSPHRASE`) unless you explicitly allow plain uploads.
+- `POST /clear` needs `{"confirm":"DELETE ALL"}` and makes a backup first. `sync-antigravity` now replaces only what it wrote before, instead of wiping the whole vault.
+- Automatic capture is off until you enable it. Existing config files keep working as written.
+- Run `memvault scrub` to mask credentials that were stored before 3.0, and `memvault doctor` to check your setup.
+- WSL2 users who relied on a Windows port-proxy should read [examples/wsl2](examples/wsl2).
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/cool-thing`)
-3. Commit your changes (`git commit -m 'Add cool thing'`)
-4. Push to the branch (`git push origin feature/cool-thing`)
-5. Open a Pull Request
+Full list: [CHANGELOG.md](CHANGELOG.md).
 
----
+## Roadmap
 
-## 📄 License
+- A real SQLite engine for very large vaults (today every save rewrites the database file; fine for most people, slower beyond tens of thousands of notes)
+- Translations of the dashboard
+- Local-model summaries (Ollama)
 
-MIT © [Rohit](https://github.com/MrChartist)
+## Contributing
+
+Pull requests are welcome, especially translations, accessibility fixes, and tests. Run `npm test` before you send one. `docs/agents.md` explains how to write a good agent profile, and a new starter pack is just a folder of JSON files in `profiles/`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ---
 
 <p align="center">
-  <b>Made with care by <a href="https://github.com/MrChartist">Mr. Chartist</a></b><br>
-  <i>Built for developers who want their AI to actually understand them.</i><br><br>
-  <a href="https://mrchartist.com"><img src="https://img.shields.io/badge/mrchartist.com-6366f1?style=flat-square&logo=safari&logoColor=white" alt="Website"/></a>
-  <a href="https://github.com/MrChartist"><img src="https://img.shields.io/badge/More_Projects-0d1117?style=flat-square&logo=github&logoColor=white" alt="GitHub"/></a>
+  <b>Learn it. Research it. Scan it. Trade it. Review it.</b><br>
+  MemVault is part of the <a href="https://mrchartist.com">Mr. Chartist</a> ecosystem · <a href="https://mrchartist.com">MrChartist.com</a>
 </p>
-
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0d1117,50:1a1a2e,100:6366f1&height=100&section=footer" width="100%" />
