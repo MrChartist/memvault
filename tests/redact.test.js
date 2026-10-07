@@ -179,3 +179,44 @@ describe('redact — behaviour', () => {
     expect(redact(undefined).text).toBe('');
   });
 });
+
+describe('redact — speed on hostile or unusual text', () => {
+  const ms = (text) => { const t = performance.now(); redact(text); return performance.now() - t; };
+  const LIMIT = 1500; // generous for slow CI; the old patterns needed 30+ seconds for the dotted case
+
+  it.each([
+    ['dotted identifiers', () => 'a.bc.def.node.value.x1.'.repeat(9000)],
+    ['repeated keyword', () => 'pass'.repeat(50000)],
+    ['hyphenated keyword', () => 'pass-'.repeat(40000)],
+    ['jwt-like prefixes', () => 'eyJ-'.repeat(50000)],
+    ['unterminated private-key headers', () => '-----BEGIN PRIVATE KEY-----\n'.repeat(8000)],
+    ['hyphen-joined ids', () => Array.from({ length: 5000 }, (_, i) => `id${i}-4f2a-9c1b-77de`).join('-')],
+    ['url-like prefixes', () => 'a://b:'.repeat(30000)],
+  ])('stays fast on %s (200 KB)', (_name, make) => {
+    expect(ms(make().slice(0, 200_000))).toBeLessThan(LIMIT);
+  });
+
+  it('still finds secrets in the middle of a long document', () => {
+    const filler = 'The quick brown fox jumps over the lazy dog. '.repeat(2000);
+    const r = redact(`${filler}\nDB_PASSWORD=correcthorsebattery\n${filler}\nghp_abcdefghijklmnopqrstuvwxyz0123456789\n${filler}`);
+    expect(r.text).not.toMatch(/correcthorsebattery|ghp_abc/);
+    expect(types(r)).toEqual(['github-token', 'secret-assignment']);
+  });
+
+  it('still masks a private key even when other BEGIN lines come first', () => {
+    const r = redact('-----BEGIN PRIVATE KEY-----\nlost header\nkeep going\n-----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY-----\nafter');
+    expect(r.text).toContain('[REDACTED:private-key]');
+    expect(r.text).not.toContain('MIIabc');
+    expect(r.text.endsWith('after')).toBe(true);
+  });
+
+  it('masks the whole of a very long secret value', () => {
+    const r = redact(`API_KEY=${'a1b2c3d4'.repeat(400)} next`);
+    expect(r.text).toBe('API_KEY=[REDACTED:secret] next');
+  });
+
+  it('masks a key that is also a long token inside a bigger identifier', () => {
+    expect(redact('MY_SERVICE_API_KEY_PROD=abcd1234efgh5678').text).toBe('MY_SERVICE_API_KEY_PROD=[REDACTED:secret]');
+    expect(redact('a.b.c.password: "hunter2hunter2"').text).not.toContain('hunter2hunter2');
+  });
+});

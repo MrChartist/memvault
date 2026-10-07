@@ -63,9 +63,34 @@ const CARD_PREFIX = /^(?:4\d{12}(?:\d{3}(?:\d{3})?)?|5[1-5]\d{14}|2(?:2[2-9]\d|[
 
 const mask = (type) => `[REDACTED:${type}]`;
 
-/** Each detector: { id, re, validate?(match) , replace?(match, ...groups) } */
+/**
+ * Mask PEM private-key blocks. A linear scan, not a lazy regex: a regex retried from every
+ * "BEGIN" line that has no "END" re-reads the rest of the text each time (quadratic).
+ * Returns the new text and how many blocks were masked.
+ */
+function maskPrivateKeys(text) {
+  const BEGIN = /-----BEGIN [A-Z ]{0,30}PRIVATE KEY-----/g;
+  const END = /-----END [A-Z ]{0,30}PRIVATE KEY-----/g;
+  let out = "";
+  let from = 0;
+  let count = 0;
+  for (;;) {
+    BEGIN.lastIndex = from;
+    const b = BEGIN.exec(text);
+    if (!b) break;
+    END.lastIndex = b.index + b[0].length;
+    const e = END.exec(text);
+    if (!e) break; // no closing line anywhere after this point, so none of the later headers can close either
+    out += text.slice(from, b.index) + mask("private-key");
+    from = e.index + e[0].length;
+    count++;
+  }
+  return { text: out + text.slice(from), count };
+}
+
+/** Each detector: { id, re, validate?(match), replace?(match, ...groups) } or { id, scan(text) → { text, count } } */
 export const DETECTORS = [
-  { id: "private-key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g },
+  { id: "private-key", scan: maskPrivateKeys },
   { id: "aws-access-key", re: /\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/g },
   { id: "github-token", re: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})\b/g },
   { id: "anthropic-key", re: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g },
@@ -73,14 +98,14 @@ export const DETECTORS = [
   { id: "google-api-key", re: /\bAIza[0-9A-Za-z_-]{35}\b/g },
   { id: "slack-token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
   { id: "stripe-key", re: /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}\b/g },
-  { id: "jwt", re: /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g },
+  { id: "jwt", re: /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,4096}\.eyJ[A-Za-z0-9_-]{8,8192}\.[A-Za-z0-9_-]{8,2048}(?![A-Za-z0-9_-])/g },
   { id: "bearer-token", re: /\b(Bearer\s+)[A-Za-z0-9._~+/-]{20,}=*/gi, replace: (_m, pre) => `${pre}${mask("bearer-token")}` },
-  { id: "url-credentials", re: /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)[^\s@/]{3,}(@)/gi, replace: (_m, a, b) => `${a}${mask("password")}${b}` },
+  { id: "url-credentials", re: /((?<![a-z0-9+.-])[a-z][a-z0-9+.-]{0,30}:\/\/[^\s:@/]{1,200}:)[^\s@/]{3,500}(@)/gi, replace: (_m, a, b) => `${a}${mask("password")}${b}` },
   {
     id: "secret-assignment",
     // password=..., DB_PASSWORD=..., export OPENAI_API_KEY="...", GITHUB_TOKEN: ...
     // → redact the value only. The name may carry any identifier prefix/suffix.
-    re: /\b((?:[A-Za-z0-9_.-]*?)(?:pass(?:word|wd)?|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|token|private[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*["']?)([^\s"',;]{8,})/gi,
+    re: /((?:pass(?:word|wd)?|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|token|private[_-]?key)[A-Za-z0-9_]{0,40}\s{0,10}[:=]\s{0,10}["']?)([^\s"',;]{8,})/gi,
     validate: (_m, _pre, value) => !/^(?:your|xxx|\*{3,}|<|\$\{|\[REDACTED|example|changeme|placeholder)/i.test(value),
     replace: (_m, pre) => `${pre}${mask("secret")}`,
   },
@@ -135,6 +160,11 @@ export function redact(text, { disable = [] } = {}) {
   let out = text;
   for (const d of DETECTORS) {
     if (disable.includes(d.id)) continue;
+    if (d.scan) {
+      const r = d.scan(out);
+      if (r.count) { out = r.text; counts.set(d.id, (counts.get(d.id) || 0) + r.count); }
+      continue;
+    }
     out = out.replace(d.re, (...args) => {
       const m = args[0];
       const groups = args.slice(1, -2).filter((g) => typeof g === "string" || g === undefined);
