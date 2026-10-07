@@ -114,6 +114,22 @@ describe('mcp — SQL injection regression', () => {
     });
     expect(JSON.stringify(r)).not.toMatch(/CIPHERTEXT-MARKER/);
   });
+
+  it("vault_daily_digest's date can no longer reach other tables", async () => {
+    const { openVaultDb } = await import('../db.mjs');
+    openVaultDb({ root: ROOT }).run(
+      "INSERT OR REPLACE INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES ('s1','apikey','K','CIPHERTEXT-MARKER','x','x')"
+    );
+    const out = await call(owner, 'vault_daily_digest', {
+      date: "x' UNION SELECT id, 'diary', 'x', encrypted, encrypted, 'x', '2020-01-01T00:00:00Z' FROM secrets --",
+    });
+    expect(out).not.toMatch(/CIPHERTEXT-MARKER/);
+  });
+
+  it('vault_daily_digest still works for a real date', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect(await call(owner, 'vault_daily_digest', { date: today })).toMatch(/Daily Digest|No activity/);
+  });
 });
 
 describe('mcp — bound to an agent', () => {

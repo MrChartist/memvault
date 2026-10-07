@@ -627,16 +627,18 @@ server.tool(
   "vault_daily_digest",
   "Generate an auto-summary of today's activity from the vault — diary entries, worklogs, conversations, projects touched, and tech stack used. Perfect for daily standup context or catching up on your day.",
   {
-    date: z.string().optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use the YYYY-MM-DD format").optional().describe("Date in YYYY-MM-DD format (default: today)"),
   },
   async ({ date }) => {
     const targetDate = date || isoDate();
 
+    // A bound parameter, never pasted into the SQL: `date` comes from the AI.
     const rows = queryAll(
       `SELECT id, type, source, title, substr(content, 1, 400) as snippet, tags, created_at
        FROM items
-       WHERE created_at LIKE '${targetDate}%'
-       ORDER BY created_at ASC;`
+       WHERE substr(created_at, 1, 10) = ?
+       ORDER BY created_at ASC;`,
+      [targetDate]
     );
 
     const digest = generateDigest(rows);
@@ -709,11 +711,11 @@ function registerResource(uri, name, description, type) {
     uri,
     { description, mimeType: "text/plain" },
     async () => {
-      const where = type ? `WHERE type = '${type}'` : "";
       const rows = queryAll(
         `SELECT type, title, substr(content, 1, 400) as snippet, tags, created_at
-         FROM items ${where}
-         ORDER BY created_at DESC LIMIT 20;`
+         FROM items ${type ? "WHERE type = ?" : ""}
+         ORDER BY created_at DESC LIMIT 20;`,
+        type ? [type] : []
       );
 
       const text = rows.length === 0
@@ -840,8 +842,9 @@ server.prompt(
     const rows = queryAll(
       `SELECT type, title, substr(content, 1, 500) as snippet, created_at
        FROM items
-       WHERE created_at LIKE '${today}%'
-       ORDER BY created_at DESC;`
+       WHERE substr(created_at, 1, 10) = ?
+       ORDER BY created_at DESC;`,
+      [today]
     );
 
     const entries = rows.map(r => {
@@ -1126,24 +1129,16 @@ server.tool(
       }
 
       const tf = timeframe || "this week";
-      let dateFilter = "";
       const now = new Date();
-      if (tf === "today") {
-        dateFilter = `AND created_at LIKE '${now.toISOString().split("T")[0]}%'`;
-      } else if (tf === "this week") {
-        const weekAgo = new Date(now - 7 * 86400000).toISOString().split("T")[0];
-        dateFilter = `AND created_at >= '${weekAgo}'`;
-      } else {
-        const monthAgo = new Date(now - 30 * 86400000).toISOString().split("T")[0];
-        dateFilter = `AND created_at >= '${monthAgo}'`;
-      }
+      const days = tf === "today" ? 0 : tf === "this week" ? 7 : 30;
+      const since = new Date(now - days * 86400000).toISOString().split("T")[0];
 
       const tLike = `%${String(topic || "").replace(/[\\%_]/g, "\\$&")}%`;
       const topicFilter = topic ? "AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')" : "";
 
       const rows = queryAll(
-        `SELECT type, title, substr(content, 1, 200) as snippet, tags, created_at FROM items WHERE 1=1 ${dateFilter} ${topicFilter} ORDER BY created_at DESC LIMIT 50;`,
-        topic ? [tLike, tLike] : []
+        `SELECT type, title, substr(content, 1, 200) as snippet, tags, created_at FROM items WHERE created_at >= ? ${topicFilter} ORDER BY created_at DESC LIMIT 50;`,
+        topic ? [since, tLike, tLike] : [since]
       );
 
       if (rows.length === 0) {
@@ -1214,8 +1209,9 @@ server.tool(
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
       const rows = queryAll(
         `SELECT type, title, substr(content, 1, 200) as content, tags, created_at
-         FROM items WHERE created_at >= '${weekAgo}'
-         ORDER BY created_at DESC LIMIT 50;`
+         FROM items WHERE created_at >= ?
+         ORDER BY created_at DESC LIMIT 50;`,
+        [weekAgo]
       );
 
       if (rows.length === 0) {
