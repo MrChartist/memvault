@@ -15,6 +15,7 @@ import { openVaultDb } from "./db.mjs";
 import { ensureToken, createGuards, createLimiter, isLoopbackHost } from "./auth.mjs";
 import { encryptString, decryptString, isLegacyBlob, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
 import { ingest } from "./ingest.mjs";
+import { redact } from "./redact.mjs";
 import { audit, verifyAudit, tailAudit } from "./audit.mjs";
 import {
   AGENT_ID_RE, listAgents, getAgent, saveAgent, deleteAgent, installStarterPack,
@@ -223,11 +224,19 @@ export function createApp({
     const original = req.file.originalname || "file";
     const dayDir = path.join(root, "files", isoDate());
     ensureDir(dayDir);
-    const target = path.join(dayDir, `${Date.now()}_${safeSlug(original)}${path.extname(original)}`);
+    // The stored copy is named from the MASKED name, so a secret in a file name never reaches the disk path.
+    const name = security.redact === false ? original : redact(original, { disable: security.redactDisable }).text;
+    const ext = path.extname(name).toLowerCase().replace(/[^a-z0-9.]/g, "").slice(0, 12);
+    const target = path.join(dayDir, `${Date.now()}_${safeSlug(path.basename(name, path.extname(name)))}${ext}`);
     fs.renameSync(req.file.path, target);
-    const id = vdb.addItem({ type: "file", source: "manual", title: original, file_path: target });
-    log("upload", { id });
-    res.json({ ok: true, path: target, id });
+    try {
+      // The same door as every other write: mask, one atomic write, audit.
+      const { ids } = ingest({ type: "file", source: "manual", title: original, file_path: target }, { vdb, security, root, actor: "owner" });
+      res.json({ ok: true, path: target, id: ids[0] });
+    } catch (e) {
+      fs.rmSync(target, { force: true });
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   /**

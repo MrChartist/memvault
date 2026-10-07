@@ -153,6 +153,32 @@ describe('server — adding and finding memory', () => {
     expect((await req('POST', '/add', { body: { type: 'diary', agent_id: 'Bad Id' } })).status).toBe(400);
   });
 
+  it('/upload goes through the same door: the file name is masked and the write is audited', async () => {
+    const boundary = 'mvtest' + crypto.randomBytes(6).toString('hex');
+    const name = 'deploy ghp_abcdefghijklmnopqrstuvwxyz0123456789.txt';
+    const body = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: text/plain\r\n\r\n` +
+      `hello\r\n--${boundary}--\r\n`
+    );
+    const r = await new Promise((resolve, reject) => {
+      const q = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/upload', headers: {
+        authorization: `Bearer ${TOKEN}`, 'content-type': `multipart/form-data; boundary=${boundary}`, 'content-length': body.length,
+      } }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode, json: JSON.parse(d) })); });
+      q.on('error', reject);
+      q.end(body);
+    });
+    expect(r.status).toBe(200);
+    const row = D.openVaultDb({ root: ROOT }).query('SELECT title, file_path FROM items WHERE id = ?', [r.json.id])[0];
+    expect(row.title).not.toContain('ghp_abc');
+    expect(row.title).toContain('REDACTED');
+    expect(row.file_path).not.toMatch(/abcdefghijklmnop/); // not in the name on disk either
+    expect(fs.readFileSync(row.file_path, 'utf8')).toBe('hello');
+    const { tailAudit } = await import('../audit.mjs');
+    const adds = tailAudit(50, {}, ROOT).filter((x) => x.action === 'add' && x.detail.type === 'file');
+    expect(adds.length).toBeGreaterThan(0);
+    expect(JSON.stringify(tailAudit(500, {}, ROOT))).not.toContain('ghp_abc');
+  });
+
   it('"view as agent" filters search and list to what that agent may see', async () => {
     await req('PUT', '/agents/ana', { body: { name: 'Ana' } });
     await req('PUT', '/agents/bob', { body: { name: 'Bob' } });
