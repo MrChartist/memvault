@@ -6,30 +6,44 @@
  * directory on Windows and syncs them into the Knowledge Vault.
  *
  * What it does:
- *   1. Clears all existing data from the vault (fresh start)
+ *   1. Replaces items written by a previous run of THIS sync (nothing else is touched)
  *   2. Scans every conversation folder in the brain directory
  *   3. Reads walkthrough.md, task.md, implementation_plan.md + their metadata
- *   4. POSTs each artifact as a structured entry to the vault API
+ *   4. Stores each artifact as a structured entry (secrets masked)
  *   5. Prints a summary of what was synced
  *
  * Usage:
  *   node sync-antigravity.mjs
- *   node sync-antigravity.mjs --no-clear   (skip clearing existing data)
+ *   node sync-antigravity.mjs --no-clear   (keep items from the previous sync)
  *   node sync-antigravity.mjs --dry-run    (preview without posting)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import fs from "fs";
 import path from "path";
+import os from "os";
 
-import { API_URL as API } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+import { getVaultDb } from "./db.mjs";
+import { backupLocal } from "./storage.mjs";
 
-// Windows path to Antigravity brain directory (accessible from WSL as /mnt/c/...)
-const BRAIN_DIR = process.env.BRAIN_DIR || "/mnt/c/Users/rohit/.gemini/antigravity/brain";
+const queue = createIngestQueue({ actor: "antigravity" });
+
+// Where Antigravity keeps its conversation "brain": ~/.gemini/antigravity on every OS.
+// From WSL the app usually lives on the Windows side, so look there too. Override with BRAIN_DIR.
+function findAntigravityRoot() {
+  const candidates = [path.join(os.homedir(), ".gemini", "antigravity")];
+  try {
+    for (const u of fs.readdirSync("/mnt/c/Users")) candidates.push(`/mnt/c/Users/${u}/.gemini/antigravity`);
+  } catch { /* not WSL */ }
+  return candidates.find((c) => fs.existsSync(path.join(c, "brain"))) || candidates[0];
+}
+const AG_ROOT = findAntigravityRoot();
+const BRAIN_DIR = process.env.BRAIN_DIR || path.join(AG_ROOT, "brain");
 
 // Conversation summary file (updated per session by conversation_summaries)
 const CONV_SUMMARY_FILE = process.env.CONV_SUMMARY ||
-  "/mnt/c/Users/rohit/.gemini/antigravity/.system_generated/conversation_summaries.json";
+  path.join(AG_ROOT, ".system_generated", "conversation_summaries.json");
 
 // Parse flags
 const args = process.argv.slice(2);
@@ -55,34 +69,24 @@ function readFileSafe(filePath) {
   catch { return null; }
 }
 
-async function apiPost(endpoint, body) {
-  const res = await fetch(`${API}${endpoint}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return res.json();
-}
-
-async function clearAllData() {
-  console.log("🗑️  Clearing existing vault data...");
-  try {
-    const res = await fetch(`${API}/clear`, { method: "POST" });
-    if (res.ok) {
-      console.log("   ✅ Cleared.");
-    } else {
-      // Endpoint may not exist, do it manually via the reset endpoint
-      console.log("   ⚠️  /clear not available, trying /reset...");
-      const r2 = await fetch(`${API}/reset`, { method: "POST" });
-      if (r2.ok) {
-        console.log("   ✅ Reset done.");
-      } else {
-        console.log("   ⚠️  Could not clear via API — will still sync.");
-      }
-    }
-  } catch (e) {
-    console.log(`   ⚠️  Clear failed: ${e.message}`);
+/**
+ * Re-sync means "replace what a previous sync wrote" — NOT "wipe the vault".
+ * Items this script creates carry source "antigravity" AND a conv:<id> tag; your
+ * own diary entries, imported chats, saved memories and hand-written worklogs do
+ * not, so they are left alone. A local backup is taken first.
+ */
+function clearPreviousSync() {
+  console.log("🧹 Replacing items from the previous Antigravity sync...");
+  const backup = backupLocal();
+  if (!backup.ok) {
+    console.log(`   ⚠️  Backup failed (${backup.error}) — skipping cleanup; new items will be added alongside the old ones.`);
+    return;
   }
+  const vdb = getVaultDb();
+  const where = "source = 'antigravity' AND (',' || REPLACE(IFNULL(tags,''),' ','')) LIKE '%,conv:%'";
+  const n = vdb.query(`SELECT COUNT(*) AS n FROM items WHERE ${where}`)[0].n;
+  vdb.run(`DELETE FROM items WHERE ${where}`);
+  console.log(`   ✅ Removed ${n} previously synced item(s). Backup: ${path.basename(backup.location)}`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -93,21 +97,9 @@ async function main() {
   console.log(`║  ${DRY_RUN ? "DRY RUN — no data will be written" : "LIVE MODE"}`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  // 1. Check vault is reachable
-  try {
-    const health = await fetch(`${API}/health`);
-    if (!health.ok) throw new Error("not ok");
-    const hj = await health.json();
-    console.log(`✅ Vault online — ${hj.vault}\n`);
-  } catch {
-    console.error("❌ Cannot reach Vault API at", API);
-    console.error("   Start the server first: node server.mjs");
-    process.exit(1);
-  }
-
-  // 2. Clear old data
+  // 1. Replace only what the previous sync wrote
   if (!NO_CLEAR && !DRY_RUN) {
-    await clearAllData();
+    clearPreviousSync();
     console.log();
   }
 
@@ -178,14 +170,14 @@ async function main() {
       }
 
       try {
-        const result = await apiPost("/add", {
+        const result = { ok: queue.add({
           type: art.type,
           source: "antigravity",
           title,
           content: fullContent,
           tags,
           created_at: createdAt,
-        });
+        }) };
 
         if (result.ok) {
           synced++;
@@ -203,6 +195,7 @@ async function main() {
     if (!anyFound) skipped++;
   }
 
+  queue.done();
   console.log(`\n\n═══════════════════════════════════════`);
   console.log(`✅ Synced : ${synced} entries`);
   console.log(`⏭  Skipped: ${skipped} folders (no artifacts)`);

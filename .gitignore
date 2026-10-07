@@ -3,7 +3,6 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
 
 # ── SQLite database — contains encrypted secrets + all personal data ─────────
 # NEVER commit this. It's your personal vault, lives only on your machine.
@@ -57,3 +56,6 @@ test-add.json
 test-secrets.sh
 test.sh
 *.test-output.*
+
+# generated per machine
+run-sync-silent.vbs

@@ -14,7 +14,9 @@
 
 import fs from "fs";
 import path from "path";
-import { API_URL } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+
+const queue = createIngestQueue({ actor: "claude-import" });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -132,18 +134,13 @@ export async function importClaude(inputPath, options = {}) {
     }
 
     try {
-      const res = await fetch(`${API_URL}/add`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      const result = { ok: queue.add({
           type: "conversation",
           source: "claude-import",
           title: formatted.title,
           content: formatted.content,
           tags: formatted.tags,
-        }),
-      });
-      const result = await res.json();
+        }) };
       if (result.ok) {
         imported++;
         if (imported % 10 === 0) console.log(`  ✅ Imported ${imported}...`);
@@ -154,6 +151,7 @@ export async function importClaude(inputPath, options = {}) {
     }
   }
 
+  queue.done();
   console.log(`\n🎉 Claude Import Complete!`);
   console.log(`   ✅ Imported: ${imported}`);
   console.log(`   ⏭️  Skipped:  ${skipped}`);

@@ -23,16 +23,51 @@ describe('Context Engine - autoTag', () => {
   });
 });
 
-describe('Context Engine - detectProject', () => {
-  it('should extract exact project tags', () => {
-    const text = 'Working on the Investology project today.';
-    const project = detectProject(text);
-    expect(project).toEqual({ name: 'Investology', tags: 'investology,trading' });
+describe('Context Engine - detectProject (projects are the user\'s own)', () => {
+  const projects = [
+    { name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' },
+    { name: 'Thesis', match: ['dissertation'] },
+  ];
+
+  it('matches a configured project and returns its tags', () => {
+    expect(detectProject('Bought timber for the shed today.', projects)).toEqual({ name: 'Garden Shed', tags: 'garden,diy' });
   });
 
-  it('should return null if no project info is available', () => {
-    const project = detectProject('generic text learning react');
-    expect(project).toBeNull();
+  it('derives tags from the name when none are given', () => {
+    expect(detectProject('Wrote the dissertation intro', projects)).toEqual({ name: 'Thesis', tags: 'thesis' });
+  });
+
+  it('matches whole words only, case-insensitively', () => {
+    expect(detectProject('SHED plans', projects)?.name).toBe('Garden Shed');
+    expect(detectProject('She shedded some pounds', projects)).toBeNull();
+  });
+
+  it('assumes NO projects by default — nothing is tagged for someone who configured none', () => {
+    for (const t of ['working on the vault', 'tweet about it', 'Investology launch', 'tradebook export']) {
+      expect(detectProject(t, [])).toBeNull();
+      expect(detectProject(t)).toBeNull();
+    }
+  });
+
+  it('works with non-English text', () => {
+    expect(detectProject('काम चल रहा है: बगीचा परियोजना', [{ name: 'Garden', match: ['बगीचा'] }])?.name).toBe('Garden');
+  });
+});
+
+describe('Context Engine - autoTag is not fooled by everyday words', () => {
+  it('does not tag "rest", "go", "session" or "issue" as code topics', () => {
+    expect(autoTag('I need some rest, let\'s go, one session, no issue')).toEqual([]);
+  });
+  it('tags everyday topics for people who are not developers', () => {
+    const tags = autoTag('Exam revision plan for the week, and an essay draft to finish');
+    expect(tags).toEqual(expect.arrayContaining(['learning', 'planning', 'writing']));
+  });
+  it('still tags developer topics', () => {
+    expect(autoTag('debugging a crash in the react app')).toEqual(expect.arrayContaining(['bugfix', 'react']));
+  });
+  it('tags money topics for any market', () => {
+    expect(autoTag('review my stocks and the NASDAQ ETF')).toContain('trading');
+    expect(autoTag('monthly budget and savings')).toContain('finance');
   });
 });
 
@@ -49,5 +84,19 @@ describe('Context Engine - scoreRelevance', () => {
     const query = "auth bug";
     const score = scoreRelevance(currentEntry, query);
     expect(score).toBeLessThan(40);
+  });
+});
+
+describe('Context Engine - scoreRelevance with regex characters in the query', () => {
+  const entry = { title: 'notes', content: 'c++ templates and price [action] notes', tags: '' };
+
+  it('does not throw on queries containing regex metacharacters', () => {
+    for (const q of ['C++ templates', 'price [action', 'nifty (breakout', 'a.b*c?', '\\d+']) {
+      expect(() => scoreRelevance(entry, q)).not.toThrow();
+    }
+  });
+
+  it('still counts a literal "c++" occurrence', () => {
+    expect(scoreRelevance(entry, 'c++ templates')).toBeGreaterThan(0);
   });
 });

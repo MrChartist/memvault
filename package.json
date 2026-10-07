@@ -1,8 +1,8 @@
 {
   "name": "@mrchartist/memvault",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "mcpName": "io.github.mrchartist/memvault",
-  "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client. Backs up to Google Drive and bridges to other AI MCP servers.",
+  "description": "One private memory on your own computer, shared by every AI assistant you use. Agents with their own rules and limited views, secret masking, encrypted backups, and a dashboard built to be accessible to everyone.",
   "bin": {
     "memvault": "cli.mjs",
     "memvault-mcp": "mcp-server.mjs"
@@ -27,19 +27,25 @@
     "bridge": "node mcp-bridge.mjs list",
     "bridge:sync": "node mcp-bridge.mjs sync",
     "dev": "node --watch server.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "setup": "node cli.mjs setup",
+    "doctor": "node cli.mjs doctor",
+    "test:e2e": "node tests/e2e/dashboard.e2e.mjs"
   },
   "keywords": [
-    "personal-knowledge-base",
+    "mcp",
+    "model-context-protocol",
+    "ai-memory",
+    "ai-agents",
+    "agent-profiles",
+    "local-first",
+    "privacy",
     "second-brain",
     "self-hosted",
-    "knowledge-vault",
-    "ai-work-log",
-    "developer-diary",
-    "note-taking",
-    "sqlite",
-    "full-text-search",
-    "antigravity"
+    "knowledge-base",
+    "claude",
+    "cursor",
+    "accessibility"
   ],
   "author": "Rohit",
   "license": "MIT",
@@ -56,6 +62,20 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "axe-core": "^4.10.0",
+    "playwright-core": "^1.50.0",
     "vitest": "^4.1.0"
-  }
+  },
+  "files": [
+    "*.mjs",
+    "public/",
+    "profiles/",
+    "examples/",
+    "docs/*.md",
+    "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "server.json"
+  ]
 }

@@ -12,6 +12,8 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import { PROJECTS } from "./config.mjs";
+
 // ─── Auto-Tagging ───────────────────────────────────────────────────────────
 
 const TECH_PATTERNS = [
@@ -21,19 +23,19 @@ const TECH_PATTERNS = [
   { pattern: /\b(angular|ng-|rxjs)\b/i, tag: "angular" },
   { pattern: /\b(svelte|sveltekit)\b/i, tag: "svelte" },
   { pattern: /\b(tailwind|css|scss|styled-components)\b/i, tag: "css" },
-  { pattern: /\b(html5?|dom|web\s?component)\b/i, tag: "html" },
+  { pattern: /\b(html5?|web\s?components?)\b/i, tag: "html" },
   // Backend
   { pattern: /\b(node\.?js|express|fastify|koa)\b/i, tag: "nodejs" },
   { pattern: /\b(python|django|flask|fastapi)\b/i, tag: "python" },
   { pattern: /\b(java|spring|maven|gradle)\b/i, tag: "java" },
   { pattern: /\b(rust|cargo|tokio)\b/i, tag: "rust" },
-  { pattern: /\b(go|golang|gin|fiber)\b/i, tag: "golang" },
+  { pattern: /\b(golang|goroutine)s?\b/i, tag: "golang" },
   // Database
   { pattern: /\b(sql|sqlite|postgres|mysql|supabase)\b/i, tag: "database" },
   { pattern: /\b(mongodb|mongoose|redis)\b/i, tag: "nosql" },
   // DevOps
   { pattern: /\b(docker|kubernetes|k8s|helm)\b/i, tag: "devops" },
-  { pattern: /\b(aws|azure|gcp|cloud)\b/i, tag: "cloud" },
+  { pattern: /\b(aws|azure|gcp|cloud\s(?:computing|hosting|storage|provider))\b/i, tag: "cloud" },
   { pattern: /\b(ci\/cd|github\s?actions|jenkins)\b/i, tag: "cicd" },
   // AI/ML
   { pattern: /\b(ai|ml|llm|gpt|claude|gemini|openai|anthropic)\b/i, tag: "ai" },
@@ -42,22 +44,27 @@ const TECH_PATTERNS = [
   { pattern: /\b(git|github|gitlab)\b/i, tag: "git" },
   { pattern: /\b(vscode|vs\s?code|cursor|copilot)\b/i, tag: "ide" },
   { pattern: /\b(npm|yarn|pnpm|bun)\b/i, tag: "packagemgr" },
-  // Trading/Finance (for this user's domain)
-  { pattern: /\b(trading|candlestick|nifty|sensex|nse|bse)\b/i, tag: "trading" },
-  { pattern: /\b(fii|dii|sebi|portfolio)\b/i, tag: "finance" },
-  { pattern: /\b(investology|mrchartist|chartist)\b/i, tag: "investology" },
+  // Money & markets (any market, any country)
+  { pattern: /\b(trading|trader|candlesticks?|stocks?|shares|equity|nifty|sensex|nasdaq|nyse|s&p|forex|crypto|bitcoin|etf|options|futures)\b/i, tag: "trading" },
+  { pattern: /\b(invest(?:ing|ment|ments|or)?|portfolio|dividends?|mutual\sfunds?|retirement|savings?|budget|loan|mortgage|tax(?:es)?)\b/i, tag: "finance" },
 ];
 
 const TOPIC_PATTERNS = [
-  { pattern: /\b(bug|fix|error|crash|debug|issue)\b/i, tag: "bugfix" },
+  { pattern: /\b(bugs?|bugfix|crash(?:es|ed)?|debug(?:ging)?|exception|stack\strace|regression)\b/i, tag: "bugfix" },
   { pattern: /\b(deploy|hosting|hostinger|vercel|netlify)\b/i, tag: "deployment" },
   { pattern: /\b(design|ui|ux|layout|responsive)\b/i, tag: "design" },
-  { pattern: /\b(auth|login|signup|password|session)\b/i, tag: "auth" },
-  { pattern: /\b(api|endpoint|rest|graphql)\b/i, tag: "api" },
+  { pattern: /\b(auth|oauth|login|sign-?up|password|2fa|sso)\b/i, tag: "auth" },
+  { pattern: /\b(api|endpoints?|rest\sapi|restful|graphql)\b/i, tag: "api" },
   { pattern: /\b(test|jest|mocha|cypress|playwright)\b/i, tag: "testing" },
   { pattern: /\b(refactor|cleanup|optimize|performance)\b/i, tag: "refactor" },
   { pattern: /\b(security|encrypt|ssl|cors|xss)\b/i, tag: "security" },
-  { pattern: /\b(docs|documentation|readme|guide)\b/i, tag: "docs" },
+  { pattern: /\b(docs|documentation|readme)\b/i, tag: "docs" },
+  // Everyday topics, so the vault is useful beyond code
+  { pattern: /\b(study|studying|exam|homework|lesson|course|revision|syllabus|quiz|learn(?:ing)?)\b/i, tag: "learning" },
+  { pattern: /\b(essay|draft|blog|article|newsletter|manuscript|proofread|chapter)\b/i, tag: "writing" },
+  { pattern: /\b(plan|schedule|goals?|deadline|to-?do|checklist|routine|milestone)\b/i, tag: "planning" },
+  { pattern: /\b(travel|trip|itinerary|flight|hotel|visa)\b/i, tag: "travel" },
+  { pattern: /\b(recipe|meal\splan|cooking|grocery|groceries)\b/i, tag: "food" },
 ];
 
 /**
@@ -124,7 +131,8 @@ export function scoreRelevance(entry, query) {
   for (const kw of keywords) {
     if (content.includes(kw)) score += 10;
     // Count occurrences (capped at 5)
-    const count = Math.min((content.match(new RegExp(kw, "gi")) || []).length, 5);
+    // Escape: search words are user input ("C++", "price [action") and must not be parsed as a regex.
+    const count = Math.min((content.match(new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")) || []).length, 5);
     score += count * 2;
   }
 
@@ -160,25 +168,26 @@ export function rankByRelevance(entries, query) {
 
 // ─── Project Detection ──────────────────────────────────────────────────────
 
-const KNOWN_PROJECTS = [
-  { patterns: [/investology/i, /mrchartist/i, /sebi/i], name: "Investology", tags: "investology,trading" },
-  { patterns: [/memvault/i, /vault/i, /mcp.*server/i], name: "MemVault", tags: "memvault,mcp" },
-  { patterns: [/tradebook/i, /trade.*book/i, /journal.*trade/i], name: "TradeBook", tags: "tradebook,trading" },
-  { patterns: [/fii.*dii/i, /dii.*fii/i, /flows.*dashboard/i], name: "FII-DII Dashboard", tags: "fii-dii,finance" },
-  { patterns: [/twitter.*bot/i, /tweet/i, /promotion.*plan/i], name: "Twitter Bot", tags: "twitter,marketing" },
-  { patterns: [/ollama/i, /local.*llm/i], name: "Ollama MCP", tags: "ollama,ai,mcp" },
-];
+/**
+ * Projects are YOURS: define them in ~/.memvaultrc.json and notes that mention them are tagged automatically.
+ *   "projects": [ { "name": "Garden Shed", "match": ["shed", "garden build"], "tags": "garden,diy" } ]
+ * `match` entries are plain words or phrases (case-insensitive, whole words). Nothing is assumed by default.
+ */
+const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const slug = (n) => String(n).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /**
- * Detect project from text content
+ * Detect which of the user's projects a text is about
  * @param {string} text - Text to analyze
+ * @param {Array<{name:string, match:string[], tags?:string}>} [projects] - defaults to the configured list
  * @returns {{name: string, tags: string} | null}
  */
-export function detectProject(text) {
-  if (!text) return null;
-  for (const project of KNOWN_PROJECTS) {
-    for (const pattern of project.patterns) {
-      if (pattern.test(text)) return { name: project.name, tags: project.tags };
+export function detectProject(text, projects = PROJECTS) {
+  if (!text || !projects?.length) return null;
+  for (const p of projects) {
+    const words = (p.match?.length ? p.match : [p.name]).filter(Boolean);
+    if (words.some((w) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(String(w))}(?![\\p{L}\\p{N}])`, "iu").test(text))) {
+      return { name: p.name, tags: p.tags || slug(p.name) };
     }
   }
   return null;
@@ -208,7 +217,7 @@ export function generateDigest(entries) {
     diary: "📔", conversation: "💬", worklog: "🛠️", file: "📎",
   };
 
-  let digest = `## 📋 Daily Digest — ${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}\n\n`;
+  let digest = `## 📋 Daily Digest — ${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}\n\n`;
   digest += `**Total activity**: ${entries.length} entries\n\n`;
 
   for (const [type, items] of Object.entries(grouped)) {
@@ -217,7 +226,7 @@ export function generateDigest(entries) {
 
     for (const item of items.slice(0, 8)) {
       const time = item.created_at
-        ? new Date(item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+        ? new Date(item.created_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
         : "?";
       const title = item.title || "Untitled";
       const snippet = (item.content || item.snippet || "").slice(0, 100).replace(/\n/g, " ");

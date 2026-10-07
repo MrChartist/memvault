@@ -15,7 +15,9 @@
 import os from "os";
 import { execSync } from "child_process";
 
-import { API_URL as API } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+
+const queue = createIngestQueue({ actor: "system" });
 const DRY_RUN = process.argv.includes("--dry-run");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -26,14 +28,8 @@ async function postToVault(entry) {
     console.log(`  Content preview: ${entry.content.slice(0, 200)}...`);
     return true;
   }
-  try {
-    const res = await fetch(`${API}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    return (await res.json()).ok;
-  } catch { return false; }
+  queue.add(entry);
+  return true;
 }
 
 function execSafe(cmd, timeout = 10000) {
@@ -140,18 +136,7 @@ async function main() {
   console.log(`║  ${DRY_RUN ? "DRY RUN                            " : "LIVE MODE                          "}║`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  if (!DRY_RUN) {
-    try {
-      const h = await fetch(`${API}/health`);
-      if (!h.ok) throw new Error();
-      console.log("✅ Vault API reachable\n");
-    } catch {
-      console.error("❌ Vault API not reachable at", API);
-      process.exit(1);
-    }
-  }
-
-  let totalSynced = 0;
+let totalSynced = 0;
 
   // 1. System Info
   console.log("── System Info ─────────────────────────");
@@ -219,6 +204,7 @@ async function main() {
   if (procsOk) totalSynced++;
   console.log(`  📊 Top processes captured`);
 
+  queue.done();
   console.log(`\n═══════════════════════════════════════`);
   console.log(`✅ Synced: ${totalSynced} snapshots to vault`);
   console.log(`═══════════════════════════════════════\n`);

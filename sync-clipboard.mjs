@@ -16,7 +16,7 @@
 import { execSync } from "child_process";
 import crypto from "crypto";
 
-import { API_URL as API } from "./config.mjs";
+import { ingest } from "./ingest.mjs";
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONCE = args.includes("--once");
@@ -89,13 +89,13 @@ async function postToVault(entry) {
     return true;
   }
   try {
-    const res = await fetch(`${API}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    return (await res.json()).ok;
-  } catch { return false; }
+    // Clipboards are where passwords get copied — ingest() masks secrets before storing.
+    ingest(entry, { actor: "clipboard" });
+    return true;
+  } catch (e) {
+    console.error(`  ⚠️ Could not store clip: ${e.message}`);
+    return false;
+  }
 }
 
 // ─── Capture ────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ async function captureClipboard() {
 
   if (synced) {
     captureCount++;
-    const time = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     console.log(`  ✅ [${time}] Captured: ${title.slice(0, 70)}`);
   }
 }
@@ -143,16 +143,6 @@ async function main() {
   console.log(`║  Interval: ${String(INTERVAL_SEC).padEnd(3)}s | ${DRY_RUN ? "DRY RUN" : (ONCE ? "ONCE   " : "LIVE   ")}              ║`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  if (!DRY_RUN) {
-    try {
-      const h = await fetch(`${API}/health`);
-      if (!h.ok) throw new Error();
-      console.log("✅ Vault API reachable\n");
-    } catch {
-      console.error("❌ Vault API not reachable at", API);
-      process.exit(1);
-    }
-  }
 
   if (ONCE) {
     await captureClipboard();

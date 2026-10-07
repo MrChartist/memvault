@@ -14,8 +14,12 @@
 
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { execSync } from "child_process";
-import { API_URL as API, SYNC_CONFIG } from "./config.mjs";
+import { SYNC_CONFIG } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+
+const queue = createIngestQueue({ actor: "git" });
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
@@ -26,7 +30,7 @@ const DAYS = daysIdx !== -1 ? Number(args[daysIdx + 1]) || 14 : 14;
 
 // Parse --path "..."
 const pathIdx = args.indexOf("--path");
-const SCAN_ROOT = pathIdx !== -1 ? args[pathIdx + 1] : (process.env.GIT_SCAN_ROOT || (SYNC_CONFIG.gitDirs && SYNC_CONFIG.gitDirs[0]) || "D:\\AG");
+const SCAN_ROOT = pathIdx !== -1 ? args[pathIdx + 1] : (process.env.GIT_SCAN_ROOT || (SYNC_CONFIG.gitDirs && SYNC_CONFIG.gitDirs[0]) || os.homedir());
 
 // Max depth to search for .git directories
 const MAX_DEPTH = 3;
@@ -38,14 +42,8 @@ async function postToVault(entry) {
     console.log(`  [DRY] ${entry.title}`);
     return true;
   }
-  try {
-    const res = await fetch(`${API}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    return (await res.json()).ok;
-  } catch { return false; }
+  queue.add(entry);
+  return true;
 }
 
 function findGitRepos(rootDir, depth = 0) {
@@ -145,20 +143,7 @@ async function main() {
   console.log(`║  Past ${String(DAYS).padEnd(3)} days | ${DRY_RUN ? "DRY RUN" : "LIVE   "}              ║`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  // Health check
-  if (!DRY_RUN) {
-    try {
-      const h = await fetch(`${API}/health`);
-      if (!h.ok) throw new Error();
-      console.log("✅ Vault API reachable\n");
-    } catch {
-      console.error("❌ Vault API not reachable at", API);
-      console.error("   Run: node server.mjs");
-      process.exit(1);
-    }
-  }
-
-  // Find repos
+// Find repos
   console.log(`🔍 Scanning for Git repos in: ${SCAN_ROOT}`);
   const repos = findGitRepos(SCAN_ROOT);
   console.log(`📁 Found ${repos.length} repositories\n`);
@@ -207,6 +192,7 @@ async function main() {
     }
   }
 
+  queue.done();
   console.log(`\n\n═══════════════════════════════════════`);
   console.log(`📦 Repos scanned    : ${repos.length}`);
   console.log(`📝 Commits found    : ${totalCommits}`);

@@ -15,7 +15,9 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-import { API_URL as API } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+
+const queue = createIngestQueue({ actor: "vscode" });
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 
@@ -60,14 +62,8 @@ async function postToVault(entry) {
     console.log(`  [DRY] ${entry.title}`);
     return true;
   }
-  try {
-    const res = await fetch(`${API}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    return (await res.json()).ok;
-  } catch { return false; }
+  queue.add(entry);
+  return true;
 }
 
 // ─── Extractors ─────────────────────────────────────────────────────────────
@@ -157,18 +153,7 @@ async function main() {
   console.log(`║  ${DRY_RUN ? "DRY RUN                            " : "LIVE MODE                          "}║`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  if (!DRY_RUN) {
-    try {
-      const h = await fetch(`${API}/health`);
-      if (!h.ok) throw new Error();
-      console.log("✅ Vault API reachable\n");
-    } catch {
-      console.error("❌ Vault API not reachable at", API);
-      process.exit(1);
-    }
-  }
-
-  let totalSynced = 0;
+let totalSynced = 0;
 
   // 1. Recent Projects
   console.log("── Recent Projects ──────────────────────");
@@ -231,6 +216,7 @@ async function main() {
     console.log("  ⚠️  No settings found or unreadable");
   }
 
+  queue.done();
   console.log(`\n═══════════════════════════════════════`);
   console.log(`✅ Synced: ${totalSynced} entries to vault`);
   console.log(`═══════════════════════════════════════\n`);

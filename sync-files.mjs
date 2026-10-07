@@ -17,7 +17,10 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-import { API_URL as API, SYNC_CONFIG } from "./config.mjs";
+import { SYNC_CONFIG } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+
+const queue = createIngestQueue({ actor: "files" });
 const argsArr = process.argv.slice(2);
 const DRY_RUN = argsArr.includes("--dry-run");
 
@@ -31,7 +34,6 @@ const HOME = os.homedir();
 
 // Default scan directories
 const SCAN_DIRS = CUSTOM_PATH ? [CUSTOM_PATH] : [
-  "D:\\AG",
   path.join(HOME, "Desktop"),
   path.join(HOME, "Documents"),
   path.join(HOME, "Downloads"),
@@ -45,7 +47,7 @@ const TRACK_EXTENSIONS = new Set([
   ".json", ".yaml", ".yml", ".toml", ".xml",
   ".md", ".txt", ".csv",
   ".sql", ".sh", ".ps1", ".bat",
-  ".env", ".gitignore", ".dockerignore",
+  ".gitignore", ".dockerignore",
   ".pdf", ".docx", ".xlsx", ".pptx",
 ]);
 
@@ -65,14 +67,8 @@ async function postToVault(entry) {
     console.log(`  [DRY] ${entry.title}`);
     return true;
   }
-  try {
-    const res = await fetch(`${API}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    return (await res.json()).ok;
-  } catch { return false; }
+  queue.add(entry);
+  return true;
 }
 
 function formatBytes(bytes) {
@@ -129,18 +125,7 @@ async function main() {
   console.log(`║  Past ${String(HOURS).padEnd(3)} hours | ${DRY_RUN ? "DRY RUN" : "LIVE   "}              ║`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  if (!DRY_RUN) {
-    try {
-      const h = await fetch(`${API}/health`);
-      if (!h.ok) throw new Error();
-      console.log("✅ Vault API reachable\n");
-    } catch {
-      console.error("❌ Vault API not reachable at", API);
-      process.exit(1);
-    }
-  }
-
-  const cutoffTime = Date.now() - (HOURS * 60 * 60 * 1000);
+const cutoffTime = Date.now() - (HOURS * 60 * 60 * 1000);
   let allFiles = [];
 
   for (const dir of SCAN_DIRS) {
@@ -190,8 +175,8 @@ async function main() {
     const fileList = files
       .slice(0, 30) // Max 30 files per project
       .map(f => {
-        const time = f.modified.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-        const date = f.modified.toLocaleDateString("en-IN");
+        const time = f.modified.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+        const date = f.modified.toLocaleDateString(undefined);
         return `- \`${f.name}\` (${formatBytes(f.size)}) — modified ${date} ${time}`;
       })
       .join("\n");
@@ -230,6 +215,7 @@ async function main() {
     }
   }
 
+  queue.done();
   console.log(`\n\n═══════════════════════════════════════`);
   console.log(`📁 Directories scanned : ${SCAN_DIRS.length}`);
   console.log(`📄 Files found         : ${allFiles.length}`);
