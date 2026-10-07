@@ -194,6 +194,80 @@ describe('server — adding and finding memory', () => {
   });
 });
 
+describe('server — working with one memory at a time', () => {
+  const add = async (over = {}) => (await req('POST', '/add', { body: { type: 'diary', source: 'manual', title: 'one-memory ' + crypto.randomBytes(3).toString('hex'), content: 'full text of the note', tags: 'diary', ...over } })).json.id;
+
+  it('reads one memory in full', async () => {
+    const id = await add({ content: 'x'.repeat(1000) });
+    const r = await req('GET', `/items/${id}`);
+    expect(r.status).toBe(200);
+    expect(r.json.item.content).toHaveLength(1000); // lists only carry a 300-character snippet
+    expect((await req('GET', '/items/nope')).status).toBe(404);
+  });
+
+  it('edits title, content and tags, masks secrets, and audits without content', async () => {
+    const id = await add();
+    const r = await req('PATCH', `/items/${id}`, { body: { title: 'edited', content: 'now API_KEY=abcd1234efgh5678', tags: 'a,b' } });
+    expect(r.status).toBe(200);
+    expect(r.json.redacted).toEqual([{ type: 'secret-assignment', count: 1 }]);
+    const item = (await req('GET', `/items/${id}`)).json.item;
+    expect(item.title).toBe('edited');
+    expect(item.content).not.toContain('abcd1234efgh5678');
+    expect(item.tags).toBe('a,b');
+    const { tailAudit } = await import('../audit.mjs');
+    const last = tailAudit(5, {}, ROOT).filter((x) => x.action === 'edit').pop();
+    expect(last.detail.id).toBe(id);
+    expect(JSON.stringify(last)).not.toContain('abcd1234');
+    expect((await req('PATCH', `/items/${id}`, { body: { scope: 'agent:x' } })).status).toBe(400); // only text fields can change
+    expect((await req('PATCH', '/items/nope', { body: { title: 'x' } })).status).toBe(404);
+  });
+
+  it('pins and unpins, and pinned memories list first', async () => {
+    const id = await add({ title: 'pin me' });
+    await add({ title: 'newer than the pinned one' });
+    expect((await req('PATCH', `/items/${id}`, { body: { pinned: true } })).status).toBe(200);
+    expect((await req('GET', '/list?limit=5')).json.results[0].id).toBe(id);
+    await req('PATCH', `/items/${id}`, { body: { pinned: false } });
+    expect((await req('GET', '/list?limit=5')).json.results[0].id).not.toBe(id);
+    expect((await req('GET', `/items/${id}`)).json.item.tags).not.toMatch(/pinned/);
+  });
+
+  it('deletes one memory and can bring it back (undo)', async () => {
+    const id = await add({ title: 'delete then undo', agent_id: 'ana', scope: 'agent:ana' });
+    const del = await req('DELETE', `/items/${id}`);
+    expect(del.status).toBe(200);
+    expect((await req('GET', `/items/${id}`)).status).toBe(404);
+    const back = await req('POST', `/items/${id}/restore`);
+    expect(back.status).toBe(200);
+    const item = (await req('GET', `/items/${id}`)).json.item;
+    expect(item.title).toBe('delete then undo');
+    expect(item.scope).toBe('agent:ana'); // comes back exactly as it was, private notes stay private
+    expect((await req('POST', `/items/${id}/restore`)).status).toBe(404); // nothing left to restore
+  });
+
+  it('bulk delete needs the phrase, takes a backup first, and can be undone', async () => {
+    const ids = [await add({ title: 'bulk-a' }), await add({ title: 'bulk-b' })];
+    expect((await req('POST', '/items/delete-many', { body: { ids } })).status).toBe(400);
+    expect((await req('GET', `/items/${ids[0]}`)).status).toBe(200);
+    const r = await req('POST', '/items/delete-many', { body: { ids, confirm: 'DELETE 2' } });
+    expect(r.json).toMatchObject({ ok: true, deleted: 2 });
+    expect(r.json.backup).toMatch(/^index-.*\.sqlite$/);
+    expect((await req('GET', `/items/${ids[0]}`)).status).toBe(404);
+    const back = await req('POST', '/items/restore-many', { body: { ids } });
+    expect(back.json.restored).toBe(2);
+    expect((await req('GET', `/items/${ids[1]}`)).status).toBe(200);
+  });
+
+  it('exports everything as JSON without the encrypted secrets', async () => {
+    const id = await add({ title: 'export me' });
+    const r = await req('GET', '/export');
+    expect(r.status).toBe(200);
+    expect(r.json.items.some((i) => i.id === id)).toBe(true);
+    expect(r.text).not.toContain('"encrypted"');
+    expect(r.headers['content-disposition']).toMatch(/attachment; filename="memvault-export-/);
+  });
+});
+
 describe('server — /clear can no longer silently wipe the vault', () => {
   async function seed() {
     await req('POST', '/add-many', {

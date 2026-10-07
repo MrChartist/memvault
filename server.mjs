@@ -15,7 +15,7 @@ import { openVaultDb } from "./db.mjs";
 import { ensureToken, createGuards, createLimiter, isLoopbackHost } from "./auth.mjs";
 import { encryptString, decryptString, isLegacyBlob, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
 import { ingest } from "./ingest.mjs";
-import { redact } from "./redact.mjs";
+import { redact, redactItem } from "./redact.mjs";
 import { audit, verifyAudit, tailAudit } from "./audit.mjs";
 import {
   AGENT_ID_RE, listAgents, getAgent, saveAgent, deleteAgent, installStarterPack,
@@ -40,6 +40,25 @@ const AddSchema = z.object({
   agent_id: z.string().regex(AGENT_ID_RE).optional(),
   scope: z.string().regex(SCOPE_RE).optional(),
 });
+
+// What the owner may change on an existing memory. Scope, agent and type stay as they were.
+const EditSchema = z.object({
+  title: z.string().max(500).optional(),
+  content: z.string().max(1_000_000).optional(),
+  tags: z.string().max(1000).optional(),
+  pinned: z.boolean().optional(),
+}).strict();
+
+const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
+const PINNED_FIRST = "(CASE WHEN (',' || REPLACE(IFNULL(tags,''),' ','') || ',') LIKE '%,pinned,%' THEN 0 ELSE 1 END)";
+const TRASH_MAX = 500;
+const TRASH_MS = 60 * 60 * 1000;
+
+function withPinned(tags, pinned) {
+  const list = String(tags || "").split(",").map((t) => t.trim()).filter((t) => t && t !== "pinned");
+  if (pinned) list.push("pinned");
+  return list.join(",");
+}
 
 const SecretAddSchema = z.object({
   password: z.string().min(1),
@@ -204,7 +223,7 @@ export function createApp({
     const f = itemQuery(req, { search: q });
     if (f.error) return res.status(404).json({ ok: false, error: f.error });
     const results = vdb.query(
-      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY created_at DESC LIMIT 50`, f.params
+      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY ${PINNED_FIRST}, created_at DESC LIMIT 50`, f.params
     );
     res.json({ ok: true, results });
   });
@@ -214,9 +233,102 @@ export function createApp({
     const f = itemQuery(req, {});
     if (f.error) return res.status(404).json({ ok: false, error: f.error });
     const results = vdb.query(
-      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY created_at DESC LIMIT ${limit}`, f.params
+      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY ${PINNED_FIRST}, created_at DESC LIMIT ${limit}`, f.params
     );
     res.json({ ok: true, results });
+  });
+
+  // ── one memory at a time: read, edit, pin, delete (with undo), export ─────
+
+  // Deleted items wait here (this process only) so a mistake can be undone for an hour.
+  // They are not written anywhere, so "delete" really removes them from the vault file.
+  const trash = new Map();
+  const trashPut = (row) => {
+    const now = Date.now();
+    for (const [k, v] of trash) if (now - v.at > TRASH_MS) trash.delete(k);
+    trash.set(row.id, { row, at: now });
+    while (trash.size > TRASH_MAX) trash.delete(trash.keys().next().value);
+  };
+  const getItem = (id) => (ID_RE.test(id) ? vdb.query("SELECT * FROM items WHERE id = ?", [id])[0] : undefined);
+  const COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "agent_id", "scope"];
+  const reinsert = (row) => vdb.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => row[c] ?? null));
+
+  app.get("/items/:id", (req, res) => {
+    const item = getItem(req.params.id);
+    if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
+    res.json({ ok: true, item });
+  });
+
+  app.patch("/items/:id", (req, res) => {
+    const parsed = EditSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Only the title, text, tags and pin can be changed." });
+    const item = getItem(req.params.id);
+    if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
+    const { pinned, ...fields } = parsed.data;
+    const next = { title: item.title, content: item.content, tags: item.tags, ...fields };
+    if (pinned !== undefined) next.tags = withPinned(next.tags, pinned);
+    const r = security.redact === false ? { item: next, findings: [] } : redactItem(next, { disable: security.redactDisable });
+    try {
+      vdb.run("UPDATE items SET title = ?, content = ?, tags = ? WHERE id = ?", [r.item.title, r.item.content, r.item.tags, item.id]);
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+    log("edit", { id: item.id, fields: Object.keys(fields).concat(pinned === undefined ? [] : ["pinned"]), redacted: r.findings.map((f) => `${f.count}x ${f.type}`) });
+    res.json({ ok: true, redacted: r.findings, item: { ...item, ...r.item } });
+  });
+
+  app.delete("/items/:id", (req, res) => {
+    const item = getItem(req.params.id);
+    if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
+    trashPut(item);
+    vdb.run("DELETE FROM items WHERE id = ?", [item.id]);
+    log("delete", { id: item.id, count: 1 });
+    res.json({ ok: true, undoable: true });
+  });
+
+  app.post("/items/:id/restore", (req, res) => {
+    const held = trash.get(req.params.id);
+    if (!held) return res.status(404).json({ ok: false, error: "Nothing to restore. Undo is only kept for an hour, and only until the dashboard server restarts." });
+    reinsert(held.row);
+    trash.delete(req.params.id);
+    log("restore", { id: req.params.id, count: 1 });
+    res.json({ ok: true });
+  });
+
+  // Several at once: needs the phrase "DELETE <n>" and takes a backup first.
+  app.post("/items/delete-many", (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String).filter((x) => ID_RE.test(x)))].slice(0, 5000) : [];
+    if (!ids.length) return res.status(400).json({ ok: false, error: "Choose at least one memory." });
+    const phrase = `DELETE ${ids.length}`;
+    if (req.body.confirm !== phrase) {
+      return res.status(400).json({ ok: false, error: `Refusing to delete without confirmation. Send {"confirm":"${phrase}"}.`, wouldDelete: ids.length });
+    }
+    const rows = ids.map(getItem).filter(Boolean);
+    const backup = backupLocal();
+    if (!backup.ok && rows.length) return res.status(500).json({ ok: false, error: `Backup failed, nothing deleted: ${backup.error}` });
+    rows.forEach(trashPut);
+    vdb.transaction((tx) => { for (const r of rows) tx.run("DELETE FROM items WHERE id = ?", [r.id]); });
+    log("delete", { count: rows.length, backup: backup.location ? path.basename(backup.location) : null });
+    res.json({ ok: true, deleted: rows.length, backup: backup.location ? path.basename(backup.location) : null });
+  });
+
+  app.post("/items/restore-many", (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    const held = ids.map((id) => trash.get(id)).filter(Boolean);
+    vdb.transaction((tx) => {
+      for (const h of held) tx.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => h.row[c] ?? null));
+    });
+    for (const h of held) trash.delete(h.row.id);
+    log("restore", { count: held.length });
+    res.json({ ok: true, restored: held.length });
+  });
+
+  // Everything you wrote, as one JSON file you own. The Secure Vault's encrypted items are not included.
+  app.get("/export", (_req, res) => {
+    const items = vdb.query("SELECT * FROM items ORDER BY created_at");
+    log("export", { count: items.length });
+    res.set("Content-Disposition", `attachment; filename="memvault-export-${isoDate()}.json"`);
+    res.json({ memvault: PKG_VERSION, exportedAt: new Date().toISOString(), count: items.length, items });
   });
 
   app.post("/upload", upload.single("file"), (req, res) => {
