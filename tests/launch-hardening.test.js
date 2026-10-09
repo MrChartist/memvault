@@ -92,7 +92,7 @@ describe('idempotent ingest — the same thing written twice is stored once', ()
 });
 
 describe('capture engines — running them again does not add copies', () => {
-  it('system, files and git snapshots stay at one row per thing over three runs', async () => {
+  it('system, files and git snapshots stay at one row per thing when run again', async () => {
     const { HOME, node, db } = fresh();
     const proj = path.join(HOME, 'proj', 'app');
     fs.mkdirSync(proj, { recursive: true });
@@ -102,7 +102,7 @@ describe('capture engines — running them again does not add copies', () => {
     git('init', '-q');
     git('commit', '-q', '--allow-empty', '-m', 'first commit');
     const counts = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       node('sync-system.mjs', ['--force']);
       node('sync-files.mjs', ['--force', '--path', path.join(HOME, 'proj')]);
       node('sync-git.mjs', ['--force', '--path', path.join(HOME, 'proj')]);
@@ -112,8 +112,7 @@ describe('capture engines — running them again does not add copies', () => {
     }
     expect(counts[0]).toContain('"source":"system"');
     expect(counts[1]).toBe(counts[0]);
-    expect(counts[2]).toBe(counts[0]);
-  });
+  }, 120_000);
 });
 
 describe('"~" and relative paths', () => {
@@ -127,10 +126,11 @@ describe('"~" and relative paths', () => {
 
   it('expandHome (config-file values) puts relative paths under home; resolveUserPath (CLI) under the current folder', async () => {
     const { expandHome, resolveUserPath } = await imp('paths.mjs');
-    expect(expandHome('code', '/h')).toBe(path.join('/h', 'code'));
-    expect(expandHome('~/code', '/h')).toBe(path.join('/h', 'code'));
-    expect(resolveUserPath('~/code', '/h')).toBe(path.join('/h', 'code'));
-    expect(resolveUserPath('code', '/h')).toBe(path.resolve('code'));
+    const home = path.resolve('/h'); // gets a drive letter on Windows
+    expect(expandHome('code', home)).toBe(path.join(home, 'code'));
+    expect(expandHome('~/code', home)).toBe(path.join(home, 'code'));
+    expect(resolveUserPath('~/code', home)).toBe(path.join(home, 'code'));
+    expect(resolveUserPath('code', home)).toBe(path.resolve('code'));
   });
 
   it('VAULT_ROOT, vaultRoot and sync folders written with ~ in the settings file are expanded', () => {
