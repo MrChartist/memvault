@@ -31,6 +31,21 @@ describe('lock ownership', () => {
   });
 });
 
+describe('lock left empty by a crash', () => {
+  it('is taken over after about a second, not after the full 15 s age limit', () => {
+    const file = path.join(fresh('empty'), 'x.lock');
+    fs.writeFileSync(file, ''); // killed between creating the lock and writing its owner into it
+    const old = new Date(Date.now() - 2000);
+    fs.utimesSync(file, old, old);
+    const t0 = Date.now();
+    const l = new FileLock(file);
+    l.acquire();
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(l.holds()).toBe(true);
+    l.release();
+  });
+});
+
 describe('a write that outlives its lock is not lost', () => {
   it('both writers\' rows survive when a slow writer\'s lock is taken over', async () => {
     const root = fresh('slow');

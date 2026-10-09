@@ -24,6 +24,7 @@ import crypto from "crypto";
 import initSqlJs from "sql.js";
 import { VAULT_ROOT } from "./config.mjs";
 import { FileLock } from "./filelock.mjs";
+import { retryBusy } from "./retry.mjs";
 
 const SQL = await initSqlJs();
 
@@ -189,7 +190,7 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
     } finally {
       fs.closeSync(fd);
     }
-    fs.renameSync(tmp, dbPath);
+    retryBusy(() => fs.renameSync(tmp, dbPath)); // a scanner or sync client may hold the file for a moment
     fs.writeFileSync(genPath, crypto.randomBytes(8).toString("hex"), { mode: 0o600 });
     tighten(dbPath, 0o600);
   };

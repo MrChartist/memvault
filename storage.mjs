@@ -28,6 +28,7 @@ import { VAULT_ROOT, STORAGE_CONFIG } from "./config.mjs";
 import { FileLock } from "./filelock.mjs";
 import { encryptBuffer, decryptBuffer, isEncryptedBackup, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
 import initSqlJs from "sql.js";
+import { retryBusy } from "./retry.mjs";
 
 const SQL = await initSqlJs();
 
@@ -110,7 +111,7 @@ function installDb(bytes) {
     }
     const tmp = `${DB_PATH}.${process.pid}.restore.tmp`;
     fs.writeFileSync(tmp, bytes, { mode: 0o600 });
-    fs.renameSync(tmp, DB_PATH);
+    retryBusy(() => fs.renameSync(tmp, DB_PATH));
   } finally {
     lock.release();
   }
