@@ -71,6 +71,9 @@ if (AGENT_ID) {
 const actor = () => AGENT_ID || "owner";
 const queryAll = (sql, params = []) => db.query(sql, params);
 
+/** A value that goes inside a comma-separated tag list: a comma would start a new tag (and could fake a routing tag). */
+const tagSafe = (v) => String(v).replace(/[,\r\n]+/g, " ").trim().slice(0, 80);
+
 function isoDate() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -692,7 +695,7 @@ server.tool(
     const detectedProject = project || detectProject(what)?.name;
     const tags = [
       "memory", `memory:${cat}`,
-      ...(detectedProject ? [`project:${detectedProject.toLowerCase().replace(/\s+/g, "-")}`] : []),
+      ...(detectedProject ? [`project:${tagSafe(detectedProject).toLowerCase().replace(/\s+/g, "-")}`] : []),
       ...detectedTags,
     ].join(",");
 
@@ -1054,7 +1057,7 @@ server.tool(
   async ({ prompt: userPrompt, aiTool, project }) => {
     const now = new Date().toISOString();
     const source = aiTool || "unknown-ai";
-    const tags = ["prompt-log", `ai:${source}`, ...(project ? [`project:${project}`] : [])].join(",");
+    const tags = ["prompt-log", `ai:${tagSafe(source)}`, ...(project ? [`project:${tagSafe(project)}`] : [])].join(",");
     const title = `[Prompt:${source}] ${userPrompt.slice(0, 80)}${userPrompt.length > 80 ? "..." : ""}`;
 
     const content = [
@@ -1086,7 +1089,7 @@ server.tool(
   async ({ summary, keyPoints, aiTool, project }) => {
     const now = new Date().toISOString();
     const source = aiTool || "ai-conversation";
-    const tags = ["conversation-log", `ai:${source}`, ...(project ? [`project:${project}`] : [])].join(",");
+    const tags = ["conversation-log", `ai:${tagSafe(source)}`, ...(project ? [`project:${tagSafe(project)}`] : [])].join(",");
     const title = `[Conv:${source}] ${summary.slice(0, 80)}`;
 
     const content = [

@@ -293,7 +293,7 @@ describe('agents — briefing, scoping and handoffs', () => {
 
   it('inbox matching is exact (to:coder must not match to:coder-2)', () => {
     const { owner } = world();
-    owner.addItem({ type: 'conversation', title: 'h', content: 'x', tags: 'handoff,from:a,to:coder-2' });
+    owner.addItem({ type: 'conversation', source: 'agent-handoff', title: 'h', content: 'x', tags: 'handoff,from:owner,to:coder-2' });
     expect(A.listInbox(owner, 'coder')).toEqual([]);
     expect(A.listInbox(owner, 'coder-2')).toHaveLength(1);
   });

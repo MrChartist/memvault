@@ -306,17 +306,33 @@ const fence = (s) => String(s).replace(/<\/?memory-data>/gi, "[tag removed]");
 
 const ITEM_COLS = "id,type,source,title,content,tags,created_at,agent_id,scope";
 
-/** Open handoffs addressed to `agentId` (append-only; acked via an ack item). */
+const tagValue = (tags, prefix) => {
+  const t = String(tags || "").split(",").map((x) => x.trim()).find((x) => x.startsWith(prefix));
+  return t ? t.slice(prefix.length) : null;
+};
+
+/**
+ * Open handoffs addressed to `agentId` (append-only; acked via an ack item).
+ *
+ * Tags are free text that any writer can type, so they prove nothing on their own. A handoff counts
+ * only if it was written by the handoff tool (source "agent-handoff") AND its `from:` tag names whoever
+ * actually wrote it (the bound agent, or "owner" when no agent wrote it). An acknowledgement counts only
+ * when the agent named in its `by:` tag wrote it, and only for that agent's own inbox. So one agent
+ * cannot forge a message "from the owner" or from another agent, or hide someone else's handoff.
+ */
 export function listInbox(db, agentId, { limit = 20 } = {}) {
+  const writer = (r) => r.agent_id || "owner";
   const rows = db.query(
     `SELECT ${ITEM_COLS} FROM items
-     WHERE (',' || IFNULL(tags,'') || ',') LIKE ? ORDER BY created_at DESC LIMIT 200`,
+     WHERE source = 'agent-handoff' AND (',' || IFNULL(tags,'') || ',') LIKE ? ORDER BY created_at DESC LIMIT 200`,
     [`%,handoff,%`]
-  ).filter((r) => (`,${r.tags},`).includes(`,to:${agentId},`));
+  ).filter((r) => tagValue(r.tags, "to:") === agentId && tagValue(r.tags, "from:") === writer(r));
   if (!rows.length) return [];
   const acked = new Set(
-    db.query(`SELECT tags FROM items WHERE (',' || IFNULL(tags,'') || ',') LIKE ?`, [`%,handoff-ack,%`])
-      .flatMap((r) => String(r.tags).split(",").filter((t) => t.startsWith("ref:")).map((t) => t.slice(4)))
+    db.query(`SELECT ${ITEM_COLS} FROM items WHERE source = 'agent-handoff' AND (',' || IFNULL(tags,'') || ',') LIKE ?`, [`%,handoff-ack,%`])
+      .filter((a) => tagValue(a.tags, "by:") === agentId && writer(a) === agentId)
+      .map((a) => tagValue(a.tags, "ref:"))
+      .filter(Boolean)
   );
   return rows.filter((r) => !acked.has(r.id)).slice(0, limit);
 }
