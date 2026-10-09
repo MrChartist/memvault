@@ -792,7 +792,7 @@ server.prompt(
   },
   async ({ agent_id, task }) => {
     const id = agent_id || AGENT_ID;
-    const p = id ? getAgent(db, id) : null;
+    const p = id && (!AGENT_ID || id === AGENT_ID) ? getAgent(db, id) : null; // a bound connection can only be its own agent
     const text = p
       ? `${buildBriefing(db, p, { task: task || "" })}\n\n---\nYou are now this agent. ${task ? `Task: ${task}` : "Wait for the user's request."}`
       : `No agent selected. Available: ${agentIdsHint()}`;
@@ -924,6 +924,8 @@ server.tool(
   async ({ agent_id, task }) => {
     const id = agent_id || AGENT_ID;
     if (!id) return { content: [{ type: "text", text: `Tell me which agent to activate. Available: ${agentIdsHint()}` }] };
+    // A bound connection can only ever be its own agent: taking on another agent's rules (and reading its inbox) is a change of identity.
+    if (AGENT_ID && id !== AGENT_ID) return { content: [{ type: "text", text: `This connection can only be this agent (\`${AGENT_ID}\`). Ask the owner to connect another app to \`${id}\` if you need it.` }] };
     const p = getAgent(db, id);
     if (!p) return { content: [{ type: "text", text: `No agent "${id}". Available: ${agentIdsHint()}` }] };
     audit({ actor: actor(), action: "agent-activate", detail: { agent: id } });

@@ -442,6 +442,34 @@ describe('server — secrets', () => {
   });
 });
 
+describe('server — secrets in a vault that has no check row', () => {
+  it('an old vault (secrets, no sentinel) still needs the real password, with the lockout', async () => {
+    const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-nosentinel-'));
+    const vdb2 = D.openVaultDb({ root: root2 });
+    const { encryptString } = await import('../crypto-vault.mjs');
+    vdb2.run("INSERT INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES ('secret_old','password','Old','" + encryptString('{"password":"x"}', 'the real master password', 'secret_old') + "','x','x')");
+    const p2 = await new Promise((res) => { const pr = http.createServer().listen(0, '127.0.0.1', () => { const n = pr.address().port; pr.close(() => res(n)); }); });
+    const srv = await new Promise((res) => { const sv = S.createApp({ vdb: vdb2, token: TOKEN, port: p2, root: root2 }).listen(p2, '127.0.0.1', () => res(sv)); });
+    const call = (m, u, body) => new Promise((resolve, reject) => {
+      const payload = JSON.stringify(body);
+      const r = http.request({ host: '127.0.0.1', port: p2, method: m, path: u, headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode })); });
+      r.on('error', reject); r.end(payload);
+    });
+    try {
+      expect((await call('POST', '/secrets/verify', { password: 'a wrong guess here' })).status).toBe(401);
+      expect((await call('DELETE', '/secrets/delete/secret_old', { password: 'a wrong guess here' })).status).toBe(401);
+      expect(vdb2.query("SELECT COUNT(*) n FROM secrets")[0].n).toBe(1); // not deleted
+      const codes = [];
+      for (let i = 0; i < 6; i++) codes.push((await call('POST', '/secrets/get', { id: 'secret_old', password: 'wrong guess ' + i })).status);
+      expect(codes).toContain(429); // the lockout applies here too
+      expect((await call('POST', '/secrets/verify', { password: 'the real master password' })).status).toBe(429); // locked for a minute
+    } finally {
+      srv.close();
+      fs.rmSync(root2, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('server — agents and audit', () => {
   it('lists packs, installs the default one, a named one, and refuses an unknown one', async () => {
     const packs = await req('GET', '/agents/packs');

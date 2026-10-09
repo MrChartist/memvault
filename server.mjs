@@ -429,10 +429,23 @@ export function createApp({
     );
   };
 
-  /** true / false. First use (no sentinel yet) accepts any password and sets it. */
+  const firstSecret = () => vdb.query("SELECT id, encrypted FROM secrets WHERE id != ? LIMIT 1", [SENTINEL_ID])[0] || null;
+
+  /** true / false. A brand-new vault (no sentinel, no secrets) accepts the first password and sets it. */
   const verifyPassword = (password) => {
     const row = sentinelRow();
-    if (!row) return true;
+    if (!row) {
+      // Secrets exist but there is no check row (a vault from an older version): prove the password on a real secret.
+      const s = firstSecret();
+      if (!s) return true;
+      try {
+        decryptString(s.encrypted, password, s.id);
+        createSentinel(password);
+        return true;
+      } catch {
+        return false;
+      }
+    }
     try {
       const ok = decryptString(row.encrypted, password, SENTINEL_ID) === SENTINEL_VALUE;
       if (ok && isLegacyBlob(row.encrypted)) createSentinel(password); // upgrade to v2
@@ -450,7 +463,7 @@ export function createApp({
       res.status(429).json({ ok: false, error: `Too many wrong passwords. Try again in ${lock.retryAfterSec}s.` });
       return false;
     }
-    if (!hasSentinel()) {
+    if (!hasSentinel() && !firstSecret()) {
       if (creating && String(password).length < MIN_PASSPHRASE_LENGTH) {
         res.status(400).json({ ok: false, error: `Choose a master password of at least ${MIN_PASSPHRASE_LENGTH} characters.` });
         return false;
@@ -470,7 +483,7 @@ export function createApp({
   app.post("/secrets/verify", (req, res) => {
     const { password } = req.body || {};
     if (!password) return res.status(400).json({ ok: false, error: "password required" });
-    const first = !hasSentinel();
+    const first = !hasSentinel() && !firstSecret();
     if (!gate(req, res, { password, creating: true })) return;
     if (first) createSentinel(password);
     res.json({ ok: true });
@@ -481,7 +494,7 @@ export function createApp({
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const { password, category, label, fields } = parsed.data;
     if (!gate(req, res, { password, creating: true })) return;
-    if (!hasSentinel()) createSentinel(password);
+    if (!hasSentinel()) createSentinel(password); // reached only for a brand-new vault, or after the password was proven above
 
     const id = `secret_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
     const now = new Date().toISOString();

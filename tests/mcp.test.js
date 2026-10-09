@@ -275,6 +275,23 @@ describe('mcp — handoffs cannot be forged by writing tags', () => {
   });
 });
 
+describe('mcp — a bound agent can only become itself', () => {
+  it('cannot load another agent\'s briefing or inbox with agent_activate or the activate_agent prompt', async () => {
+    const analyst = await connect('market-analyst');
+    await call(owner, 'agent_handoff', { to: 'telegram-editor', subject: 'Private-inbox-subject', message: 'PRIVATE-INBOX-BODY' });
+    const out = await call(analyst, 'agent_activate', { agent_id: 'telegram-editor' });
+    expect(out).toMatch(/only be this agent|your own agent/i);
+    expect(out).not.toMatch(/PRIVATE-INBOX-BODY|Telegram Editor/);
+    const p = await analyst.getPrompt({ name: 'activate_agent', arguments: { agent_id: 'telegram-editor' } });
+    expect(JSON.stringify(p)).not.toMatch(/PRIVATE-INBOX-BODY|You are acting as: Telegram Editor/);
+    expect(await call(analyst, 'agent_activate', { agent_id: 'market-analyst' })).toMatch(/You are acting as: Market Analyst/);
+  });
+
+  it('an owner connection can still activate any agent', async () => {
+    expect(await call(owner, 'agent_activate', { agent_id: 'coder' })).toMatch(/You are acting as/);
+  });
+});
+
 describe('mcp — resources and prompts follow the same rules as tools', () => {
   it('records resource reads and prompt uses in the audit log (names only)', async () => {
     const { tailAudit } = await import('../audit.mjs');
