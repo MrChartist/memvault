@@ -336,7 +336,7 @@ const clip = (s, n) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 // Memory is DATA. Neutralise anything that could close our delimiter early.
-const fence = (s) => String(s).replace(/<\/?memory-data>/gi, "[tag removed]");
+const fence = (s) => String(s).replace(/<\s*\/?\s*memory-data\b[^>]*>?/gi, "[tag removed]"); // any spelling of the tag: extra spaces, capitals, attributes, a line break
 
 const ITEM_COLS = "id,type,source,title,content,tags,created_at,agent_id,scope";
 

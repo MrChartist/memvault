@@ -350,7 +350,7 @@ server.tool(
     return {
       content: [{
         type: "text",
-        text: `## 📊 Vault Statistics\n\n- **Total entries**: ${total}\n- **Encrypted secrets**: ${secretCount}\n\n### Breakdown by Type\n${typeBreakdown || "- (empty vault)"}\n\n### Activity Range\n- **First entry**: ${firstEntry?.created_at || "N/A"}\n- **Last entry**: ${lastEntry?.created_at || "N/A"}\n- **Vault path**: ${VAULT_ROOT}`,
+        text: `## 📊 Vault Statistics\n\n- **Total entries**: ${total}\n- **Encrypted secrets**: ${secretCount}\n\n### Breakdown by Type\n${typeBreakdown || "- (empty vault)"}\n\n### Activity Range\n- **First entry**: ${firstEntry?.created_at || "N/A"}\n- **Last entry**: ${lastEntry?.created_at || "N/A"}${AGENT_ID ? "" : `\n- **Vault path**: ${VAULT_ROOT}`}`,
       }],
     };
   }
@@ -768,7 +768,7 @@ server.resource(
     const secretCount = queryAll("SELECT COUNT(*) as count FROM secrets WHERE id != '__sentinel__'")[0]?.count || 0;
 
     const breakdown = byType.map(r => `${r.type}: ${r.count}`).join(", ");
-    const text = `MemVault Stats | Total: ${total} | ${breakdown} | Secrets: ${secretCount} | Path: ${VAULT_ROOT}`;
+    const text = `MemVault Stats | Total: ${total} | ${breakdown} | Secrets: ${secretCount}${AGENT_ID ? "" : ` | Path: ${VAULT_ROOT}`}`; // the full path contains the account name, so only the owner gets it
 
     return { contents: [{ uri: "memvault://stats", text, mimeType: "text/plain" }] };
   }

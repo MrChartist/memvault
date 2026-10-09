@@ -338,6 +338,15 @@ describe('mcp — resources and prompts follow the same rules as tools', () => {
   });
 });
 
+describe('mcp — what a bound agent is told about the machine', () => {
+  it('vault_stats and the stats resource do not reveal the vault\'s full path (it contains the account name) to an agent', async () => {
+    const c = await connect('coder');
+    expect(await call(c, 'vault_stats')).not.toContain(ROOT);
+    expect(JSON.stringify(await c.readResource({ uri: 'memvault://stats' }))).not.toContain(ROOT);
+    expect(await call(owner, 'vault_stats')).toContain(ROOT); // the owner may see it
+  });
+});
+
 describe('mcp — tool descriptions', () => {
   it('does not tell every AI to log every prompt (capture is opt-in)', async () => {
     const t = (await owner.listTools()).tools.find((x) => x.name === 'vault_capture_prompt');
