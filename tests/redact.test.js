@@ -220,3 +220,68 @@ describe('redact — speed on hostile or unusual text', () => {
     expect(redact('a.b.c.password: "hunter2hunter2"').text).not.toContain('hunter2hunter2');
   });
 });
+
+describe('redact — formats seen in real notes (found by the review)', () => {
+  // [text, the part that must NOT survive]
+  const secrets = [
+    ['{"password": "hunter2hunter2"}', 'hunter2hunter2'],
+    ['{"apiKey":"abcdef1234567890"}', 'abcdef1234567890'],
+    ['DB_PASSWORD="my secret pass phrase here"', 'pass phrase here'],
+    ["API_SECRET='abcd efgh ijkl'", 'abcd efgh ijkl'],
+    ['  password: \'p@ss w0rd\'', 'p@ss w0rd'],
+    ['{"client_secret": "vQ3~abc"}', 'vQ3~abc'],
+    ['PASSWORD=hunter2', 'hunter2'],
+    ['password: abc123', 'abc123'],
+    ['Authorization: Basic dXNlcjpwYXNzd29yZDEyMzQ=', 'dXNlcjpwYXNzd29yZDEyMzQ='],
+    ['Authorization: Token 0123456789abcdef', '0123456789abcdef'],
+    ['curl -u admin:SuperSecret99 https://x.example', 'SuperSecret99'],
+    ['mysql -u root -pMyS3cretPw', 'MyS3cretPw'],
+    ['postgres://admin:p@ssw0rd123@host/db', 'p@ssw0rd123'],
+    ['redis://:mypassword123@host:6379', 'mypassword123'],
+    ['npm_aBc' + 'DeFgHiJkLmNoPqRsTuVwXyZ0123456789', 'aBcDeFgHiJkLmNoPqRsTuVwXyZ'],
+    ['SG.abc' + 'defghijklmnopqrstuv.ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghi', 'abcdefghijklmnopqrstuv'],
+    ['glpat-abc' + 'defghij0123456789', 'abcdefghij0123456789'],
+    ['hf_abc' + 'defghijklmnopqrstuvwxyzABCDEFGH', 'abcdefghijklmnopqrstuvwxyz'],
+    ['whsec_abc' + 'defghijklmnopqrstuvwxyz012345', 'abcdefghijklmnopqrstuvwxyz'],
+    ['123456789:AAHdq' + 'TcvCH1vGWJxfSeofSAs0K5PALDsaw', 'AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw'],
+    ['https://hooks.slack.com/services/T01' + '234567/B01234567/abcdEFGHijklMNOPqrstUVWX', 'abcdEFGHijklMNOPqrstUVWX'],
+    ['https://discord.com/api/webhooks/123' + '456789012345678/abcDEF-ghiJKL_mnoPQR0123456789abcdefghijklmnop', 'abcDEF-ghiJKL_mnoPQR0123456789abcdefghijklmnop'],
+    ['AccountKey=Xk3' + 'J9aLmQ0pZr7vTnB2cYdE5fGhI8jKl1MoPqRsTuVwXyZ0123456789abcdefghijklmnopQRSTUV==', 'Xk3J9aLmQ0pZr7vTnB2cYdE5fGhI8jKl1MoPqRsTuVwXyZ'],
+    ['1//0gAbC' + 'dEfGhIjKlMnOpQrStUvWxYz-abcdefghijklmnopqrstuvwxyz', 'abcdefghijklmnopqrstuvwxyz'],
+    ['-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBFabc\n-----END PGP PRIVATE KEY BLOCK-----', 'lQOYBFabc'],
+    ['-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAxyz', 'MIIEowIBAAKCAQEAxyz'], // pasted without the end line
+  ];
+  it.each(secrets)('masks %j', (text, leak) => {
+    expect(redact(text).text).not.toContain(leak);
+    expect(redact(text).findings.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the names so the note still makes sense', () => {
+    expect(redact('{"password": "hunter2hunter2"}').text).toBe('{"password": "[REDACTED:secret]"}');
+    expect(redact('Authorization: Basic dXNlcjpwYXNzd29yZDEyMzQ=').text).toBe('Authorization: Basic [REDACTED:authorization]');
+    expect(redact('postgres://admin:p@ssw0rd123@host/db').text).toBe('postgres://admin:[REDACTED:password]@host/db');
+  });
+
+  const harmless = [
+    'The password policy requires rotation', 'Authorization: Bearer <token>', 'See token: the docs',
+    "password: the user's secret question", 'Our api key rotation: weekly', 'https://example.com/a/b?x=1',
+    'const tokenizer = new Tok()', 'Password: required', 'the password: changed yesterday',
+    'mailto:someone@example.com', 'https://example.com:8080/path@x', 'sig=short', 'Authorization: Bearer YOUR_TOKEN_HERE',
+    'git commit 0123456789abcdef0123456789abcdef01234567', 'hf_ is' + ' a prefix', 'key-value pairs',
+  ];
+  it.each(harmless)('leaves ordinary text alone: %j', (text) => {
+    expect(redact(text).text).toBe(text);
+  });
+
+  it('stays quick on long quoted text with no closing quote', () => {
+    const t0 = performance.now();
+    redact('password="' + 'a '.repeat(100000));
+    redact('-----BEGIN PGP PRIVATE KEY BLOCK-----\n'.repeat(5000));
+    expect(performance.now() - t0).toBeLessThan(1500);
+  });
+
+  it('is still idempotent on the new patterns', () => {
+    const once = redact('{"password": "hunter2hunter2"} Authorization: Basic dXNlcjpwYXNzd29yZDEyMzQ= npm_aBc' + 'DeFgHiJkLmNoPqRsTuVwXyZ0123456789').text;
+    expect(redact(once).text).toBe(once);
+  });
+});
