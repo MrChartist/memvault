@@ -2,6 +2,45 @@
 
 ## 3.0.0
 
+### Fixed or changed after the independent launch review (before release)
+
+An independent review ran the code, wrote a test for each finding, and fixed these. The full list, with evidence, is in [docs/review/REVIEW.md](docs/review/REVIEW.md).
+
+**Security and privacy**
+- A search tool's `date` argument was pasted into SQL and could read the Secure Vault's locked data; all MCP queries now use bound values.
+- Secrets in a memory's **source** or **tags** were stored, copied to the readable Markdown file and written to the access log unmasked; file uploads skipped masking and the access log; `vault_remember` repeated the secret in its reply. All are masked now.
+- Secret masking now covers many more real formats (JSON and quoted `.env` values, `Authorization:` headers, `curl -u`, URL passwords containing `@`, npm, PyPI, SendGrid, GitLab, Hugging Face, Twilio and Telegram tokens, webhook links, Azure and Google keys, PGP blocks, keys pasted without their end line). 48 of 63 test strings used to get through. Plain English after "password:" is no longer masked.
+- The masking patterns were slow on some text (200 KB of ordinary dotted identifiers took 34 seconds, enough to freeze every AI app sharing the vault). They are now linear-time.
+- An agent could read another agent's instructions and inbox with `agent_activate`, and could forge a handoff "from the owner" (or hide a real one) by typing tags. Fixed.
+- Resources and prompts were not in the access log, and an agent limited to one tool still got every memory-reading resource and prompt. Fixed. The prompt-logging tool no longer tells every AI to log every prompt.
+- A Secure Vault from an older version accepted the first password typed and skipped the wrong-password limit on some routes. Fixed.
+- Bridges started other programs with your whole environment, including the backup passphrase. They now get a small one.
+- `memvault open` no longer puts the dashboard key on a command line.
+- Capturing "computer info" no longer saves the computer's name, network addresses or running programs; browser capture no longer saves anything after a `?` and skips local pages.
+- Eleven dependency advisories that affected installed code are fixed (`npm audit --omit=dev` reports none).
+
+**Data safety**
+- A writer paused longer than the lock's age limit (a laptop asleep mid-save) could erase another writer's save. It now notices and redoes its write.
+- Deleting a memory left its full text in the readable Markdown copy, and two notes with the same title on the same day overwrote each other's copy. Copies are now named with the memory's id, and removed or rewritten when the memory is deleted or edited.
+- Restoring a damaged or wrong file replaced the live database. Restores are now checked first. A vault from a newer MemVault is refused instead of being re-labelled. A cut-off last line in the access log no longer stops later records. Leftover temporary files are cleaned up.
+
+**Importers and capture**
+- Importers kept the import day instead of each conversation's date, duplicated everything on a second run, lost every conversation before one bad record, dropped some Claude and Gemini replies, and imported ChatGPT answers the user had abandoned. All fixed. `import-all` now finds a Claude export next to other exports.
+- Git capture found no commits at all (and broke on a quote in a message); browser capture crashed on every run; computer capture and each other capture script ignored the "off by default" setting when run directly; the Antigravity sync removed its old items before checking its folder. All fixed.
+
+**Install and platform**
+- `memvault bridge` (and storage commands through a symlink) silently did nothing when the install path had a space, non-Latin letters or a link. Fixed.
+- The package registry entry (`server.json`) was too long for the registry and would have started the help text instead of the server. Fixed and checked against the published schema.
+- Searches for two-letter words ("AI") and for Chinese, Japanese and Korean words found nothing. Fixed.
+- CI now runs for every pull request, and adds Windows, macOS, an install check and a dependency audit.
+
+**Dashboard**
+- New: open, edit, pin, download and delete a single memory, with **Undo**; choose several and delete with a typed confirmation; a **Settings** screen (automatic saving, backups and passphrase, projects, text size and colours, download everything, delete everything, recently deleted).
+- Fixed: notes were silently cut at 5000 characters; a wrong dashboard key gave no explanation; the first Secure Vault password was not asked twice; secret "Delete" could not be reached by keyboard; messages hid behind open windows; touch targets were 40 px, not the 44 px claimed; the focus ring was nearly invisible; page language did not match its text; lists were announced again on every search.
+- The "describe it in words" reader no longer treats "I am a teacher" as the helper's job, no longer cuts names mid-word, and says so when the text is not English.
+- Licences: the fonts' licence texts, a third-party licence list and a trademark notice are now included; `docs/uninstall.md` lists everything MemVault leaves.
+
+
 A safety, efficiency and accessibility release, and the introduction of agents.
 
 ### Added
