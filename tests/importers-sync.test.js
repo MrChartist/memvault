@@ -103,6 +103,14 @@ describe('capture engines', () => {
     node('sync-files.mjs'); node('sync-system.mjs'); node('sync-git.mjs'); node('sync-vscode.mjs'); node('sync-browser.mjs');
     expect((await items()).length).toBe(0);
   });
+  it('TST-15 sync-system keeps to basic facts: no host name, no addresses, no running programs or their command lines', async () => {
+    node('sync-system.mjs', '--force');
+    const all = (await items()).map((i) => `${i.title}\n${i.content}`).join('\n');
+    expect(all.length).toBeGreaterThan(50); // it did capture something
+    expect(all).not.toContain(os.hostname());
+    expect(all).not.toMatch(/\b(?:\d{1,3}\.){3}\d{1,3}\b/); // no IPv4 addresses
+    expect(all).not.toMatch(/Running Processes|Top Processes|Network/i);
+  });
   it('TST-17 sync-antigravity does not delete earlier items when the brain dir is missing', async () => {
     const { ingest } = await import(path.join(REPO, 'ingest.mjs'));
     // seed through a child process so the module-level VAULT_ROOT is the isolated one

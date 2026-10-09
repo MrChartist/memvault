@@ -471,7 +471,7 @@ server.tool(
 // 💻 vault_system_info — System environment info
 server.tool(
   "vault_system_info",
-  "Get the user's system information — OS, hardware, dev tools, running processes. Use this to understand the user's working environment when answering system-specific questions.",
+  "Get basic facts about the user's computer — OS, hardware and which developer tools are installed. Use this to understand the user's working environment when answering system-specific questions.",
   {},
   async () => {
     const rows = queryAll(
