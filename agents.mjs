@@ -215,7 +215,7 @@ export function installStarterPack(db, { pack = DEFAULT_PACK, overwrite = false,
 const ABBREV = /\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc)\./g;
 const NEVER_RE = /\b(?:do\s+not|don['’]?t|never|avoid|must\s+not|should\s+not|shouldn['’]?t|refrain|without)\b/i;
 const ALWAYS_RE = /\b(?:always|must|should|prefer|default|use|keep|deliver|provide|respect|treat|give|follow|ensure|make\s+sure|be|write|reply|answer|start|end|show)\b/i;
-const ROLE_RE = /^(?:you\s+are|you['’]re|act\s+as|i\s+am|i['’]m|my\s+role\s+is|role\s*:)\s*(.+)$/i;
+const ROLE_RE = /^(?:you\s+are|you['’]re|act\s+as|my\s+role\s+is|role\s*:)\s*(.+)$/i; // "I am a teacher" describes the person, not the helper
 const VOICE_WORDS = ["simple", "formal", "direct", "practical", "concise", "friendly", "casual", "professional", "warm", "accurate", "precise", "clear", "brief"];
 const ROLE_NOUN_RE = /\b(?:analyst|educator|engineer|developer|writer|tutor|assistant|trader|researcher|editor|manager|designer|coach|advisor|adviser|expert|specialist|consultant|teacher|coder|scientist|strategist|planner|reviewer|coordinator)\b/i;
 const LANG_RE = /\b((?:(?:Indian|British|American|Australian|Canadian|Irish|South African)\s+)?English|Hinglish|Hindi|Marathi|Bengali|Tamil|Telugu|Urdu|Gujarati|Punjabi|Spanish|French|German|Portuguese|Italian|Dutch|Russian|Turkish|Arabic|Hebrew|Persian|Chinese|Mandarin|Japanese|Korean|Indonesian|Vietnamese|Thai|Swahili|Polish)\b/i;
@@ -228,6 +228,28 @@ function statements(text) {
     .filter((s) => s.length > 3);
 }
 
+const EN_WORDS = new Set(["the", "a", "an", "and", "or", "to", "of", "in", "is", "are", "be", "you", "your", "my", "i", "it", "for", "with", "not", "do", "don't", "dont", "never", "always", "use", "keep", "should", "will", "can", "that", "this", "on", "at", "as", "if", "me", "we", "so", "but", "when", "how", "what", "who", "from", "by", "have", "has", "want", "need", "please"]);
+
+/** Rough check: does this look like English? Short text gets the benefit of the doubt. */
+function looksEnglish(text) {
+  const words = String(text).toLowerCase().match(/[\p{L}']+/gu) || [];
+  if (words.length < 4) return true;
+  const letters = (String(text).match(/\p{L}/gu) || []).length || 1;
+  const plain = (String(text).match(/[A-Za-z]/g) || []).length;
+  if (plain / letters < 0.7) return false; // mostly another script
+  return words.filter((w) => EN_WORDS.has(w)).length / words.length >= 0.12;
+}
+
+const NAME_TAIL = new Set(["for", "my", "the", "a", "an", "of", "to", "and", "with", "in", "on", "at", "or"]);
+/** A short name from a one-line job, cut at a word (never in the middle of one). */
+function nameFromRole(role) {
+  let t = String(role || "").split(/(?:[.,;]\s|\()/)[0].trim();
+  if (t.length > 40) t = t.slice(0, 41).replace(/\s+\S*$/, "");
+  const parts = t.split(/\s+/);
+  while (parts.length > 1 && NAME_TAIL.has(parts[parts.length - 1].toLowerCase())) parts.pop();
+  return parts.join(" ").trim().slice(0, 40);
+}
+
 /**
  * @param {string} text  free-text prompt / description of the agent
  * @param {{ name?: string, id?: string }} [opts]
@@ -235,6 +257,15 @@ function statements(text) {
  */
 export function draftProfileFromPrompt(text, { name, id } = {}) {
   const notes = [];
+  if (!looksEnglish(text)) {
+    // This reader only understands English. Keep every word the person wrote and ask them to fill in the boxes.
+    const kept = blankProfile();
+    kept.persona = String(text || "").trim().slice(0, 6000);
+    kept.name = (name || "").trim() || "New agent";
+    kept.id = id || slugify(kept.name);
+    notes.push("This does not look like English, and this reader only understands English, so it could not sort your text. I kept it under “More about who it is”. Please fill in the other boxes by hand.");
+    return { profile: normalizeProfile(kept), notes };
+  }
   const all = statements(String(text || ""));
   const profile = blankProfile();
   const persona = [];
@@ -262,13 +293,16 @@ export function draftProfileFromPrompt(text, { name, id } = {}) {
   }
 
   if (!profile.role && persona.length) {
-    // Prefer a line that names a job ("research analyst + educator") over a bare
-    // name or tagline ("Dr. Jane Doe (Acme Research)"), which stays in the persona.
-    const at = Math.max(0, persona.findIndex((p) => ROLE_NOUN_RE.test(p)));
-    const picked = persona.splice(at, 1)[0].slice(0, 200);
-    profile.role = picked.charAt(0).toUpperCase() + picked.slice(1);
-    notes.push("No explicit role found — inferred it from the description. Check it.");
+    // Only a sentence that names a job ("research analyst + educator") can be the job. A name, a tagline or
+    // a sentence about the person must not be promoted, so it stays in the persona.
+    const at = persona.findIndex((p) => ROLE_NOUN_RE.test(p) && !/^(?:i|i['’]m|im|my|we|our)\b/i.test(p)); // a sentence about the person is not the helper's job
+    if (at >= 0) {
+      const picked = persona.splice(at, 1)[0].slice(0, 200);
+      profile.role = picked.charAt(0).toUpperCase() + picked.slice(1);
+      notes.push("No explicit role found — inferred it from the description. Check it.");
+    }
   }
+  if (!profile.role) notes.push("I could not tell what this helper's job is. Please fill in “What does it do?”.");
   profile.persona = persona.join(". ").slice(0, 6000);
   // "Simple English" is already the language — don't repeat "simple" as a tone.
   profile.voice.tone = [...voiceBits].filter((t) => !new RegExp(`\\b${t}\\b`, "i").test(profile.voice.language)).join(", ");
@@ -285,7 +319,7 @@ export function draftProfileFromPrompt(text, { name, id } = {}) {
   }
 
   profile.domains = autoTag(String(text));
-  profile.name = (name || "").trim() || profile.role.split(/[.,(]/)[0].trim().slice(0, 40) || "New Agent";
+  profile.name = (name || "").trim() || nameFromRole(profile.role) || "New agent";
   profile.id = id || slugify(profile.name);
 
   if (!profile.rules.always.length && !profile.rules.never.length) {
