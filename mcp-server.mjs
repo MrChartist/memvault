@@ -29,6 +29,7 @@ import {
 import { VAULT_ROOT, ensureVaultDir } from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
 import { ingest } from "./ingest.mjs";
+import { redact } from "./redact.mjs";
 import { audit } from "./audit.mjs";
 import {
   getAgent, listAgents, saveAgent, buildBriefing, scopesFor, listInbox, AGENT_ID_RE,
@@ -722,7 +723,7 @@ server.tool(
     return {
       content: [{
         type: "text",
-        text: `💾 **Remembered${scope === "shared" ? "" : ` (private to ${AGENT_ID})`}!**\n\n- **What**: ${what.slice(0, 100)}${what.length > 100 ? "..." : ""}\n- **Category**: ${cat}${detectedProject ? `\n- **Project**: ${detectedProject}` : ""}\n- **Tags**: \`${tags}\`${masked}`,
+        text: `💾 **Remembered${scope === "shared" ? "" : ` (private to ${AGENT_ID})`}!**\n\n- **What**: ${redact(what).text.slice(0, 100)}${what.length > 100 ? "..." : ""}\n- **Category**: ${cat}${detectedProject ? `\n- **Project**: ${detectedProject}` : ""}\n- **Tags**: \`${tags}\`${masked}`,
       }],
     };
   }

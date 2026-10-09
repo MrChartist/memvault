@@ -26,6 +26,8 @@ import os from "os";
 import { createIngestQueue } from "./ingest.mjs";
 import { getVaultDb } from "./db.mjs";
 import { backupLocal } from "./storage.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("antigravityEnabled", "Saving Antigravity conversations");
 
 const queue = createIngestQueue({ actor: "antigravity" });
 
@@ -97,16 +99,16 @@ async function main() {
   console.log(`║  ${DRY_RUN ? "DRY RUN — no data will be written" : "LIVE MODE"}`);
   console.log("╚══════════════════════════════════════╝\n");
 
-  // 1. Replace only what the previous sync wrote
-  if (!NO_CLEAR && !DRY_RUN) {
-    clearPreviousSync();
-    console.log();
-  }
-
-  // 3. Read brain directory
+  // 1. Make sure there is something to read BEFORE removing anything
   if (!fs.existsSync(BRAIN_DIR)) {
     console.error(`❌ Brain directory not found: ${BRAIN_DIR}`);
     process.exit(1);
+  }
+
+  // 2. Replace only what the previous sync wrote
+  if (!NO_CLEAR && !DRY_RUN) {
+    clearPreviousSync();
+    console.log();
   }
 
   // Try loading conversation summaries for richer titles

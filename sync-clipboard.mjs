@@ -17,6 +17,8 @@ import { execSync } from "child_process";
 import crypto from "crypto";
 
 import { ingest } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("clipboardEnabled", "Saving what you copy");
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONCE = args.includes("--once");

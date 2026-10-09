@@ -11,6 +11,7 @@
 import fs from "fs";
 import path from "path";
 import { createIngestQueue } from "./ingest.mjs";
+import { runImport, toIso } from "./import-common.mjs";
 
 const queue = createIngestQueue({ actor: "perplexity-import" });
 
@@ -35,6 +36,7 @@ function findPerplexityFile(inputPath) {
 }
 
 function formatPerplexityConversation(conv) {
+  if (!conv || typeof conv !== "object") return null;
   const title = conv.title || conv.query || "Perplexity Search";
   const lines = [`# ${title}`, ""];
 
@@ -82,7 +84,7 @@ function formatPerplexityConversation(conv) {
     title: title.slice(0, 200),
     content,
     tags: ["import", "perplexity", "conversation", "ai-history", "search"].join(","),
-    created_at: conv.created_at || conv.timestamp || new Date().toISOString(),
+    created_at: toIso(conv.created_at || conv.timestamp),
   };
 }
 
@@ -114,44 +116,18 @@ export async function importPerplexity(inputPath, options = {}) {
 
   console.log(`📊 Found ${conversations.length} Perplexity conversations`);
 
-  let imported = 0, skipped = 0, errors = 0;
   const dryRun = options.dryRun || false;
-
-  for (const conv of conversations) {
-    const formatted = formatPerplexityConversation(conv);
-    if (!formatted) { skipped++; continue; }
-
-    if (dryRun) {
-      console.log(`  📝 [DRY RUN] "${formatted.title.slice(0, 60)}..."`);
-      imported++;
-      continue;
-    }
-
-    try {
-      const result = { ok: queue.add({
-          type: "conversation",
-          source: "perplexity-import",
-          title: formatted.title,
-          content: formatted.content,
-          tags: formatted.tags,
-        }) };
-      if (result.ok) {
-        imported++;
-        if (imported % 10 === 0) console.log(`  ✅ Imported ${imported}...`);
-      } else { errors++; }
-    } catch (e) {
-      errors++;
-      if (errors <= 3) console.error(`  ⚠️ Error: ${e.message}`);
-    }
-  }
-
-  queue.done();
+  const { imported, skipped, duplicates, errors } = await runImport({
+    source: "perplexity-import", queue, items: conversations, format: formatPerplexityConversation, dryRun,
+  });
+  if (!dryRun && errors === 0 && imported === 0 && duplicates === 0 && skipped === 0) console.log("Nothing found to import.");
   console.log(`\n🎉 Perplexity Import Complete!`);
   console.log(`   ✅ Imported: ${imported}`);
+  if (duplicates) console.log(`   ♻️  Already in your vault: ${duplicates} (not added again)`);
   console.log(`   ⏭️  Skipped:  ${skipped}`);
   if (errors) console.log(`   ❌ Errors:   ${errors}`);
 
-  return { imported, skipped, errors };
+  return { imported, skipped, duplicates, errors };
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────

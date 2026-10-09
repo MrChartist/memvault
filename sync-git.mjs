@@ -20,6 +20,8 @@ import { SYNC_CONFIG } from "./config.mjs";
 import { createIngestQueue } from "./ingest.mjs";
 import { getVaultDb } from "./db.mjs";
 import { readCommits } from "./git-log.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("gitEnabled", "Saving git commits");
 
 const queue = createIngestQueue({ actor: "git" });
 

@@ -16,6 +16,8 @@ import os from "os";
 import { execSync } from "child_process";
 
 import { createIngestQueue } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("systemEnabled", "Saving computer information");
 
 const queue = createIngestQueue({ actor: "system" });
 const DRY_RUN = process.argv.includes("--dry-run");
