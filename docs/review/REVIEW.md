@@ -9,7 +9,7 @@ Reviewer: Claude (AI), on behalf of the owner. Branch: `mrchartist/ecstatic-clar
 The code is in good shape after this pass: 363 unit and integration tests and 108 browser checks pass on Linux (Node 22). The blockers are things only the owner can do or that have never been run:
 
 1. Nothing is published. `npx @mrchartist/memvault setup` has never run on a clean machine.
-2. Windows and macOS now pass the tests and an install check in CI, but nobody has used the dashboard on either by hand.
+2. Windows and macOS now pass the tests, an install check and the dashboard browser tests in CI, but nobody has used the dashboard on either by hand.
 3. No private way to report a security problem is confirmed switched on.
 4. No demo exists.
 5. Saving is slow beyond tens of thousands of notes (sql.js rewrites the whole file). This is a documented limit, not a blocker, if the post says so.
@@ -120,7 +120,7 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 | 1 | All unit and integration tests pass | **Done** — 363/363 (Linux, Node 22) |
 | 2 | Browser tests pass | **Done** — 108/108 |
 | 3 | Node 20 and 24 pass | **Done** — green in CI on commit `442c69e` |
-| 4 | Windows and macOS tests pass | **Done in CI** (`442c69e`): unit tests and install check on both. Not tried by a person on a real Windows or macOS computer |
+| 4 | Windows and macOS tests pass | **Done in CI** (`d16b7d2`): unit tests, install check and the dashboard browser tests on both. Not tried by a person on a real Windows or macOS computer |
 | 5 | `npm audit --omit=dev` clean | **Done** (locally) |
 | 6 | Package contents checked (`npm pack`, 82 files) | **Done** |
 | 7 | Secret scan of the repo and history | **Done** for pushed commits (GitHub push protection) |
@@ -156,7 +156,7 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 2. Do you want to enable private vulnerability reporting, and which email is the security contact?
 3. npm name: `@mrchartist/memvault`. Do you own the scope? Publish with provenance (see `docs/release.md`)?
 4. Trademark: the notice says what it can; is a registration planned?
-5. Should the Windows and macOS CI jobs become blocking once green?
+5. The Windows and macOS CI jobs are now blocking (they are green). Switch this on in the repository's branch protection too if you want it enforced; I cannot see those settings.
 6. Is the plain-text passphrase file in Settings acceptable, or should scheduled encrypted backups be removed?
 7. Keep the 2.7 MB of screenshots in the repo, or move them to the release page?
 8. Roadmap order: is native SQLite (X1) before or after Windows/macOS (N1)?

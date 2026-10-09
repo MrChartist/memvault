@@ -39,7 +39,7 @@ It also lets you give each AI its own **agent**: a helper with a job, a voice, r
 
 ## Get started
 
-> **Honest note before you start.** MemVault needs [Node.js](https://nodejs.org) and a few commands in a terminal today. A one-click installer is planned (see [ROADMAP.md](ROADMAP.md)) but does not exist yet. It has been built and tested on Linux. The tests also run on Windows and macOS in CI, but nobody has used it on those systems yet, so expect rough edges there and please [tell us](https://github.com/MrChartist/memvault/issues).
+> **Honest note before you start.** MemVault needs [Node.js](https://nodejs.org) and a few commands in a terminal today. A one-click installer is planned (see [ROADMAP.md](ROADMAP.md)) but does not exist yet. It has been built and tested on Linux. The tests, an install check and the dashboard browser tests also pass on Windows and macOS in CI, but nobody has used it on those systems by hand yet, so expect rough edges there and please [tell us](https://github.com/MrChartist/memvault/issues).
 
 You need Node.js 20 or newer (choose the "LTS" download). Then, in a terminal:
 

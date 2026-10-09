@@ -32,13 +32,10 @@ jobs:
       - name: Unit and integration tests
         run: npm test
 
-  # Windows and macOS have never been run by the author. These jobs are here so that anything that
-  # breaks shows up as a clear failure instead of staying hidden. They do not block a merge yet
-  # (continue-on-error); remove that line once both are green.
+  # Windows and macOS. Both are green since the first fixes, so a failure here now blocks a merge.
   test-other-os:
     name: test (${{ matrix.os }}, Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -60,7 +57,6 @@ jobs:
   install-smoke:
     name: install smoke (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -108,7 +104,6 @@ jobs:
   e2e:
     name: e2e (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
