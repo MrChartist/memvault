@@ -239,7 +239,7 @@ The plan, with what is next and what is deliberately not being done, is in [ROAD
 
 ## Contributing
 
-Pull requests are welcome, especially translations, accessibility fixes, and tests. Run `npm test` before you send one. `docs/agents.md` explains how to write a good agent profile, and a new starter pack is just a folder of JSON files in `profiles/`.
+Pull requests are welcome, especially translations, accessibility fixes, and tests. Start with [CONTRIBUTING.md](CONTRIBUTING.md) (setup, how the code is organised, the rules for capture engines) and run `npm test` before you send one. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). `docs/agents.md` explains how to write a good agent profile, and a new starter pack is just a folder of JSON files in `profiles/`.
 
 ## License
 

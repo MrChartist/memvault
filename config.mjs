@@ -16,6 +16,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { expandHome, resolveUserPath } from "./paths.mjs";
 
 const HOME = os.homedir();
 export const CONFIG_FILE = path.join(HOME, ".memvaultrc.json");
@@ -43,8 +44,9 @@ const userConfig = loadUserConfig();
 
 // ─── VAULT_ROOT ─────────────────────────────────────────────────────────────
 // Priority: 1. ENV, 2. ~/.memvaultrc.json, 3. Default (~/.memvault/data)
-export const VAULT_ROOT =
-  process.env.VAULT_ROOT || userConfig.vaultRoot || path.join(HOME, ".memvault", "data");
+export const VAULT_ROOT = process.env.VAULT_ROOT
+  ? resolveUserPath(process.env.VAULT_ROOT) // environment: relative to the cwd, "~" expanded
+  : expandHome(userConfig.vaultRoot || path.join(HOME, ".memvault", "data")); // config file: relative to home
 
 // ─── API endpoints ──────────────────────────────────────────────────────────
 const port = process.env.PORT || process.env.VAULT_PORT || userConfig.port || 7799;
@@ -93,6 +95,15 @@ export const SYNC_CONFIG = userConfig.sync ? {
   antigravityEnabled: false,
 };
 
+// "~/code" in the config file means the user's home, not a folder named "~"
+for (const key of ["gitDirs", "filesDirs"]) {
+  if (SYNC_CONFIG[key] !== undefined) {
+    SYNC_CONFIG[key] = (Array.isArray(SYNC_CONFIG[key]) ? SYNC_CONFIG[key] : [SYNC_CONFIG[key]])
+      .filter((d) => typeof d === "string" && d.trim())
+      .map((d) => expandHome(d));
+  }
+}
+
 // ─── AI Configuration ───────────────────────────────────────────────────────
 export const AI_CONFIG = userConfig.ai || {};
 
@@ -101,7 +112,7 @@ export const AI_CONFIG = userConfig.ai || {};
 //   1. folder — mirror the vault into your Google Drive for Desktop synced path
 //   2. api    — upload backups via the Drive REST API (OAuth refresh token)
 export function buildStorageConfig(uc = userConfig) {
-  return {
+  const cfg = {
     local: { enabled: true, ...(uc.storage?.local || {}) },
     gdriveFolder: {
       enabled: false,
@@ -129,6 +140,10 @@ export function buildStorageConfig(uc = userConfig) {
     allowPlaintextCloud: uc.storage?.allowPlaintextCloud ?? false,
     passphraseFile: uc.storage?.passphraseFile || "",
   };
+  // Paths in a config file: "~" means the home folder (see paths.mjs)
+  if (cfg.gdriveFolder.path) cfg.gdriveFolder.path = expandHome(cfg.gdriveFolder.path);
+  if (cfg.passphraseFile) cfg.passphraseFile = expandHome(cfg.passphraseFile);
+  return cfg;
 }
 export const STORAGE_CONFIG = buildStorageConfig(userConfig);
 

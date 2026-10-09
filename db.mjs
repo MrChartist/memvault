@@ -31,6 +31,13 @@ const SQL = await initSqlJs();
 export const SCHEMA_VERSION = 2;
 export const DEFAULT_SCOPE = "shared";
 
+/** A caller-supplied timestamp as ISO text, or undefined if there is none / it is unusable. */
+function realDate(v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  const t = Date.parse(String(v));
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
+}
+
 const BASE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
@@ -320,7 +327,17 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
     /**
      * Insert many items in ONE locked, atomic write (one DB rewrite, not N).
      * Importers and sync engines should always use this. All-or-nothing: if any
-     * item is refused, none are stored. Returns the new ids in order.
+     * item is refused, none are stored. Returns the ids in order.
+     *
+     * Running the same sync or import twice must not duplicate anything:
+     *  • An item that carries its OWN timestamp (a git commit, a browser visit, an
+     *    imported chat) gets an id derived from what it is, so a repeat is ignored.
+     *    Items without one (a note you type) always get a fresh id.
+     *  • `upsert: true` marks a "current state" snapshot (system info, VS Code
+     *    extensions...): the previous snapshot with the same source + title + file_path
+     *    (in the same scope and agent) is replaced instead of piling up. Set `file_path`
+     *    when two snapshots can share a title.
+     * The returned array also has `.inserted` and `.duplicates` counts.
      */
     addItems(items) {
       const prepared = items.map((it) => {
@@ -332,22 +349,44 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
             throw new Error(`Agent "${scope.agentId}" may not write to scope "${finalScope}".`);
           }
         }
-        return [
-          `${it.type}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`,
-          it.type, it.source ?? null, it.title ?? null, it.content ?? null, it.file_path ?? null,
-          it.tags ?? null, it.created_at || new Date().toISOString(), finalAgent, finalScope,
-        ];
+        const explicitDate = realDate(it.created_at);
+        const id = explicitDate
+          ? `${it.type}_${crypto.createHash("sha1")
+              .update([it.type, it.source, it.title, explicitDate, it.content, finalScope, finalAgent].map((v) => v ?? "").join("\u0000"))
+              .digest("hex").slice(0, 24)}`
+          : `${it.type}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+        return {
+          upsert: it.upsert === true && !!it.source && !!it.title,
+          row: [
+            id, it.type, it.source ?? null, it.title ?? null, it.content ?? null, it.file_path ?? null,
+            it.tags ?? null, explicitDate || new Date().toISOString(), finalAgent, finalScope,
+          ],
+        };
       });
+      let inserted = 0;
       write((db) => {
-        for (const row of prepared) {
+        inserted = 0;
+        for (const { upsert, row } of prepared) {
+          const [, , source, title, , filePath, , , agent, scopeName] = row;
+          if (upsert) {
+            db.run(
+              `DELETE FROM items WHERE source = ? AND title = ? AND COALESCE(file_path, '') = ?
+                 AND scope = ? AND COALESCE(agent_id, '') = ?`,
+              [source, title, filePath || "", scopeName, agent || ""]
+            );
+          }
           db.run(
-            `INSERT INTO items (id,type,source,title,content,file_path,tags,created_at,agent_id,scope)
+            `INSERT OR IGNORE INTO items (id,type,source,title,content,file_path,tags,created_at,agent_id,scope)
              VALUES (?,?,?,?,?,?,?,?,?,?)`,
             row
           );
+          if (db.getRowsModified() > 0) inserted++;
         }
       });
-      return prepared.map((r) => r[0]);
+      const ids = prepared.map((p) => p.row[0]);
+      ids.inserted = inserted;
+      ids.duplicates = ids.length - inserted;
+      return ids;
     },
 
     /** Re-read from disk on next access (e.g. after restoring a backup). */

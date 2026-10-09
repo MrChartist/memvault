@@ -168,8 +168,9 @@ let totalSynced = 0;
     const synced = await postToVault({
       type: "worklog",
       source: "vscode",
-      title: `[VS Code] Active Projects (${projects.length})`,
-      content: `## VS Code Recent Projects\n\n${projectList}\n\n_Synced: ${new Date().toISOString()}_`,
+      upsert: true, // snapshot: replaces the previous run's
+      title: "[VS Code] Active Projects",
+      content: `## VS Code Recent Projects (${projects.length})\n\n${projectList}\n\n_Synced: ${new Date().toISOString()}_`,
       tags: "vscode,projects,workspace",
     });
     if (synced) totalSynced++;
@@ -189,8 +190,9 @@ let totalSynced = 0;
     const synced = await postToVault({
       type: "worklog",
       source: "vscode",
-      title: `[VS Code] Installed Extensions (${extensions.length})`,
-      content: `## VS Code Extensions\n\n${extList}\n\n_Synced: ${new Date().toISOString()}_`,
+      upsert: true,
+      title: "[VS Code] Installed Extensions",
+      content: `## VS Code Extensions (${extensions.length})\n\n${extList}\n\n_Synced: ${new Date().toISOString()}_`,
       tags: "vscode,extensions,tools",
     });
     if (synced) totalSynced++;
@@ -208,6 +210,7 @@ let totalSynced = 0;
     const synced = await postToVault({
       type: "worklog",
       source: "vscode",
+      upsert: true,
       title: "[VS Code] User Preferences",
       content: `## VS Code Settings\n\n${settingsList}\n\n_Synced: ${new Date().toISOString()}_`,
       tags: "vscode,settings,preferences",

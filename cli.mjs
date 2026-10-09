@@ -7,6 +7,7 @@
  */
 
 import { spawn } from "child_process";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -71,6 +72,11 @@ More:
 
 if (!command || ["help", "--help", "-h"].includes(command)) {
   showHelp();
+}
+
+if (["--version", "-v", "version"].includes(command)) {
+  console.log(JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version);
+  process.exit(0);
 }
 
 if (tools[command]) {

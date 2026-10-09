@@ -41,6 +41,16 @@ An independent review ran the code, wrote a test for each finding, and fixed the
 - Licences: the fonts' licence texts, a third-party licence list and a trademark notice are now included; `docs/uninstall.md` lists everything MemVault leaves.
 
 
+**Fixed in the final launch pass (found by running the sync tools and importers repeatedly on a real tree)**
+- Running a capture tool again no longer adds copies. Entries that carry their own time (commits, browser visits, imported chats) are recognised by what they are, and "current state" notes (computer info, VS Code extensions and projects, recent file activity, Antigravity, bridge resources) replace their earlier version. The capture and import scripts report only what was really new.
+- A `~` in a setting or a command was treated as a folder named `~`. `vaultRoot`, sync folders, the Google Drive folder and the backup passphrase file in `~/.memvaultrc.json`, `VAULT_ROOT`, `--path`, `GIT_SCAN_ROOT`, the Antigravity folder and the setup wizard's answers now expand `~`. A relative `--path` means the folder you are in.
+- The setup wizard kept Google Drive API upload switched on after you answered "no".
+- `vault_get_context` and `vault_smart_context`: the most specific old note is no longer pushed out by hundreds of newer notes that match one common word; question filler such as "what did we decide about" is ignored; and with `freshOnly` the notes that were not shown yet stay available for the next call.
+- ChatGPT exports that come as several `conversations-NNN.json` files (large accounts) import completely, from the unzipped folder or one file.
+- Uploaded files with non-English names keep their name, and a wrongly named upload field answers "400", not "500".
+- The documented command is `npx -y @mrchartist/memvault`; the bare `npx memvault` is a different package.
+- New: `memvault --version`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue and pull request templates, and `docs/autostart.md`.
+
 A safety, efficiency and accessibility release, and the introduction of agents.
 
 ### Added

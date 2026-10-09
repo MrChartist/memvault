@@ -181,6 +181,7 @@ export async function syncBridge(bridge) {
         await ingestEntry({
           type: "conversation",
           source: `mcp:${bridge.name}`,
+          upsert: true, // each sync replaces the previous copy instead of adding another
           title: `[${bridge.name}] ${bridge.importTool}`,
           content: text,
           tags: `mcp-bridge,${bridge.name}`,
@@ -198,6 +199,8 @@ export async function syncBridge(bridge) {
           await ingestEntry({
             type: "conversation",
             source: `mcp:${bridge.name}`,
+            upsert: true,
+            file_path: r.uri, // tells apart two resources that share a display name
             title: `[${bridge.name}] ${r.name || r.uri}`,
             content: text,
             tags: `mcp-bridge,${bridge.name}`,

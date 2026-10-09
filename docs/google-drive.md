@@ -111,7 +111,7 @@ on servers/headless machines. The same encryption rules apply.
 
 ## Auto-backup after sync
 
-When either Drive method is enabled, `npx memvault sync` automatically runs a
+When either Drive method is enabled, `npx -y @mrchartist/memvault sync` automatically runs a
 backup after capturing data, so your cloud copy stays current.
 
 ## Restore

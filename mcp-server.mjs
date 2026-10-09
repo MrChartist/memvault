@@ -90,10 +90,15 @@ function keywordCandidates(query, max = 10, contentChars = 2000) {
     .map(() => "(LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(tags) LIKE ? ESCAPE '\\')")
     .join(" OR ");
   const params = words.flatMap((w) => [`%${esc(w)}%`, `%${esc(w)}%`, `%${esc(w)}%`]);
+  // Entries containing more of the words come first, so the 400-row cap cannot push a specific old entry
+  // out in favour of recent ones that only match one common word.
+  const hits = words
+    .map(() => "(CASE WHEN (LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(tags) LIKE ? ESCAPE '\\') THEN 1 ELSE 0 END)")
+    .join(" + ");
   const rows = queryAll(
     `SELECT id, type, source, title, substr(content, 1, ${contentChars}) AS content, substr(content, 1, 300) AS snippet, tags, created_at
-     FROM items WHERE ${clause} ORDER BY created_at DESC LIMIT 400`,
-    params
+     FROM items WHERE ${clause} ORDER BY ${hits} DESC, created_at DESC LIMIT 400`,
+    [...params, ...params]
   );
   return rankByRelevance(rows, query).slice(0, max);
 }
@@ -294,21 +299,9 @@ server.tool(
   },
   async ({ topic, limit }) => {
     const maxResults = limit || 10;
-    const keywords = searchWords(topic, 8);
-    const conditions = keywords.map(() => "(title LIKE ? OR content LIKE ? OR tags LIKE ?)").join(" OR ");
-    const params = keywords.flatMap(k => {
-      const like = `%${k}%`;
-      return [like, like, like];
-    });
-
-    const rows = queryAll(
-      `SELECT id, type, source, title, substr(content, 1, 600) as snippet, tags, created_at
-       FROM items
-       WHERE ${conditions || "1=1"}
-       ORDER BY created_at DESC
-       LIMIT ${maxResults};`,
-      params
-    );
+    // Ranked by how well each entry matches, not just "newest first": the entry that answers the
+    // question may be old.
+    const rows = keywordCandidates(topic, maxResults, 600).map((r) => ({ ...r, snippet: String(r.content || "").slice(0, 600) }));
 
     if (rows.length === 0) {
       return {
@@ -550,8 +543,7 @@ server.tool(
     // Smart pipeline: rank → deduplicate → filter seen → limit
     rows = rankByRelevance(rows, topic);
     rows = deduplicateEntries(rows, 0.55);
-    if (freshOnly) rows = filterUnseen(rows);
-    rows = rows.slice(0, maxResults);
+    rows = freshOnly ? filterUnseen(rows, maxResults) : rows.slice(0, maxResults);
 
     // Auto-detect project
     const project = detectProject(topic);

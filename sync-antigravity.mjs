@@ -24,6 +24,7 @@ import path from "path";
 import os from "os";
 
 import { createIngestQueue } from "./ingest.mjs";
+import { resolveUserPath } from "./paths.mjs";
 import { getVaultDb } from "./db.mjs";
 import { backupLocal } from "./storage.mjs";
 import { requireEnabled } from "./sync-guard.mjs";
@@ -41,7 +42,7 @@ function findAntigravityRoot() {
   return candidates.find((c) => fs.existsSync(path.join(c, "brain"))) || candidates[0];
 }
 const AG_ROOT = findAntigravityRoot();
-const BRAIN_DIR = process.env.BRAIN_DIR || path.join(AG_ROOT, "brain");
+const BRAIN_DIR = process.env.BRAIN_DIR ? resolveUserPath(process.env.BRAIN_DIR) : path.join(AG_ROOT, "brain");
 
 // Conversation summary file (updated per session by conversation_summaries)
 const CONV_SUMMARY_FILE = process.env.CONV_SUMMARY ||
@@ -156,7 +157,7 @@ async function main() {
       const meta = readJsonSafe(metaPath) || {};
 
       const title = `[${art.label}] ${convTitle}`;
-      const createdAt = meta.updatedAt || new Date().toISOString();
+      const createdAt = meta.updatedAt || fs.statSync(filePath).mtime.toISOString(); // stable between runs
       const tags = `antigravity,${art.type},${art.label.toLowerCase()},conv:${convId.slice(0,8)}`;
       const summary = meta.summary || "";
 
@@ -175,6 +176,8 @@ async function main() {
         const result = { ok: queue.add({
           type: art.type,
           source: "antigravity",
+          upsert: true, // the latest version of an artifact replaces the previous one
+          file_path: filePath, // identifies the artifact even when two conversations share a title
           title,
           content: fullContent,
           tags,
