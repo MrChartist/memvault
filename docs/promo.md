@@ -10,7 +10,7 @@
 | The MCP registry entry (`server.json`) is published and a registry install starts the server | **Not done.** The entry now validates against the published schema; publishing has not been tried. |
 | Private vulnerability reporting is switched on for the repository | **Needs verification** by the owner. |
 | A short demo (screen recording) exists | **Not found in files.** No demo asset exists yet. Record it from a clean install. |
-| The CI jobs for Windows and macOS are green, or the post says plainly that they are untried | **Not done.** They have never run. |
+| The CI jobs for Windows and macOS are green, or the post says plainly that they are untried | **Done in CI.** Tests and the install check pass. No person has tried them by hand yet, so keep saying so. |
 | Every number in the post is one you measured | See "Numbers you may use" below. |
 
 ## What to say, in one paragraph
@@ -20,7 +20,7 @@ MemVault is a notebook on your own computer that your AI apps (Claude, Cursor, A
 ## What to be honest about
 
 - It needs Node.js and a few terminal commands today. A one-click installer is planned, not built.
-- It was built and tested on Linux. Windows and macOS are untried.
+- It was built on Linux. Windows and macOS pass the automated tests but have not been tried by hand.
 - The dashboard is English only. It has been checked with automated accessibility tools, not with a real screen reader or with disabled users.
 - Search finds the words you type, not the meaning.
 - It is comfortable up to a few tens of thousands of notes; beyond that saving gets slow.
@@ -52,7 +52,7 @@ Your notes stay on your computer. Be clear about one thing: when an AI reads a n
 There is a dashboard to write, search, correct, pin and delete notes (with Undo). Settings, backups and capture are switches, not config files. Everything automatic is off until you turn it on. No tracking.
 
 **Post 5**
-Free and open source (MIT). It needs Node.js today and was built on Linux; Windows and macOS are untried, so tell me what breaks.
+Free and open source (MIT). It needs Node.js today and was built on Linux; Windows and macOS pass the automated tests but nobody has used them by hand, so tell me what breaks.
 `npx @mrchartist/memvault setup`
 https://github.com/MrChartist/memvault
 

@@ -9,7 +9,7 @@ Reviewer: Claude (AI), on behalf of the owner. Branch: `mrchartist/ecstatic-clar
 The code is in good shape after this pass: 363 unit and integration tests and 108 browser checks pass on Linux (Node 22). The blockers are things only the owner can do or that have never been run:
 
 1. Nothing is published. `npx @mrchartist/memvault setup` has never run on a clean machine.
-2. Windows and macOS have never run a single test. CI for them is now set up but has not reported.
+2. Windows and macOS now pass the tests and an install check in CI, but nobody has used the dashboard on either by hand.
 3. No private way to report a security problem is confirmed switched on.
 4. No demo exists.
 5. Saving is slow beyond tens of thousands of notes (sql.js rewrites the whole file). This is a documented limit, not a blocker, if the post says so.
@@ -119,8 +119,8 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 |---|---|---|
 | 1 | All unit and integration tests pass | **Done** — 363/363 (Linux, Node 22) |
 | 2 | Browser tests pass | **Done** — 108/108 |
-| 3 | Node 20 and 24 pass | **Not done** — the first CI run failed on one test (see §10); fixed, awaiting re-run |
-| 4 | Windows and macOS tests pass | **Not done** — the first CI run found test and CI-script problems (see §10); fixed, awaiting re-run |
+| 3 | Node 20 and 24 pass | **Done** — green in CI on commit `442c69e` |
+| 4 | Windows and macOS tests pass | **Done in CI** (`442c69e`): unit tests and install check on both. Not tried by a person on a real Windows or macOS computer |
 | 5 | `npm audit --omit=dev` clean | **Done** (locally) |
 | 6 | Package contents checked (`npm pack`, 82 files) | **Done** |
 | 7 | Secret scan of the repo and history | **Done** for pushed commits (GitHub push protection) |
@@ -167,9 +167,9 @@ The first CI run on the PR failed, although everything passed locally. Cause, al
 
 - Linux and macOS: the browser-capture test assumed a Linux folder and the local `XDG_CONFIG_HOME`. Fixed: the test now sets both and uses the right folder per system.
 - Windows: tests used Unix quoting for git, a raw `D:\…` path as an import, and `/` paths for the `~` check; the install smoke test lost backslashes in the temp path. Fixed in the tests and CI script.
-- Windows: two test files that import a script starting with `#!` failed with a syntax error. Probable cause is Windows line endings; `.gitattributes` now forces LF. **Needs verification** on the next run.
+- Windows: two test files that import a script starting with `#!` failed with a syntax error. Probable cause is Windows line endings; `.gitattributes` now forces LF. Confirmed: Windows tests pass after that change (commit `442c69e`).
 
-The Windows results are the first real signal for that system and may show more.
+After the fixes, all 11 CI checks passed on `442c69e`: Linux Node 20/22/24, Windows and macOS tests and install checks, browser tests and the dependency audit. This shows the tests and a global install work there. It does not replace a person using the dashboard on Windows or macOS.
 
 ## Appendix: list licences of installed packages
 
