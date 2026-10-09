@@ -10,7 +10,7 @@ process.env.VAULT_ROOT = ROOT;
 process.env.MEMVAULT_TOKEN_FILE = path.join(ROOT, 'token');
 
 const TOKEN = 'test-token-' + crypto.randomBytes(8).toString('hex');
-let server, port, S, D;
+let server, port, S, D, cfgFile;
 
 /** Raw HTTP so tests can control Host / Origin headers exactly (fetch will not). */
 function req(method, p, { headers = {}, body, token = TOKEN, host } = {}) {
@@ -43,7 +43,10 @@ beforeAll(async () => {
   port = await new Promise((res) => {
     const probe = http.createServer().listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => res(p)); });
   });
-  const app = S.createApp({ vdb, token: TOKEN, port, root: ROOT });
+  cfgFile = path.join(ROOT, 'rc.json');
+  fs.writeFileSync(cfgFile, JSON.stringify({ mcpBridges: [{ name: 'keep-me', command: 'x' }], security: { host: '127.0.0.1' } }));
+  const config = { load: () => JSON.parse(fs.readFileSync(cfgFile, 'utf8')), save: (c) => fs.writeFileSync(cfgFile, JSON.stringify(c)), passphraseFile: path.join(ROOT, 'outside', 'backup-passphrase') };
+  const app = S.createApp({ vdb, token: TOKEN, port, root: ROOT, config });
   server = await new Promise((res) => { const s = app.listen(port, '127.0.0.1', () => res(s)); });
 });
 
@@ -265,6 +268,75 @@ describe('server — working with one memory at a time', () => {
     expect(r.json.items.some((i) => i.id === id)).toBe(true);
     expect(r.text).not.toContain('"encrypted"');
     expect(r.headers['content-disposition']).toMatch(/attachment; filename="memvault-export-/);
+  });
+});
+
+describe('server — settings', () => {
+  it('starts with every kind of automatic capture off and no passphrase', async () => {
+    const r = (await req('GET', '/settings')).json;
+    expect(Object.values(r.capture).every((c) => c.on === false)).toBe(true);
+    expect(r.projects).toEqual([]);
+    expect(r.backup.passphrase).toEqual({ set: false, via: null });
+    expect(r.backup.cloud).toEqual({ folder: false, api: false });
+  });
+
+  it('turns capture on and off, saves projects, and leaves every other setting alone', async () => {
+    const r = await req('PUT', '/settings', { body: { capture: { git: true, browser: false }, projects: [{ name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' }] } });
+    expect(r.status).toBe(200);
+    const file = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    expect(file.sync).toMatchObject({ gitEnabled: true, browserEnabled: false });
+    expect(file.projects).toEqual([{ name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' }]);
+    expect(file.mcpBridges).toEqual([{ name: 'keep-me', command: 'x' }]); // untouched
+    expect(file.security).toEqual({ host: '127.0.0.1' });
+    expect((await req('GET', '/settings')).json.capture.git.on).toBe(true);
+    await req('PUT', '/settings', { body: { capture: { git: false } } });
+  });
+
+  it('refuses anything that is not a plain setting (no way to change the network address, bridges or keys from here)', async () => {
+    for (const body of [{ security: { host: '0.0.0.0' } }, { mcpBridges: [] }, { capture: { evil: true } }, { projects: [{ name: '' }] }, { projects: 'x' }, { storage: { allowPlaintextCloud: true } }]) {
+      expect((await req('PUT', '/settings', { body })).status).toBe(400);
+    }
+    expect(JSON.parse(fs.readFileSync(cfgFile, 'utf8')).security).toEqual({ host: '127.0.0.1' });
+  });
+
+  it('sets a backup passphrase: checked, stored privately outside the vault, never sent back or logged', async () => {
+    expect((await req('PUT', '/settings/passphrase', { body: { passphrase: 'short', confirm: 'short' } })).status).toBe(400);
+    expect((await req('PUT', '/settings/passphrase', { body: { passphrase: 'a long enough phrase', confirm: 'a different phrase!' } })).status).toBe(400);
+    const ok = await req('PUT', '/settings/passphrase', { body: { passphrase: 'a long enough phrase', confirm: 'a long enough phrase' } });
+    expect(ok.status).toBe(200);
+    expect(ok.text).not.toContain('a long enough phrase');
+    const file = path.join(ROOT, 'outside', 'backup-passphrase');
+    expect(fs.readFileSync(file, 'utf8').trim()).toBe('a long enough phrase');
+    if (process.platform !== 'win32') expect(fs.statSync(file).mode & 0o077).toBe(0);
+    expect(JSON.parse(fs.readFileSync(cfgFile, 'utf8')).storage.passphraseFile).toBe(file);
+    const st = await req('GET', '/settings');
+    expect(st.json.backup.passphrase).toEqual({ set: true, via: 'file' });
+    expect(st.text).not.toContain('a long enough phrase');
+    const { tailAudit } = await import('../audit.mjs');
+    expect(JSON.stringify(tailAudit(500, {}, ROOT))).not.toContain('a long enough phrase');
+  });
+
+  it('a cloud backup made right after setting the passphrase is encrypted (no restart needed)', async () => {
+    const drive = path.join(ROOT, 'drive');
+    const file = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    file.storage = { ...file.storage, gdriveFolder: { enabled: true, path: drive } };
+    fs.writeFileSync(cfgFile, JSON.stringify(file));
+    const r = await req('POST', '/backup');
+    expect(r.status).toBe(200);
+    const cloud = r.json.results.find((x) => x.backend === 'gdriveFolder');
+    expect(cloud).toMatchObject({ ok: true, encrypted: true });
+    expect(fs.readdirSync(path.join(drive, 'MemVault')).some((f) => f.endsWith('.mvbak'))).toBe(true);
+  });
+
+  it('checks the dashboard key without touching data', async () => {
+    expect((await req('GET', '/whoami')).json).toEqual({ ok: true });
+    expect((await req('GET', '/whoami', { token: 'wrong' })).status).toBe(401);
+  });
+
+  it('"save now" says plainly when nothing is switched on', async () => {
+    const r = await req('POST', '/sync/run');
+    expect(r.status).toBe(200);
+    expect(r.json.ran).toEqual([]);
   });
 });
 

@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import express from "express";
 import multer from "multer";
 import { z } from "zod";
-import { VAULT_ROOT, PORT, SECURITY_CONFIG } from "./config.mjs";
+import { VAULT_ROOT, PORT, SECURITY_CONFIG, TOKEN_FILE, loadUserConfig, saveUserConfig, buildStorageConfig } from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
 import { ensureToken, createGuards, createLimiter, isLoopbackHost } from "./auth.mjs";
 import { encryptString, decryptString, isLegacyBlob, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
@@ -21,7 +21,8 @@ import {
   AGENT_ID_RE, listAgents, getAgent, saveAgent, deleteAgent, installStarterPack,
   draftProfileFromPrompt, buildBriefing, normalizeProfile, scopesFor, listPacks,
 } from "./agents.mjs";
-import { listLocalBackups, backupLocal } from "./storage.mjs";
+import { listLocalBackups, backupLocal, backupVault, enabledBackends, resolvePassphrase } from "./storage.mjs";
+import { spawn } from "child_process";
 import { collectDiagnostics } from "./diagnostics.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 
@@ -48,6 +49,25 @@ const EditSchema = z.object({
   tags: z.string().max(1000).optional(),
   pinned: z.boolean().optional(),
 }).strict();
+
+// Capture kinds the dashboard may switch, and the config flag each one controls.
+const CAPTURE = {
+  git:       { flag: "gitEnabled",       sources: ["git"] },
+  vscode:    { flag: "vscodeEnabled",    sources: ["vscode"] },
+  files:     { flag: "filesEnabled",     sources: ["filesystem"] },
+  system:    { flag: "systemEnabled",    sources: ["system"] },
+  browser:   { flag: "browserEnabled",   sources: ["chrome", "edge", "brave", "chromium"] },
+  clipboard: { flag: "clipboardEnabled", sources: ["clipboard"] },
+};
+const SettingsSchema = z.object({
+  capture: z.object(Object.fromEntries(Object.keys(CAPTURE).map((k) => [k, z.boolean().optional()]))).strict().optional(),
+  projects: z.array(z.object({
+    name: z.string().trim().min(1).max(60),
+    match: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    tags: z.string().trim().max(200).default(""),
+  }).strict()).max(50).optional(),
+}).strict();
+const PassphraseSchema = z.object({ passphrase: z.string().min(MIN_PASSPHRASE_LENGTH).max(500), confirm: z.string() }).strict();
 
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
 const PINNED_FIRST = "(CASE WHEN (',' || REPLACE(IFNULL(tags,''),' ','') || ',') LIKE '%,pinned,%' THEN 0 ELSE 1 END)";
@@ -111,6 +131,8 @@ export function createApp({
   port = PORT,
   root = VAULT_ROOT,
   security = SECURITY_CONFIG,
+  // Where the dashboard reads and writes ~/.memvaultrc.json (replaceable in tests).
+  config = { load: loadUserConfig, save: saveUserConfig, passphraseFile: path.join(path.dirname(TOKEN_FILE), "backup-passphrase") },
 } = {}) {
   const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
   for (const d of ["entries", "conversations", "worklogs", "files"]) ensureDir(path.join(root, d));
@@ -596,6 +618,88 @@ export function createApp({
     }
   });
 
+  // ── settings (what used to need the terminal or a JSON file) ──────────────
+
+  // Lets the dashboard check a typed key without reading any data.
+  app.get("/whoami", (_req, res) => res.json({ ok: true }));
+
+  const passphraseState = (uc) => {
+    if (process.env.MEMVAULT_BACKUP_PASSPHRASE) return { set: true, via: "env" };
+    const f = uc.storage?.passphraseFile;
+    if (f) { try { if (fs.readFileSync(f, "utf8").split(/\r?\n/)[0].trim()) return { set: true, via: "file" }; } catch { /* missing file */ } }
+    return { set: false, via: null };
+  };
+
+  app.get("/settings", (_req, res) => {
+    const uc = config.load();
+    const st = buildStorageConfig(uc);
+    const seen = Object.fromEntries(vdb.query("SELECT source, COUNT(*) AS n, MAX(created_at) AS last FROM items GROUP BY source").map((r) => [r.source, r]));
+    const capture = Object.fromEntries(Object.entries(CAPTURE).map(([k, c]) => {
+      const rows = c.sources.map((x) => seen[x]).filter(Boolean);
+      return [k, { on: uc.sync?.[c.flag] === true, saved: rows.reduce((a, r) => a + r.n, 0), last: rows.map((r) => r.last).sort().pop() || null }];
+    }));
+    res.json({
+      ok: true,
+      capture,
+      projects: Array.isArray(uc.projects) ? uc.projects : [],
+      backup: {
+        passphrase: passphraseState(uc),
+        cloud: { folder: !!st.gdriveFolder.enabled, api: !!st.gdriveApi.enabled },
+        keep: st.keepLocalBackups,
+      },
+    });
+  });
+
+  app.put("/settings", (req, res) => {
+    const parsed = SettingsSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Those settings are not allowed. Only automatic saving and projects can be changed here." });
+    const uc = config.load();
+    const changed = [];
+    if (parsed.data.capture) {
+      uc.sync = { ...(uc.sync || {}) };
+      for (const [k, on] of Object.entries(parsed.data.capture)) {
+        if (on === undefined) continue;
+        uc.sync[CAPTURE[k].flag] = on;
+        changed.push(`${k}:${on ? "on" : "off"}`);
+      }
+    }
+    if (parsed.data.projects) { uc.projects = parsed.data.projects; changed.push("projects"); }
+    config.save(uc);
+    log("settings", { changed });
+    res.json({ ok: true, note: "Saved. Projects apply to new notes the next time MemVault restarts." });
+  });
+
+  // The passphrase goes to a private file OUTSIDE the vault (so backups never contain it); it is never returned or logged.
+  app.put("/settings/passphrase", (req, res) => {
+    const parsed = PassphraseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
+    if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
+    const file = config.passphraseFile;
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, parsed.data.passphrase + "\n", { mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch { /* not POSIX */ }
+    const uc = config.load();
+    uc.storage = { ...(uc.storage || {}), passphraseFile: file };
+    config.save(uc);
+    log("settings", { changed: ["backup-passphrase"] });
+    res.json({ ok: true });
+  });
+
+  // One round of every switched-on capture engine (the clipboard watcher runs separately, by design).
+  app.post("/sync/run", async (_req, res) => {
+    const uc = config.load();
+    const ran = Object.entries(CAPTURE).filter(([k, c]) => k !== "clipboard" && uc.sync?.[c.flag] === true).map(([k]) => k);
+    if (!ran.length) return res.json({ ok: true, ran: [], note: "Nothing is switched on yet." });
+    const code = await new Promise((resolve) => {
+      const cp = spawn(process.execPath, [path.join(__dirname, "sync-all.mjs")], { stdio: "ignore", env: process.env });
+      const timer = setTimeout(() => { cp.kill(); resolve("timeout"); }, 120_000);
+      cp.on("exit", (c) => { clearTimeout(timer); resolve(c); });
+      cp.on("error", () => { clearTimeout(timer); resolve("error"); });
+    });
+    log("sync", { ran, exit: String(code) });
+    res.json({ ok: code === 0, ran, note: code === 0 ? "Done." : "It did not finish. Run `memvault sync` in a terminal to see why." });
+  });
+
   // ── audit ────────────────────────────────────────────────────────────────
 
   app.get("/audit", (req, res) => {
@@ -607,10 +711,10 @@ export function createApp({
 
   app.post("/backup", async (_req, res) => {
     try {
-      const { backupVault, enabledBackends } = await import("./storage.mjs");
-      const results = await backupVault();
-      log("backup", { backends: enabledBackends(), ok: results.every((r) => r.ok) });
-      res.json({ ok: true, backends: enabledBackends(), results });
+      const fresh = buildStorageConfig(config.load()); // so a passphrase set a minute ago already counts
+      const results = await backupVault(fresh);
+      log("backup", { backends: enabledBackends(fresh), ok: results.every((r) => r.ok) });
+      res.json({ ok: true, backends: enabledBackends(fresh), results });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
     }

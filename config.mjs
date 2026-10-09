@@ -100,34 +100,37 @@ export const AI_CONFIG = userConfig.ai || {};
 // Local storage is ALWAYS on. Google Drive is opt-in via two methods:
 //   1. folder — mirror the vault into your Google Drive for Desktop synced path
 //   2. api    — upload backups via the Drive REST API (OAuth refresh token)
-export const STORAGE_CONFIG = {
-  local: { enabled: true, ...(userConfig.storage?.local || {}) },
-  gdriveFolder: {
-    enabled: false,
-    // e.g. "C:/Users/you/My Drive/MemVault" or "/home/you/GoogleDrive/MemVault"
-    path: "",
-    ...(userConfig.storage?.gdriveFolder || {}),
-  },
-  gdriveApi: {
-    enabled: false,
-    clientId: "",
-    clientSecret: "",
-    refreshToken: "",
-    // Optional Drive folder ID to upload into ("" = My Drive root)
-    folderId: "",
-    ...(userConfig.storage?.gdriveApi || {}),
-  },
-  // Keep at most N local timestamped backups (0 = unlimited)
-  keepLocalBackups: userConfig.storage?.keepLocalBackups ?? 20,
-  // Anything leaving this machine (Drive folder / Drive API) is encrypted with a
-  // passphrase first. The passphrase is read from the MEMVAULT_BACKUP_PASSPHRASE
-  // env var, or from the first line of the file named by `passphraseFile` — never
-  // from the JSON config itself. Set allowPlaintextCloud only if you accept
-  // uploading an unencrypted copy of your vault.
-  encryptCloud: userConfig.storage?.encryptCloud ?? true,
-  allowPlaintextCloud: userConfig.storage?.allowPlaintextCloud ?? false,
-  passphraseFile: userConfig.storage?.passphraseFile || "",
-};
+export function buildStorageConfig(uc = userConfig) {
+  return {
+    local: { enabled: true, ...(uc.storage?.local || {}) },
+    gdriveFolder: {
+      enabled: false,
+      // e.g. "C:/Users/you/My Drive/MemVault" or "/home/you/GoogleDrive/MemVault"
+      path: "",
+      ...(uc.storage?.gdriveFolder || {}),
+    },
+    gdriveApi: {
+      enabled: false,
+      clientId: "",
+      clientSecret: "",
+      refreshToken: "",
+      // Optional Drive folder ID to upload into ("" = My Drive root)
+      folderId: "",
+      ...(uc.storage?.gdriveApi || {}),
+    },
+    // Keep at most N local timestamped backups (0 = unlimited)
+    keepLocalBackups: uc.storage?.keepLocalBackups ?? 20,
+    // Anything leaving this machine (Drive folder / Drive API) is encrypted with a
+    // passphrase first. The passphrase is read from the MEMVAULT_BACKUP_PASSPHRASE env
+    // var, or from the first line of the file named by `passphraseFile` — never from the
+    // JSON config itself. Set allowPlaintextCloud only if you accept uploading an
+    // unencrypted copy of your vault.
+    encryptCloud: uc.storage?.encryptCloud ?? true,
+    allowPlaintextCloud: uc.storage?.allowPlaintextCloud ?? false,
+    passphraseFile: uc.storage?.passphraseFile || "",
+  };
+}
+export const STORAGE_CONFIG = buildStorageConfig(userConfig);
 
 // ─── Projects — YOUR named projects, used to auto-tag notes (none by default) ──
 //   [{ "name": "Garden Shed", "match": ["shed", "garden build"], "tags": "garden,diy" }]
