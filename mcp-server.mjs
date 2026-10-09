@@ -23,7 +23,7 @@ import { z } from "zod";
 import {
   autoTag, mergeAutoTags, scoreRelevance, rankByRelevance,
   detectProject, generateDigest, deduplicateEntries,
-  filterUnseen, resetSession, getSessionStats,
+  filterUnseen, resetSession, getSessionStats, searchWords,
 } from "./context-engine.mjs";
 
 import { VAULT_ROOT, ensureVaultDir } from "./config.mjs";
@@ -84,7 +84,7 @@ function isoDate() {
 /** Any-word keyword search, ranked by the relevance engine. Shared by the smart tools. */
 function keywordCandidates(query, max = 10, contentChars = 2000) {
   const esc = (w) => w.replace(/[\\%_]/g, "\\$&");
-  const words = [...new Set(String(query).toLowerCase().split(/[^\p{L}\p{N}_@:.+#-]+/u).filter((w) => w.length > 2))].slice(0, 8);
+  const words = searchWords(query, 8);
   if (!words.length) return [];
   const clause = words
     .map(() => "(LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(tags) LIKE ? ESCAPE '\\')")
@@ -294,7 +294,7 @@ server.tool(
   },
   async ({ topic, limit }) => {
     const maxResults = limit || 10;
-    const keywords = topic.split(/\s+/).filter(w => w.length > 2);
+    const keywords = searchWords(topic, 8);
     const conditions = keywords.map(() => "(title LIKE ? OR content LIKE ? OR tags LIKE ?)").join(" OR ");
     const params = keywords.flatMap(k => {
       const like = `%${k}%`;
@@ -529,7 +529,7 @@ server.tool(
   },
   async ({ topic, limit, freshOnly }) => {
     const maxResults = limit || 10;
-    const keywords = topic.split(/\s+/).filter(w => w.length > 2);
+    const keywords = searchWords(topic, 8);
     const conditions = keywords.map(() => "(title LIKE ? OR content LIKE ? OR tags LIKE ?)").join(" OR ");
     const params = keywords.flatMap(k => { const l = `%${k}%`; return [l, l, l]; });
 

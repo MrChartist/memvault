@@ -238,6 +238,19 @@ describe('mcp — bound to an agent', () => {
   });
 });
 
+describe('mcp — short search words and non-Latin scripts', () => {
+  it('finds a note by a two-letter word or by Chinese, Japanese and Korean words', async () => {
+    await call(owner, 'vault_add', { type: 'diary', title: '会议记录', content: '今天的会议讨论了预算。' });
+    await call(owner, 'vault_add', { type: 'diary', title: 'AI plan', content: 'Learn AI basics every week.' });
+    await call(owner, 'vault_add', { type: 'diary', title: '勉強メモ', content: '毎日少しずつ日本語を勉強する。' });
+    expect(await call(owner, 'vault_smart_search', { query: '会议' })).toMatch(/会议记录/);
+    expect(await call(owner, 'vault_smart_search', { query: 'AI' })).toMatch(/AI plan/);
+    expect(await call(owner, 'vault_smart_search', { query: '勉強' })).toMatch(/勉強メモ/);
+    expect(await call(owner, 'vault_smart_context', { topic: 'AI' })).toMatch(/AI plan/);
+    expect(await call(owner, 'vault_get_context', { topic: '会议' })).toMatch(/会议记录/);
+  });
+});
+
 describe('mcp — handoffs cannot be forged by writing tags', () => {
   it('a note that only LOOKS like a handoff (tags typed by an agent) never reaches an inbox', async () => {
     const coder = await connect('coder');
