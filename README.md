@@ -39,7 +39,9 @@ It also lets you give each AI its own **agent**: a helper with a job, a voice, r
 
 ## Get started
 
-You need [Node.js](https://nodejs.org) 20 or newer (choose the "LTS" download). Then, in a terminal:
+> **Honest note before you start.** MemVault needs [Node.js](https://nodejs.org) and a few commands in a terminal today. A one-click installer is planned (see [ROADMAP.md](ROADMAP.md)) but does not exist yet. It has been built and tested on Linux. The tests also run on Windows and macOS in CI, but nobody has used it on those systems yet, so expect rough edges there and please [tell us](https://github.com/MrChartist/memvault/issues).
+
+You need Node.js 20 or newer (choose the "LTS" download). Then, in a terminal:
 
 ```bash
 npx @mrchartist/memvault setup        # one step, no questions
@@ -74,6 +76,8 @@ The dashboard's **Get started** card walks you through connecting an app. Or run
 Menus and file locations change between versions. If something looks different, search that app's help for "MCP servers".
 
 Then try it. In your AI app, say: **"Remember that I prefer short answers."**
+
+**In the dashboard** you can write notes, search, open any memory in full, correct it, pin it, download it or delete it (with **Undo**, and a typed confirmation when you delete several at once). The **Settings** screen lets you switch automatic saving on or off, set a backup passphrase, add your projects, download everything and see what you deleted recently, all without the terminal.
 
 ## Agents: helpers with their own job and their own view
 
@@ -112,12 +116,13 @@ MemVault is built so that your data stays with you, and it can check itself: run
 | What | How |
 |---|---|
 | Nothing is reachable from outside this computer | The server listens on `127.0.0.1` only. Every request needs a secret key, and web pages from other sites are refused. |
-| Passwords and ID numbers do not get stored | API keys, passwords, card numbers, one-time codes and national ID numbers (US, UK, Canada, EU/IBAN, India) are masked before saving. This includes the clipboard. |
-| Each AI sees only what it should | Agents read through a filtered copy of the memory. Other agents' private notes are not just hidden; they are not in that copy at all. |
-| Your secrets are locked | The Secure Vault uses AES-256 with a key made from your master password. Agents never receive secret values. |
-| Cloud backups are encrypted first | Without your passphrase, a cloud backup refuses to run. It never uploads plain text by default. |
+| Passwords and ID numbers are hidden before saving | Common API keys and tokens, passwords in many formats (`password=…`, JSON, `.env`, web addresses, `curl -u`), card numbers, one-time codes and national ID numbers (US, UK, Canada, EU/IBAN, India) are replaced with a marker before saving. This includes the clipboard. It is pattern matching: unusual formats are missed. |
+| Each AI sees only what it should | Agents read through a filtered copy of the memory. Other agents' private notes are not just hidden; they are not in that copy at all. An agent can only become itself, and a message "from" another agent cannot be forged by typing tags. |
+| Your secrets are locked | The Secure Vault uses AES-256 with a key made from your master password. Agents never receive secret values. **There is no way to recover a forgotten master password.** |
+| Cloud backups are encrypted first | Without your passphrase, a cloud backup refuses to run. It never uploads plain text by default. You can set the passphrase in **Settings**. |
 | You can see who used your memory | A tamper-evident log records which agent called what, and when. It never records the content. |
-| Automatic capture is opt-in | Git, files, browser and clipboard capture are all off until you turn them on. |
+| Automatic capture is opt-in | Git, files, browser, computer info, VS Code and clipboard capture are all off until you turn them on in Settings. Running a capture script directly does nothing unless it is on (or you add `--force`). |
+| Deleting really deletes | Deleting a memory also removes its readable Markdown copy. Backups you made earlier still contain it. |
 | No tracking | No analytics, no telemetry, and the dashboard makes no requests to other websites. |
 
 **What no tool can promise.** When you ask an AI app to look something up in MemVault, the text it reads is sent to the company behind that AI, just like anything you type to it. Agents limit how much each AI can see; they cannot change that. Masking is a safety net that catches common patterns, not a guarantee. Malware running as your own user account can read your files. Turn on your system's disk encryption (BitLocker, FileVault, or LUKS) to protect a lost laptop. The full, honest list is in [SECURITY.md](SECURITY.md).
@@ -140,26 +145,26 @@ Bound agents are never offered the owner-only tools, and `agent_define` (changin
 
 ## Optional: capture and import
 
-Everything here is **off** until you choose it (`memvault init`, or edit `~/.memvaultrc.json`).
+Everything here is **off** until you choose it (dashboard **Settings**, `memvault init`, or edit `~/.memvaultrc.json`). **Save now** in Settings runs the switched-on ones once.
 
 | Capture | What it reads |
 |---|---|
 | Git | commit messages and dates from folders you pick |
 | VS Code | recent projects and installed extensions |
 | Files | names of recently changed files (never their contents) |
-| Computer info | operating system, memory, installed developer tools |
-| Browser | history and bookmarks from Chrome, Edge, Brave or Chromium |
+| Computer info | system type, hardware, disk space, installed developer tools (not the computer's name, network addresses or running programs) |
+| Browser | page titles and addresses (never what comes after a `?`) from Chrome, Edge, Brave or Chromium; pages on your own computer or network are skipped |
 | Clipboard | what you copy (secrets are masked) |
 
 | Import your old chats | |
 |---|---|
 | ChatGPT, Claude, Gemini (Google Takeout), Perplexity | `memvault import <folder-with-the-export>` |
 
-Imports and capture write many items at once in a single step, so importing hundreds of conversations takes a moment instead of minutes.
+Imports and capture write many items at once in a single step, so importing hundreds of conversations takes a moment instead of minutes. An import keeps each conversation's own date, and running the same import again does not add duplicates. The ChatGPT, Claude and Gemini export formats were written from each service's export as understood by the author and by tests with sample files; services change their exports without notice, so please report a file that does not import.
 
 ## Backups
 
-A local backup is kept every time you run `memvault backup` (and before anything is deleted). To keep a copy in Google Drive, set a passphrase (`MEMVAULT_BACKUP_PASSPHRASE`, 10+ characters) and MemVault encrypts the backup *before* it leaves your computer. See [docs/google-drive.md](docs/google-drive.md). Restore with `node storage.mjs restore <name>` or `restore-encrypted <file>`.
+A local backup is kept every time you run `memvault backup` or press **Back up now** (and before a bulk delete or "delete everything"). To keep a copy in Google Drive, set a passphrase (in **Settings**, or with `MEMVAULT_BACKUP_PASSPHRASE`; 10+ characters) and MemVault encrypts the backup *before* it leaves your computer. **If you lose the passphrase, those copies cannot be opened.** See [docs/google-drive.md](docs/google-drive.md). Restore with `node storage.mjs restore <name>` or `restore-encrypted <file>`; a file that is not a healthy MemVault database is refused before it can replace yours.
 
 ## Settings
 
@@ -192,21 +197,22 @@ memvault audit           who used your memory   (--verify checks the log is unta
 memvault token           show the dashboard key   (--rotate to replace it)
 memvault backup          back up now
 memvault sync / import  capture and import (only what you turned on)
+memvault clipboard       watch what you copy and save it (switch it on in Settings first)
 memvault init            the full setup wizard (capture, backups, bridges)
 memvault serve           start the dashboard server by itself
 ```
 
 ## Built for everyone
 
-- **Text size** buttons (A−, A+) scale everything; the dashboard also follows your browser's text setting.
+- **Text size** buttons (A−, A+) and the Settings screen scale everything; the dashboard also follows your browser's text setting.
 - **Keyboard**: every control works without a mouse, with visible focus and a "skip to content" link.
 - **Screen readers**: labelled controls, announcements for saves and errors, a proper page heading.
 - **Colour and contrast**: light and dark themes that follow your system; text meets WCAG 2.1 AA contrast; nothing relies on colour alone; Windows High Contrast is supported.
-- **Large touch targets** and a layout that works on a phone.
+- **Large touch targets** (at least 44 pixels, checked by the browser tests) and a layout that works on a phone.
 - **Many languages**: notes can be in any language and any direction (Arabic, Hebrew, Hindi, Japanese and more display correctly). The interface text is **English only today**; translations are welcome (see [Contributing](#contributing)). Dates and times follow your system's locale.
 - **Plain wording** in messages and in the dashboard, with the technical detail kept in the docs.
 
-The dashboard is tested automatically with an accessibility checker (axe-core) on every screen, in light, dark and phone layouts. Automated checks cannot find every problem; if something does not work for you, please [open an issue](https://github.com/MrChartist/memvault/issues).
+The dashboard is tested automatically with an accessibility checker (axe-core) on every screen, in light, dark and phone layouts, and with scripted keyboard use. **It has not been tested with a real screen reader, with voice control, or with disabled users.** Automated checks cannot find every problem; if something does not work for you, please [open an issue](https://github.com/MrChartist/memvault/issues). An accessibility review with real users is on the [roadmap](ROADMAP.md).
 
 ## Upgrading from 2.x
 
@@ -221,11 +227,15 @@ The dashboard is tested automatically with an accessibility checker (axe-core) o
 
 Full list: [CHANGELOG.md](CHANGELOG.md).
 
-## Roadmap
+## Known limits
 
-- A real SQLite engine for very large vaults (today every save rewrites the database file; fine for most people, slower beyond tens of thousands of notes)
-- Translations of the dashboard
-- Local-model summaries (Ollama)
+- **Size.** Every save rewrites the whole database file and every AI app holds a copy in memory. Measured here: about 10,000 notes feel instant; at 100,000 notes one save takes around 0.7 to 1.9 seconds and a process can use about 1 GB while it writes. Plan on a few tens of thousands of notes. A faster storage engine is the first item on the [roadmap](ROADMAP.md).
+- **Search** finds the words you type (and, for Chinese, Japanese and Korean, parts of words). It does not understand meaning: "car" will not find "automobile".
+- **Language.** The dashboard text is English only. Notes can be in any language.
+- **Windows and macOS** have not been used by the author (see the note at the top).
+- **What an AI reads leaves your computer** (see [SECURITY.md](SECURITY.md)).
+
+The plan, with what is next and what is deliberately not being done, is in [ROADMAP.md](ROADMAP.md). To remove MemVault, see [docs/uninstall.md](docs/uninstall.md).
 
 ## Contributing
 
@@ -233,7 +243,7 @@ Pull requests are welcome, especially translations, accessibility fixes, and tes
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT for the code. See [LICENSE](LICENSE). The Mr. Chartist name and logo are **not** covered by it ([TRADEMARKS.md](TRADEMARKS.md)). Fonts and other third-party licences: [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ---
 
