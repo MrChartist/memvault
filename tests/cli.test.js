@@ -92,3 +92,23 @@ describe('command line', () => {
     expect(run('doctor').stdout).toMatch(/Latest local backup is from today/);
   });
 });
+
+describe('opening the dashboard', () => {
+  it('keeps the key out of the browser\'s command line: it opens a private page that redirects', async () => {
+    const { makeOpenPage } = await import('../cli-tools.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault open '));
+    try {
+      const old = path.join(dir, 'open-0000.html');
+      fs.writeFileSync(old, 'stale');
+      const longAgo = new Date(Date.now() - 3600_000);
+      fs.utimesSync(old, longAgo, longAgo);
+      const file = makeOpenPage({ url: 'http://127.0.0.1:7799/#token=abc_DEF-123', dir });
+      expect(path.dirname(file)).toBe(dir);
+      expect(fs.readFileSync(file, 'utf8')).toContain('url=http://127.0.0.1:7799/#token=abc_DEF-123');
+      if (process.platform !== 'win32') expect(fs.statSync(file).mode & 0o077).toBe(0);
+      expect(fs.existsSync(old)).toBe(false); // an earlier page that was never cleaned up is removed
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

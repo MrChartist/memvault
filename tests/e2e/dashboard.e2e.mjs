@@ -393,6 +393,12 @@ await N.page.fill("#token-input", token); await N.page.click('#connect-form butt
 await N.page.waitForSelector("article.entry");
 check("the right key opens the dashboard", (await N.page.locator("#dlg-connect[open]").count()) === 0);
 
+const { makeOpenPage } = await load("cli-tools.mjs");
+const O = await open();
+await O.page.goto(pathToFileURL(makeOpenPage({ url: `${base}/#token=${token}`, dir: path.join(vaultRoot, "opendir") })).href);
+await O.page.waitForSelector("article.entry");
+check("the page `memvault open` uses signs in and removes the key from the address", O.page.url().startsWith(base) && !O.page.url().includes("token"), O.page.url());
+
 await browser.close();
 server.close();
 fs.rmSync(vaultRoot, { recursive: true, force: true });
