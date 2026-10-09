@@ -14,7 +14,7 @@ Do these in order. Stop at the first step that fails.
 ## Publish
 
 1. Log in to npm with an account that owns the `@mrchartist` scope, with two-factor on.
-2. `npm publish --access public --provenance` (provenance needs a GitHub Actions run; if publishing from your computer, leave `--provenance` out and say so).
+2. Easiest: add your npm token as the repository secret `NPM_TOKEN`, then push the tag (step 5). `.github/workflows/release.yml` runs the tests and the audit, checks the tag matches `package.json`, and publishes with provenance. Publishing by hand from your computer also works: `npm publish --access public` (leave `--provenance` out and say so).
 3. On a computer that has never had MemVault: `npx @mrchartist/memvault setup`, then `memvault doctor`. Try Windows, macOS and Linux.
 4. Publish `server.json` to the MCP registry, then install from the registry once.
 5. Tag the release: `git tag v3.0.0 && git push origin v3.0.0`.

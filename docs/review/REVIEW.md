@@ -86,7 +86,7 @@ Severity: P0 harms data or security now; P1 serious; P2 should fix; P3 minor. Co
 | SEC-11 | P3 | Data | `created_at` is not validated | Odd sort order | Open |
 | SEC-13 | P2 | Security | Bridge presets use unpinned `npx -y`; no size cap | Supply-chain risk on first run | Open; roadmap X9 |
 | PLAT-17 | P3 | Platform | VS Code `servers` key vs Cline/Roo label | Config may not load | Needs verification |
-| PLAT-x | P3 | Platform | `setup-windows.mjs` unreferenced; clipboard uses `xclip` only on Linux; `wmic` removed from newer Windows; no `windowsHide` | Windows/Linux polish | Open |
+| PLAT-x | P3 | Platform | `setup-windows.mjs` added hidden start-up items without asking; clipboard used `xclip` only on Linux; `wmic` removed from newer Windows; no `windowsHide` | Windows/Linux polish | Fixed: the script now asks (`--yes`/`--remove`); clipboard tries xclip, xsel, wl-paste; disk size uses a built-in call; PowerShell window hidden |
 | TST-10 | P3 | Privacy | Perplexity source URLs not masked | Rare secret in a URL | Open |
 | TST-13 | P3 | Function | Files and system snapshots duplicate by design | Clutter | By design |
 | UX-9 | P3 | UX | Loading states are partial | Blank moment on slow load | Open |

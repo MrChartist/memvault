@@ -11,6 +11,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import fs from "fs";
+import path from "path";
 import os from "os";
 import { execSync } from "child_process";
 
@@ -68,29 +70,17 @@ function getSystemInfo() {
 }
 
 function getDiskUsage() {
-  if (process.platform !== "win32") {
-    const df = execSafe("df -h / | tail -1");
-    return df || "N/A";
+  // One built-in call for every system (no df, no wmic: wmic is gone from newer Windows).
+  try {
+    const root = process.platform === "win32" ? path.parse(process.cwd()).root : "/";
+    const st = fs.statfsSync(root);
+    const total = st.blocks * st.bsize, free = st.bavail * st.bsize;
+    if (!total) return "N/A";
+    const gb = (n) => (n / 1024 ** 3).toFixed(0);
+    return `${root} ${gb(free)}GB free / ${gb(total)}GB total (${((1 - free / total) * 100).toFixed(0)}% used)`;
+  } catch {
+    return "N/A";
   }
-
-  // Windows: use WMIC
-  const drives = execSafe('wmic logicaldisk get name,size,freespace /format:csv');
-  if (!drives) return "N/A";
-
-  const lines = drives.split("\n").filter(l => l.trim() && !l.includes("Node"));
-  return lines.map(line => {
-    const parts = line.split(",").map(p => p.trim());
-    if (parts.length >= 4) {
-      const [, free, name, total] = parts;
-      if (total && free) {
-        const totalGb = (Number(total) / (1024 ** 3)).toFixed(0);
-        const freeGb = (Number(free) / (1024 ** 3)).toFixed(0);
-        const usedPct = ((1 - Number(free) / Number(total)) * 100).toFixed(0);
-        return `${name} ${freeGb}GB free / ${totalGb}GB total (${usedPct}% used)`;
-      }
-    }
-    return null;
-  }).filter(Boolean).join("\n") || "N/A";
 }
 
 function getInstalledNodeVersions() {
