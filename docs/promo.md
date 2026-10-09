@@ -1,74 +1,91 @@
-# Promotion Strategy — MemVault
+# Launch copy — MemVault 3.0
 
-> **Draft copy written for v2.1.** Before posting, update the numbers and claims for 3.0 (see [CHANGELOG.md](../CHANGELOG.md)) and keep the wording honest: notes are stored locally, but what an AI reads from them goes to that AI's provider.
+> **Draft. Do not post until the "Before you post" list below is true.** This copy was rewritten for 3.0 after an independent review. The earlier (2.1) text made claims that are no longer correct, for example that capture runs silently (it is now off until you switch it on) and that your AI logs every prompt (it now only does so if you ask).
 
-Here are templates and strategies for launching MemVault on various platforms.
+## Before you post
 
-## 1. Twitter / X (Thread)
+| Check | Status |
+|---|---|
+| The package is published to npm, and `npx @mrchartist/memvault setup` works on a computer that has never had MemVault (try it on Windows, macOS and Linux) | **Not done.** Nothing has been published. |
+| The MCP registry entry (`server.json`) is published and a registry install starts the server | **Not done.** The entry now validates against the published schema; publishing has not been tried. |
+| Private vulnerability reporting is switched on for the repository | **Needs verification** by the owner. |
+| A short demo (screen recording) exists | **Not found in files.** No demo asset exists yet. Record it from a clean install. |
+| The CI jobs for Windows and macOS are green, or the post says plainly that they are untried | **Not done.** They have never run. |
+| Every number in the post is one you measured | See "Numbers you may use" below. |
 
-**Tweet 1:**
-Every time you start a new AI conversation, it forgets everything you’ve ever told it. 
+## What to say, in one paragraph
 
-I got tired of repeating myself, so I built MemVault — a persistent memory layer for Claude, Cursor, and any MCP tool. Your notes stay on your own computer. 🧠👇
+MemVault is a notebook on your own computer that your AI apps (Claude, Cursor, Antigravity, VS Code and others that support MCP) can all read and write, so you stop repeating yourself. You can give each AI its own helper (an "agent") with its own rules and a limited view of your notes. Your notes stay on your computer. What an AI reads from them goes to that AI's company, like anything you type to it, so MemVault limits how much each AI sees and hides passwords and ID numbers before saving, but it cannot make that part disappear. It is free, open source (MIT), and has no tracking.
 
-**Tweet 2 (Demo):**
-[Insert the demo GIF showing `memvault import` and Claude accessing context]
-MemVault acts as a local data capture engine. It silently syncs your Git commits, VS Code activity, clipboard history, and now... your entire past AI chats.
+## What to be honest about
 
-**Tweet 3:**
-Have older chats in ChatGPT, Claude, Nexus, or Gemini? 
-I’ve built universal importers. Just point MemVault at your data export folder, and it automatically reads and indexes years of AI conversations in seconds.
+- It needs Node.js and a few terminal commands today. A one-click installer is planned, not built.
+- It was built and tested on Linux. Windows and macOS are untried.
+- The dashboard is English only. It has been checked with automated accessibility tools, not with a real screen reader or with disabled users.
+- Search finds the words you type, not the meaning.
+- It is comfortable up to a few tens of thousands of notes; beyond that saving gets slow.
+- Hiding secrets is pattern matching. Unusual formats get through.
 
-**Tweet 4 (How it works):**
-It serves this data directly into your AI assistant using the new Model Context Protocol (MCP). 
-You just ask Claude: "What did we decide about the database schema last week?" and MemVault instantly pulls the right context from your vault. Stored on your computer, no tracking.
+## Numbers you may use (all measured in the review; re-measure if the code changes)
 
-**Tweet 5 (Call to action):**
-It's completely free and open-source. Try it locally:
-`npx @mrchartist/memvault init`
+| Claim | Measured |
+|---|---|
+| Tools offered to an AI | 29 for you, 23 for an agent with default settings |
+| Space those tool descriptions use in each chat | about 4,400 tokens (an estimate: characters ÷ 4) |
+| Writes lost when 8 programs save at once | 0 of 7,200 (three runs) |
+| Time to import 200 conversations | about 0.06 seconds in one batch |
+| Notes before saving becomes noticeably slow | around 10,000 feels instant; 100,000 takes 0.7 to 1.9 seconds per save |
+| Tests | see the latest CI run; do not quote a number from this file |
 
-Star the repo if you hate repeating yourself to AI! ⭐
-🔗 https://github.com/MrChartist/memvault
+## 1. X (Twitter) thread
 
----
+**Post 1**
+Every new AI chat starts with an empty head. I got tired of repeating myself, so I built MemVault: one private notebook, on your own computer, that Claude, Cursor and other MCP apps can all use.
 
-## 2. Reddit (r/LocalLLaMA, r/selfhosted, r/ClaudeAI)
+**Post 2**
+Tell one AI "remember that I prefer short answers". Another AI can find it later. You can also give each AI its own helper, with its own rules and its own limited view of your notes.
 
-**Title:** I built a local MCP server that gives Claude/Cursor persistent memory (and imports all your past ChatGPT/Claude histories)
+**Post 3**
+Your notes stay on your computer. Be clear about one thing: when an AI reads a note, that text goes to the company behind that AI, like anything you type. MemVault limits how much each AI can see and hides passwords and ID numbers before saving. It cannot make that part disappear.
 
-**Body:**
-Hey everyone,
+**Post 4**
+There is a dashboard to write, search, correct, pin and delete notes (with Undo). Settings, backups and capture are switches, not config files. Everything automatic is off until you turn it on. No tracking.
 
-One of the biggest pain points I have with AI is that every new session starts with a blank slate. I built **MemVault** to solve this. It's a universal, local-first memory layer that serves context to your AI tools via the Model Context Protocol (MCP).
+**Post 5**
+Free and open source (MIT). It needs Node.js today and was built on Linux; Windows and macOS are untried, so tell me what breaks.
+`npx @mrchartist/memvault setup`
+https://github.com/MrChartist/memvault
 
-**What it does:**
-- Runs locally as an MCP stdio server
-- Captures context: Git commits, VS Code workspaces, Clipboard, System info
-- **New in v2.1:** Native importers for your ChatGPT, Claude, Perplexity, and Google Takeout (Gemini) data exports. You can dump your ZIPs into a folder, run `memvault import`, and your new AI assistant instantly knows your entire history.
-- AI Intelligence Layer: Uses your own Gemini API key (optional) to auto-tag, summarize, and semantically re-rank search results before sending them to Claude/Cursor.
+*(Post only after the package is published and the command above works.)*
 
-**Tools it exposes to your AI:**
-It gives your AI 29 tools, including `vault_smart_search`, `vault_capture_prompt` (auto-logs what you ask), and `vault_remember` (lets the AI save facts for the future).
+## 2. Reddit (r/selfhosted, r/ClaudeAI, r/LocalLLaMA)
 
-**How to try it:**
-Requires Node.js 20+. Just run:
-`npx @mrchartist/memvault init`
+**Title:** MemVault: a private memory on your own computer that all your AI apps share (MCP)
 
-Repo: [GitHub Link](https://github.com/MrChartist/memvault)
+**Body**
 
-Would love to hear what other data capture engines you'd like to see! Let me know what you think.
+I use more than one AI app and was tired of explaining the same things to each. MemVault is a local notebook your AI apps read and write through MCP.
 
----
+- Notes are stored on your computer in one file. No account, no tracking, no cloud unless you add an encrypted backup yourself.
+- "Agents" are saved helpers (job, tone, always/never rules, which notes they may see). An app connected to one agent can only ever be that agent, and the limit is enforced on the data, not by asking the AI nicely.
+- Passwords, keys, card numbers and ID numbers are hidden before saving. It is pattern matching and will miss unusual formats.
+- Importers for ChatGPT, Claude, Gemini (Google Takeout) and Perplexity exports. Export formats change, so tell me if a file does not import.
+- Optional capture (git commits, VS Code projects, file names, browser page titles, clipboard) is all off by default.
+
+Limits, so you do not find them the hard way: it needs Node 20+ and a terminal, it is only tested on Linux, the dashboard is English only, search is by word not meaning, and it slows down past a few tens of thousands of notes. What an AI reads from your notes goes to that AI's company; see SECURITY.md.
+
+Repo: https://github.com/MrChartist/memvault
 
 ## 3. Hacker News (Show HN)
 
-**Title:** Show HN: MemVault – Persistent local memory for Claude and Cursor via MCP
+**Title:** Show HN: MemVault – one local memory shared by all your AI apps (MCP)
 
-**Body:**
-I built MemVault because I was tired of copy-pasting the same context into new AI chats. It's a local Node.js server that implements the Model Context Protocol (MCP). 
+**Body**
 
-It runs background sync engines to capture your Git commits, VS Code activity, and clipboard. The new v2.1 release adds universal importers that parse your data exports from ChatGPT, Claude, Gemini, and Perplexity, converting them into searchable context.
+MemVault is a local-first memory for AI assistants. Your AI apps connect to it over MCP (one stdio server process per app) and read and write one SQLite file on your machine. A small dashboard lets you correct, pin and delete memories.
 
-When you ask Claude a question, MemVault uses a custom context engine (with optional semantic re-ranking via the Gemini API) to inject highly relevant past decisions, code snippets, and conversational history. Your notes are stored on your machine. What an AI reads from them goes to that AI's provider, as with anything you type; masking of secrets and per-agent limits reduce what it sees. The optional semantic features send text to Gemini only if you add your own key.
+Design points I would like feedback on: agent isolation is enforced by giving a bound process a filtered copy of the database rather than trusting each query; every write goes through one function that masks secrets and writes a hash-chained audit record; cloud backups are encrypted or refused; the server listens on loopback only and needs a key on every data route.
 
-Source code and setup instructions are on GitHub: https://github.com/MrChartist/memvault
+What it does not do: it cannot stop an AI you allowed from sending what it read to its provider; masking is regexes; it uses sql.js, so every save rewrites the file and it gets slow past tens of thousands of notes (a native SQLite engine is the first roadmap item); and it has only been run on Linux.
+
+https://github.com/MrChartist/memvault
