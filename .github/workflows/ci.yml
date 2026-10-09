@@ -81,7 +81,8 @@ jobs:
           PREFIX="$TMP/prefix रोहित e2e"
           mkdir -p "$PREFIX"
           npm install -g --prefix "$PREFIX" ./mrchartist-memvault-*.tgz
-          export PATH="$PREFIX:$PREFIX/bin:$PATH"
+          PFX_SH="$PREFIX"; if command -v cygpath >/dev/null; then PFX_SH="$(cygpath -u "$PREFIX")"; fi   # PATH in bash needs /d/a/... (a "D:" would split at the colon)
+          export PATH="$PFX_SH:$PFX_SH/bin:$PATH"
           export HOME="$TMP/home रोहित e2e" USERPROFILE="$TMP/home रोहित e2e"
           mkdir -p "$HOME"
           memvault setup
