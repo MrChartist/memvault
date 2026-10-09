@@ -61,7 +61,7 @@ describe('config overrides', () => {
 
   it('env vars beat the config file', () => {
     const c = loadConfig({ vaultRoot: '/from/file', port: 8000 }, { VAULT_ROOT: '/from/env', VAULT_PORT: '9001' });
-    expect(c.VAULT_ROOT).toBe('/from/env');
+    expect(c.VAULT_ROOT).toBe(path.resolve('/from/env')); // platform-aware: on Windows this gains a drive letter
     expect(c.PORT).toBe(9001);
   });
 
