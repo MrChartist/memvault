@@ -55,7 +55,10 @@ for (const [actor, tool] of [["market-analyst", "vault_search"], ["telegram-edit
 
 const token = "e2e-token-" + Math.random().toString(16).slice(2);
 const port = await new Promise((res) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => res(p)); }); });
-const server = await new Promise((res) => { const s = createApp({ vdb, token, port, root: vaultRoot }).listen(port, "127.0.0.1", () => res(s)); });
+const cfgFile = path.join(vaultRoot, "rc.json");
+fs.writeFileSync(cfgFile, "{}");
+const config = { load: () => JSON.parse(fs.readFileSync(cfgFile, "utf8")), save: (c) => fs.writeFileSync(cfgFile, JSON.stringify(c)), passphraseFile: path.join(vaultRoot, "outside", "backup-passphrase") };
+const server = await new Promise((res) => { const s = createApp({ vdb, token, port, root: vaultRoot, config }).listen(port, "127.0.0.1", () => res(s)); });
 const base = `http://127.0.0.1:${port}`;
 
 const out = process.env.E2E_SHOTS;
@@ -70,6 +73,8 @@ async function open(opts = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1180, height: 900 }, colorScheme: "light", ...opts });
   const page = await ctx.newPage();
   const bad = { external: [], csp: [], errors: [] };
+  page.asked = []; // every confirm() the page shows; the test accepts it so the flow continues
+  page.on("dialog", (d) => { page.asked.push(d.message()); d.accept(); });
   page.on("request", (r) => { const u = new URL(r.url()); if (u.protocol.startsWith("http") && !["127.0.0.1", "localhost"].includes(u.hostname)) bad.external.push(r.url()); });
   page.on("console", (m) => { const t = m.text(); if (/Content Security Policy|Refused to/i.test(t)) bad.csp.push(t); if (m.type() === "error" && !/favicon|Failed to load resource/.test(t)) bad.errors.push(t); });
   page.on("pageerror", (e) => bad.errors.push(String(e)));
@@ -90,7 +95,7 @@ await p.goto(`${base}/#token=${token}`);
 await p.waitForSelector(".entry");
 check("token removed from address bar", !p.url().includes("token"));
 check("first-run guide is shown to a new visitor", await p.locator("#guide").isVisible());
-check("html lang follows the browser", (await p.getAttribute("html", "lang")) === "en-US" || (await p.getAttribute("html", "lang")).startsWith("en"));
+check("page language is English (the words on the page are English)", (await p.getAttribute("html", "lang")) === "en");
 await shot(p, 'memory-light.png');
 await axe(p, "Memory (light, with guide)");
 
@@ -182,7 +187,11 @@ await axe(p, "Secure Vault (locked)");
 await p.fill("#master-pw", "short"); await p.click("#unlock-form button");
 await p.waitForSelector("#pw-error:not([hidden])");
 check("short master password refused with a clear reason", /at least 10/.test(await p.locator("#pw-error").innerText()));
-await p.fill("#master-pw", "correct horse battery"); await p.click("#unlock-form button");
+check("first time: the vault asks for the password twice", await p.locator("#master-pw2").isVisible());
+await p.fill("#master-pw", "correct horse battery"); await p.fill("#master-pw2", "something different 1"); await p.click("#unlock-form button");
+await p.waitForFunction(() => /not the same/.test(document.querySelector("#pw-error")?.textContent || ""));
+check("mismatched passwords are explained", true);
+await p.fill("#master-pw2", "correct horse battery"); await p.click("#unlock-form button");
 await p.waitForSelector("#unlocked:not([hidden])");
 await p.click('[data-action="add-secret"]'); await p.selectOption("#s-category", "password"); await p.fill("#s-label", "<b>Email</b> password"); await p.fill("#sf-username", "me@example.com");
 await p.click('#secret-form button[type="submit"]'); await p.waitForSelector(".secret");
@@ -193,6 +202,130 @@ check("security page reports loopback, masking and an intact log", /binds to 127
 check("security page says plainly what leaves the computer", /sent to the company behind that AI/.test(await p.locator("#view-security").innerText()));
 await axe(p, "Security (light)");
 await shot(p, 'security-light.png', { fullPage: true });
+
+// ═════ G. one memory at a time, undo, choosing several ═════
+await p.click('[data-view="memory"]'); await p.waitForSelector("article.entry");
+const card = (txt) => p.locator("article.entry", { hasText: txt });
+await p.fill("#diary-input", "Maya's exam is on 12 June, study with pictures");
+await p.click("#save-btn");
+await card("Maya's exam").first().waitFor();
+check("a saved note appears at once, with Pin, Edit and Delete buttons", (await card("Maya's exam").locator("[data-action]").count()) >= 4);
+check("each action says which memory it is for (screen readers and voice control)", /Delete: Note/.test(await card("Maya's exam").locator('[data-action="delete-item"]').getAttribute("aria-label")));
+check("the list is not a live region (it was re-announced on every search)", !(await p.locator("#entries").getAttribute("aria-live")));
+check("a short status line says how many are shown", /memories shown|memory shown/.test(await p.locator("#results-status").innerText()));
+
+await card("Maya's exam").locator(".linklike").click();
+await p.waitForSelector("#dlg-memory[open]");
+check("opening a memory shows its full text", /study with pictures/.test(await p.locator("#mem-full").innerText()));
+await axe(p, "Memory window (read)");
+await shot(p, "after-memory-open.png");
+await p.click('[data-action="mem-pin"]'); await p.waitForFunction(() => document.querySelector("#mem-pin")?.textContent === "Unpin");
+const toastTop = await p.evaluate(() => { const t = document.querySelector("#toast"); return t.matches(":popover-open") && getComputedStyle(t).opacity === "1" && document.querySelector("#dlg-memory").open; });
+check("messages show ABOVE an open window (they used to hide behind it)", toastTop);
+const [dl] = await Promise.all([p.waitForEvent("download"), p.click('[data-action="mem-download"]')]);
+check("a single memory can be downloaded", /^memvault-.*\.json$/.test(dl.suggestedFilename()));
+await p.click('[data-action="mem-edit"]'); await p.waitForSelector("#mem-edit-step:not([hidden])");
+await p.fill("#m-content", "Maya's exam is on 14 June. API_KEY=abcd1234efgh5678");
+await axe(p, "Memory window (edit)");
+await shot(p, "after-memory-edit.png");
+const askedBefore = p.asked.length;
+await p.click('#mem-edit-step [data-action="close-dialog"]');
+check("closing an edit with typing in it asks first", p.asked.length === askedBefore + 1 && /without saving/.test(p.asked.at(-1)));
+await p.waitForSelector("#dlg-memory:not([open])", { state: "attached" });
+await card("Maya's exam").locator('[data-action="edit-item"]').click();
+await p.waitForFunction(() => document.querySelector("#dlg-memory").open && document.querySelector("#m-content").value.includes("study with pictures"));
+await p.fill("#m-content", "Maya's exam is on 14 June. API_KEY=abcd1234efgh5678");
+await p.click('[data-action="mem-save"]'); await p.waitForSelector("#dlg-memory:not([open])", { state: "attached" });
+check("saving an edit hides secrets and says so in plain words", /hid 1 password or key/.test(await p.locator("#toast").innerText()));
+const saved = await (await fetch(`${base}/search?q=14%20June`, { headers: { authorization: `Bearer ${token}` } })).json();
+check("the stored text is the edited, masked text", saved.results.length === 1 && !JSON.stringify(saved).includes("abcd1234efgh5678") && /14 June/.test(saved.results[0].snippet));
+await p.waitForFunction(() => document.querySelector("article.entry")?.classList.contains("is-pinned"));
+check("a pinned memory moves to the top and says 'Pinned' in words", /Pinned/.test(await p.locator("article.entry.is-pinned").first().innerText()));
+
+await card("14 June").locator('[data-action="delete-item"]').click();
+await p.waitForSelector("#undo:not([hidden])");
+await card("14 June").first().waitFor({ state: "detached" });
+check("deleting offers Undo and removes the card", (await card("14 June").count()) === 0 && /Deleted/.test(await p.locator("#undo-text").innerText()));
+await shot(p, "after-undo-bar.png");
+await p.click('#undo [data-action="undo"]');
+await card("14 June").first().waitFor();
+check("Undo puts the memory back", (await card("14 June").count()) === 1);
+check("it is still pinned after Undo", await card("14 June").first().evaluate((e) => e.classList.contains("is-pinned")));
+
+await p.click("#select-toggle");
+await p.waitForSelector("#selbar:not([hidden])");
+await p.locator('.entry input[data-action="pick"]').nth(1).check();
+await p.locator('.entry input[data-action="pick"]').nth(2).check();
+check("choosing several shows a live count", (await p.locator("#sel-count").innerText()) === "2 selected");
+await axe(p, "Memory (choosing several)");
+await shot(p, "after-select.png");
+await p.click("#delete-selected"); await p.waitForSelector("#dlg-bulk[open]");
+check("bulk delete cannot be done by accident (button waits for the typed words)", await p.locator("#bulk-go").isDisabled());
+await p.fill("#bulk-confirm", "DELETE 1");
+check("the wrong number does not unlock it", await p.locator("#bulk-go").isDisabled());
+await axe(p, "Delete several (confirm)");
+await shot(p, "after-bulk-confirm.png");
+await p.fill("#bulk-confirm", "DELETE 2");
+await p.click("#bulk-go"); await p.waitForSelector("#undo:not([hidden])");
+check("bulk delete reports how many and offers Undo", /Deleted 2/.test(await p.locator("#undo-text").innerText()));
+await p.click('#undo [data-action="undo"]'); await p.waitForTimeout(500);
+
+await p.fill("#search-input", "zzqqnothingmatches"); await p.click('#search-form button[type="submit"]'); await p.waitForTimeout(400);
+check("a search that finds nothing says so, in plain words", /Nothing found for/.test(await p.locator("#entries").innerText()) && /Try fewer or different words/.test(await p.locator("#entries").innerText()));
+await p.click('[data-action="clear-search"]'); await p.waitForTimeout(300);
+await p.fill("#search-input", "Maya"); await p.click('#search-form button[type="submit"]'); await p.waitForTimeout(400);
+check("searching reports how many were found", /shown/.test(await p.locator("#results-status").innerText()));
+await p.click('[data-action="clear-search"]'); await p.waitForTimeout(300);
+
+// ═════ H. Settings ═════
+await p.click('[data-view="settings"]'); await p.waitForSelector("#capture-list .switch");
+check("switching screens moves focus to the new heading", await p.evaluate(() => document.activeElement?.id === "h-settings"));
+check("every kind of automatic saving starts switched off", (await p.locator('[data-capture]:checked').count()) === 0);
+await axe(p, "Settings (light)");
+await shot(p, "after-settings-light.png", { fullPage: true });
+await p.locator('[data-capture="git"]').check();
+await p.waitForFunction(() => /On/.test(document.querySelector('[data-capture="git"]')?.closest(".switch")?.innerText || ""));
+check("a switch is saved straight away", JSON.parse(fs.readFileSync(cfgFile, "utf8")).sync?.gitEnabled === true);
+await p.locator('[data-capture="git"]').uncheck();
+await p.waitForFunction(() => /Off/.test(document.querySelector('[data-capture="git"]')?.closest(".switch")?.innerText || ""));
+check("and can be switched off again", JSON.parse(fs.readFileSync(cfgFile, "utf8")).sync?.gitEnabled === false);
+await p.fill("#pj-name", "Garden Shed"); await p.fill("#pj-words", "shed, garden build"); await p.click('#project-form button[type="submit"]');
+await p.waitForSelector("#project-list li");
+check("a project can be added without editing a file", JSON.parse(fs.readFileSync(cfgFile, "utf8")).projects?.[0]?.name === "Garden Shed");
+await p.click('[data-action="remove-project"]'); await p.waitForFunction(() => !document.querySelector("#project-list li"));
+check("and removed", (JSON.parse(fs.readFileSync(cfgFile, "utf8")).projects || []).length === 0);
+await p.fill("#bp-1", "short"); await p.fill("#bp-2", "short"); await p.click('#pass-form button[type="submit"]');
+check("a short backup passphrase is refused with the reason", /at least 10/.test(await p.locator("#bp-error").innerText()));
+await p.fill("#bp-1", "a long enough phrase"); await p.fill("#bp-2", "a different phrase!"); await p.click('#pass-form button[type="submit"]');
+check("a mismatched passphrase is refused with the reason", /not the same/.test(await p.locator("#bp-error").innerText()));
+await p.fill("#bp-2", "a long enough phrase"); await p.click('#pass-form button[type="submit"]');
+await p.waitForFunction(() => /Backups locked with a passphrase: Yes/.test(document.querySelector("#backup-info")?.innerText || ""));
+check("a good passphrase is saved and the page says so", fs.existsSync(path.join(vaultRoot, "outside", "backup-passphrase")) && !(await p.content()).includes("a long enough phrase"));
+const [ex] = await Promise.all([p.waitForEvent("download"), p.click('[data-action="export-all"]')]);
+const exported = JSON.parse(fs.readFileSync(await ex.path(), "utf8"));
+check("'Download everything' gives all notes in one file", /^memvault-export-/.test(ex.suggestedFilename()) && exported.items.length > 5);
+await p.click('[data-action="wipe-all"]'); await p.waitForSelector("#dlg-wipe[open]");
+check("'Delete everything' waits for the typed words", await p.locator("#wipe-go").isDisabled());
+await axe(p, "Delete everything (confirm)");
+await p.fill("#wipe-confirm", "DELETE ALL"); check("and unlocks only when they match", await p.locator("#wipe-go").isEnabled());
+await p.keyboard.press("Escape");
+await p.click('[data-view="settings"]');
+check("the trash list shows recently deleted memories with a way back", (await p.locator("#trash-list").innerText()).length > 0);
+
+// ═════ I. Secure Vault: lock, reveal, auto-hide ═════
+await p.click('[data-view="vault"]');
+await p.waitForSelector("#unlocked:not([hidden]), #lock:not([hidden])");
+if (await p.locator("#lock").isVisible()) { await p.fill("#master-pw", "correct horse battery"); await p.click("#unlock-form button"); await p.waitForSelector("#unlocked:not([hidden])"); }
+check("a secret's Delete is its own real button (not inside another button)", (await p.locator(".secret-row > button").count()) >= 2 && (await p.locator("button button").count()) === 0);
+await p.click(".secret"); await p.waitForSelector("#dlg-reveal[open]");
+check("secret values are hidden until 'Show' is pressed", /^•+$/.test((await p.locator(".reveal .v").first().innerText()).trim()));
+await p.click('[data-action="show-value"]');
+check("'Show' reveals the value and the button becomes 'Hide'", /me@example\.com/.test(await p.locator(".reveal .v").first().innerText()) && (await p.locator('[data-action="show-value"]').innerText()) === "Hide");
+await axe(p, "Secret revealed");
+await p.keyboard.press("Escape");
+await p.click('[data-action="lock"]');
+await p.waitForFunction(() => document.activeElement?.id === "master-pw", null, { timeout: 3000 }).catch(() => {});
+check("locking returns focus to the password box", await p.evaluate(() => document.activeElement?.id === "master-pw"));
 check("no third-party requests", A.bad.external.length === 0, A.bad.external.join(","));
 check("no CSP violations", A.bad.csp.length === 0, A.bad.csp.join("|"));
 check("no JavaScript errors", A.bad.errors.length === 0, A.bad.errors.join("|"));
@@ -211,10 +344,22 @@ await axe(D.page, "Security (dark)");
 const M = await open({ viewport: { width: 390, height: 800 }, deviceScaleFactor: 2, hasTouch: true });
 await M.page.goto(`${base}/#token=${token}`); await M.page.waitForSelector(".entry"); await M.page.waitForTimeout(300);
 check("no sideways scrolling on a phone", !(await M.page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
-const small = await M.page.evaluate(() => [...document.querySelectorAll("button, a:not(p a), input, select, textarea, summary")].filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent || e.id || e.className).trim().slice(0, 24), h: Math.round(r.height), w: Math.round(r.width) }; }).filter((x) => x.h < 40 || x.w < 40));
-check("every button and field is at least 40px tall on a phone", small.length === 0, JSON.stringify(small.slice(0, 5)));
+const small = await M.page.evaluate(() => [...document.querySelectorAll("button, a:not(p a), input, select, textarea, summary")].filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent || e.id || e.className).trim().slice(0, 24), h: Math.round(r.height), w: Math.round(r.width) }; }).filter((x) => x.h < 44 || x.w < 44));
+check("every button and field is at least 44px tall on a phone", small.length === 0, JSON.stringify(small.slice(0, 5)));
 await shot(M.page, 'memory-mobile.png');
 await axe(M.page, "Memory (phone)");
+
+await M.page.click('[data-view="settings"]'); await M.page.waitForSelector("#capture-list .switch"); await M.page.waitForTimeout(300);
+check("Settings has no sideways scrolling on a phone", !(await M.page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
+await shot(M.page, "after-settings-mobile.png", { fullPage: true });
+await axe(M.page, "Settings (phone)");
+await D.page.click('[data-view="settings"]'); await D.page.waitForSelector("#capture-list .switch"); await D.page.waitForTimeout(300);
+await shot(D.page, "after-settings-dark.png", { fullPage: true });
+await axe(D.page, "Settings (dark)");
+await D.page.click('[data-view="memory"]'); await D.page.waitForSelector("article.entry");
+await D.page.click("#select-toggle"); await D.page.waitForSelector("#selbar:not([hidden])");
+await shot(D.page, "after-select-dark.png");
+await axe(D.page, "Memory choosing several (dark)");
 
 const F = await open({ forcedColors: "active" });
 await F.page.goto(`${base}/#token=${token}`); await F.page.waitForSelector(".entry");
@@ -239,6 +384,14 @@ const N = await open();
 await N.page.goto(base); await N.page.waitForSelector("#dlg-connect[open]");
 check("without an access key it asks to connect and shows no data", (await N.page.locator(".entry").count()) === 0);
 await axe(N.page, "Connect dialog (no key)");
+await N.page.fill("#token-input", "not-the-key"); await N.page.click('#connect-form button[type="submit"]');
+await N.page.waitForSelector("#token-error:not([hidden])");
+check("a wrong dashboard key is explained, and the window stays open", /did not work/.test(await N.page.locator("#token-error").innerText()) && await N.page.locator("#dlg-connect").evaluate((d) => d.open));
+await N.page.keyboard.press("Escape");
+check("Escape cannot dismiss it while there is no working key", await N.page.locator("#dlg-connect").evaluate((d) => d.open));
+await N.page.fill("#token-input", token); await N.page.click('#connect-form button[type="submit"]');
+await N.page.waitForSelector("article.entry");
+check("the right key opens the dashboard", (await N.page.locator("#dlg-connect[open]").count()) === 0);
 
 await browser.close();
 server.close();

@@ -311,6 +311,16 @@ export function createApp({
     res.json({ ok: true, undoable: true });
   });
 
+  // What can still be put back (titles only, newest first).
+  app.get("/trash", (_req, res) => {
+    const now = Date.now();
+    const items = [...trash.values()]
+      .filter((v) => now - v.at <= TRASH_MS)
+      .sort((a, b) => b.at - a.at)
+      .map((v) => ({ id: v.row.id, type: v.row.type, title: v.row.title, deleted_at: new Date(v.at).toISOString() }));
+    res.json({ ok: true, items });
+  });
+
   app.post("/items/:id/restore", (req, res) => {
     const held = trash.get(req.params.id);
     if (!held) return res.status(404).json({ ok: false, error: "Nothing to restore. Undo is only kept for an hour, and only until the dashboard server restarts." });
@@ -485,6 +495,9 @@ export function createApp({
     limiter.success("secrets");
     return true;
   }
+
+  // Has a master password been chosen yet? (lets the page ask for it twice the first time)
+  app.get("/secrets/status", (_req, res) => res.json({ ok: true, initialised: hasSentinel() || !!firstSecret() }));
 
   app.post("/secrets/verify", (req, res) => {
     const { password } = req.body || {};

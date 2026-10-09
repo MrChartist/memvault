@@ -248,6 +248,18 @@ describe('server — working with one memory at a time', () => {
     expect((await req('POST', `/items/${id}/restore`)).status).toBe(404); // nothing left to restore
   });
 
+  it('lists what was deleted recently, so Undo still works after the toast is gone', async () => {
+    const id = await add({ title: 'listed in trash', content: 'private words that must not be listed' });
+    expect((await req('GET', '/trash')).json.items.some((i) => i.id === id)).toBe(false);
+    await req('DELETE', `/items/${id}`);
+    const t = await req('GET', '/trash');
+    const row = t.json.items.find((i) => i.id === id);
+    expect(row.title).toBe('listed in trash');
+    expect(t.text).not.toContain('private words'); // titles only
+    await req('POST', `/items/${id}/restore`);
+    expect((await req('GET', '/trash')).json.items.some((i) => i.id === id)).toBe(false);
+  });
+
   it('bulk delete needs the phrase, takes a backup first, and can be undone', async () => {
     const ids = [await add({ title: 'bulk-a' }), await add({ title: 'bulk-b' })];
     expect((await req('POST', '/items/delete-many', { body: { ids } })).status).toBe(400);
@@ -416,10 +428,15 @@ describe('server — secrets', () => {
   const PW = 'correct horse battery';
   let id;
 
+  it('tells the page whether the Secure Vault has been set up yet', async () => {
+    expect((await req('GET', '/secrets/status')).json).toEqual({ ok: true, initialised: false });
+  });
+
   it('insists on a real master password the first time', async () => {
     const r = await req('POST', '/secrets/add', { body: { password: 'short', category: 'apikey', label: 'x', fields: { k: 'v' } } });
     expect(r.status).toBe(400);
     expect(r.json.error).toMatch(/at least 10/);
+    expect((await req('GET', '/secrets/status')).json.initialised).toBe(false); // refused, so still not set up
   });
 
   it('stores encrypted (v2) and round-trips', async () => {
@@ -431,6 +448,10 @@ describe('server — secrets', () => {
     expect(JSON.parse(raw).v).toBe(2);
     const get = await req('POST', '/secrets/get', { body: { password: PW, id } });
     expect(get.json.fields).toEqual({ key: 'sk-test-123' });
+  });
+
+  it('reports the Secure Vault as set up once it has a password', async () => {
+    expect((await req('GET', '/secrets/status')).json).toEqual({ ok: true, initialised: true });
   });
 
   it('lists labels only', async () => {
