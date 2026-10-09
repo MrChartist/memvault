@@ -16,9 +16,19 @@ import { importChatGPT } from "./import-chatgpt.mjs";
 import { importClaude } from "./import-claude.mjs";
 import { importGemini } from "./import-gemini.mjs";
 import { importPerplexity } from "./import-perplexity.mjs";
-import { isMainModule } from "./util.mjs";
 
 // ─── Platform Detection ────────────────────────────────────────────────────
+
+/** Which service wrote this export? Looks at the first real record, so an empty or null first entry does not confuse it. */
+export function classifyJson(data) {
+  if (data && !Array.isArray(data) && data.chat_conversations) return "claude";
+  const first = Array.isArray(data) ? data.find((x) => x && typeof x === "object") : null;
+  if (!first) return null;
+  if (first.mapping) return "chatgpt";
+  if (first.chat_messages) return "claude";
+  if (first.products || first.header) return "gemini";
+  return null;
+}
 
 function detectPlatforms(inputPath) {
   const detected = [];
@@ -35,16 +45,7 @@ function detectPlatforms(inputPath) {
     try {
       const raw = fs.readFileSync(inputPath, "utf8");
       const data = JSON.parse(raw);
-
-      if (Array.isArray(data) && data[0]?.mapping) {
-        detected.push({ platform: "chatgpt", path: inputPath });
-      } else if (data.chat_conversations || (Array.isArray(data) && data[0]?.chat_messages)) {
-        detected.push({ platform: "claude", path: inputPath });
-      } else if (Array.isArray(data) && data[0]?.products) {
-        detected.push({ platform: "gemini", path: inputPath });
-      } else {
-        detected.push({ platform: "perplexity", path: inputPath });
-      }
+      detected.push({ platform: classifyJson(data) || "perplexity", path: inputPath });
     } catch {
       console.error(`⚠️ Could not parse: ${inputPath}`);
     }
@@ -54,30 +55,12 @@ function detectPlatforms(inputPath) {
   // Folder — scan for known files
   const files = fs.readdirSync(inputPath);
 
-  // ChatGPT: conversations.json (or numbered shards conversations-000.json ...) with a mapping field
-  const chatgptFile = files.includes("conversations.json")
-    ? "conversations.json"
-    : files.filter((f) => /^conversations-\d+\.json$/.test(f)).sort()[0];
-  if (chatgptFile) {
+  // Look at every .json file in the folder: ChatGPT (also split into several files), Claude, whatever order they come in.
+  for (const f of files.filter((x) => x.endsWith(".json"))) {
     try {
-      const sample = fs.readFileSync(path.join(inputPath, chatgptFile), "utf8");
-      const parsed = JSON.parse(sample);
-      if (Array.isArray(parsed) && parsed[0]?.mapping) {
-        detected.push({ platform: "chatgpt", path: inputPath });
-      }
-    } catch { /* skip */ }
-  }
-
-  // Claude: look for chat_conversations key
-  for (const f of files.filter(f => f.endsWith(".json") && !/^conversations(-\d+)?\.json$/.test(f))) {
-    try {
-      const sample = fs.readFileSync(path.join(inputPath, f), "utf8");
-      const parsed = JSON.parse(sample);
-      if (parsed.chat_conversations) {
-        detected.push({ platform: "claude", path: path.join(inputPath, f) });
-        break;
-      }
-    } catch { /* skip */ }
+      const kind = classifyJson(JSON.parse(fs.readFileSync(path.join(inputPath, f), "utf8")));
+      if (kind === "chatgpt" || kind === "claude") detected.push({ platform: kind, path: path.join(inputPath, f) });
+    } catch { /* not an export file */ }
   }
 
   // Gemini: MyActivity.json or nested Takeout structure
@@ -163,8 +146,7 @@ export async function importAll(inputPath, options = {}) {
   let totalImported = 0;
   for (const [platform, result] of Object.entries(results)) {
     const icon = result.imported > 0 ? "✅" : "⏭️";
-    const dup = result.duplicates ? `, ${result.duplicates} already in vault` : "";
-    console.log(`  ${icon} ${platform}: ${result.imported} imported, ${result.skipped} skipped${dup}`);
+    console.log(`  ${icon} ${platform}: ${result.imported} imported, ${result.skipped} skipped`);
     totalImported += result.imported;
   }
   console.log(`\n  📊 Total: ${totalImported} conversations imported into MemVault\n`);
@@ -174,7 +156,7 @@ export async function importAll(inputPath, options = {}) {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (isMainModule(import.meta.url)) {
+if (process.argv[1] && process.argv[1].endsWith("import-all.mjs")) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`

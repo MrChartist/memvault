@@ -1,19 +1,20 @@
 /**
- * db.mjs — MemVault database layer (sql.js / SQLite)
+ * db.mjs — MemVault shared database layer
  * ═══════════════════════════════════════════════════════════════════════════════
- * ONE module owns the vault database. The web server, the MCP server, the sync
- * engines, the importers and the bridges all go through it.
+ * ONE memory, MANY writers. The web server, every MCP client process (Claude,
+ * Cursor, Antigravity, …) and the sync engines all talk to the same SQLite file.
  *
- * Why this matters: sql.js keeps the whole database in memory and rewrites the
- * whole file on every change. If several processes each held their own copy
- * (web server + MCP server + a sync job), the last one to write would silently
- * erase everyone else's entries. This module prevents that by:
+ * The old pattern — load the whole DB into RAM at startup, then overwrite the
+ * whole file on every write — silently lost data whenever two processes wrote
+ * at once (3 writers x 100 inserts kept only 100 rows). This module fixes that:
  *
- *   • reloading from disk whenever the file changed since we last saw it,
- *   • taking a cross-process lock around every write (read → change → write),
- *   • writing atomically (temp file + rename) so readers never see a torn file.
+ *   • writes   take a cross-process lock, RELOAD the freshest file, apply the
+ *              change, then replace the file atomically (tmp + fsync + rename)
+ *   • reads    reload only when the file on disk changed (cheap stat check)
+ *   • scoping  a handle bound to an agent reads from a FILTERED in-memory copy,
+ *              so isolation is enforced on the data, not trusted to each query
  *
- * Reads are lock-free. Writes are serialised across processes.
+ * Pure JS (sql.js) — no native build step, works on Windows/macOS/Linux.
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -22,383 +23,351 @@ import path from "path";
 import crypto from "crypto";
 import initSqlJs from "sql.js";
 import { VAULT_ROOT } from "./config.mjs";
+import { FileLock } from "./filelock.mjs";
+import { retryBusy } from "./retry.mjs";
 
-export const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
-const LOCK_PATH = `${DB_PATH}.lock`;
-// A lock is only held for the few milliseconds of a read-modify-write. Treat one as
-// abandoned after STALE_MS, and make waiters patient enough (WAIT_MS > STALE_MS) to
-// outlast a crashed holder instead of failing just before the lock becomes breakable.
-const STALE_MS = 10_000;
-const WAIT_MS = 20_000;
+const SQL = await initSqlJs();
 
-export const ITEM_TYPES = ["diary", "conversation", "worklog", "file"];
+export const SCHEMA_VERSION = 2;
+export const DEFAULT_SCOPE = "shared";
 
-const SCHEMA = `
+const BASE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
-    type TEXT NOT NULL,          -- diary | conversation | worklog | file
-    source TEXT,                 -- manual | git | vscode | chatgpt-import | ...
+    type TEXT NOT NULL,              -- diary | conversation | worklog | file
+    source TEXT,
     title TEXT,
     content TEXT,
     file_path TEXT,
-    tags TEXT,                   -- comma-separated
-    created_at TEXT NOT NULL     -- ISO 8601
+    tags TEXT,                       -- comma-separated
+    created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
   CREATE INDEX IF NOT EXISTS idx_items_created ON items(created_at);
-  CREATE INDEX IF NOT EXISTS idx_items_source ON items(source);
 
   CREATE TABLE IF NOT EXISTS secrets (
     id TEXT PRIMARY KEY,
-    category TEXT NOT NULL,      -- apikey | password | userid | payment | phone | custom
-    label TEXT NOT NULL,         -- plaintext label only (e.g. "OpenAI Key")
-    encrypted TEXT NOT NULL,     -- JSON blob, see secrets.mjs
+    category TEXT NOT NULL,
+    label TEXT NOT NULL,
+    encrypted TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_secrets_category ON secrets(category);
+
+  CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,             -- slug, e.g. "market-analyst"
+    name TEXT NOT NULL,
+    role TEXT,
+    profile TEXT NOT NULL,           -- JSON (see agents.mjs)
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
 `;
 
-const SQL = await initSqlJs();
-let db = null;
-let loadedSig = null;
+// ─── helpers ────────────────────────────────────────────────────────────────
 
-function fileSig() {
-  try {
-    const s = fs.statSync(DB_PATH);
-    return `${s.mtimeMs}:${s.size}`;
-  } catch {
-    return null;
-  }
+/** Best-effort POSIX permissions; harmless no-op on Windows. */
+function tighten(p, mode) {
+  try { fs.chmodSync(p, mode); } catch { /* ignore */ }
 }
 
-function sleep(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-/** (Re)load the database from disk, discarding any in-memory state. */
-function load() {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  if (db) { try { db.close(); } catch { /* already closed */ } }
-  // Take the signature BEFORE reading: if another process commits in between, we hold
-  // newer data under an older signature, which just costs one extra reload. The other
-  // order would mark stale data as fresh.
-  const sig = fileSig();
-  db = fs.existsSync(DB_PATH) ? new SQL.Database(fs.readFileSync(DB_PATH)) : new SQL.Database();
-  db.run(SCHEMA);
-  dropLegacyFtsTriggers();
-  loadedSig = sig;
-}
-
-/**
- * Early MemVault builds attached FTS5 triggers to `items`. sql.js ships without
- * FTS5, so such a trigger makes every INSERT fail ("no such module: fts5").
- * Search is LIKE-based now; drop only triggers that reference the old FTS table.
- */
-function dropLegacyFtsTriggers() {
-  try {
-    const res = db.exec(
-      "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'items' AND sql LIKE '%items_fts%'"
-    );
-    for (const [name] of res[0]?.values || []) db.run(`DROP TRIGGER IF EXISTS "${String(name).replace(/"/g, '""')}"`);
-  } catch { /* best effort */ }
-}
-
-/** Make sure `db` reflects what is on disk right now. */
-function ensureFresh(holdingLock = false) {
-  if (!db) {
-    if (fs.existsSync(DB_PATH)) {
-      load();
-    } else {
-      // First run: create the file under the lock so two processes starting at
-      // the same moment cannot overwrite each other's first writes.
-      const init = () => { load(); if (!fs.existsSync(DB_PATH)) persist(); };
-      if (holdingLock) init(); else withLock(init);
-    }
-  } else if (fileSig() !== loadedSig) {
-    load();
-  }
-}
-
-/** Atomically write the in-memory database to disk. */
-function persist() {
-  const data = Buffer.from(db.export());
-  const tmp = `${DB_PATH}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, data, { mode: 0o600 });
-  // On Windows a rename can fail transiently if an AV scanner/another reader has
-  // the target open; retry briefly.
-  for (let attempt = 0; ; attempt++) {
-    try {
-      fs.renameSync(tmp, DB_PATH);
-      break;
-    } catch (e) {
-      if (attempt >= 5 || !["EPERM", "EBUSY", "EACCES"].includes(e.code)) {
-        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
-        throw e;
-      }
-      sleep(30 * (attempt + 1));
-    }
-  }
-  loadedSig = fileSig();
-}
-
-function withLock(fn) {
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  const started = Date.now();
-  let fd;
-  for (;;) {
-    try {
-      fd = fs.openSync(LOCK_PATH, "wx");
-      break;
-    } catch (e) {
-      if (e.code !== "EEXIST") throw e;
-      try {
-        // An old lock belongs to a process that died mid-write.
-        if (Date.now() - fs.statSync(LOCK_PATH).mtimeMs > STALE_MS) {
-          fs.unlinkSync(LOCK_PATH);
-          continue;
-        }
-      } catch { /* lock vanished — retry */ }
-      if (Date.now() - started > WAIT_MS) {
-        throw new Error(`Timed out waiting for the vault database lock (${LOCK_PATH}). Delete it if no MemVault process is running.`);
-      }
-      sleep(15);
-    }
-  }
-  try {
-    return fn();
-  } finally {
-    try { fs.closeSync(fd); } catch { /* ignore */ }
-    try { fs.unlinkSync(LOCK_PATH); } catch { /* ignore */ }
-  }
-}
-
-/** Run `fn(db)` as an exclusive read-modify-write and persist the result. */
-function write(fn) {
-  return withLock(() => {
-    ensureFresh(true);
-    try {
-      const result = fn(db);
-      persist();
-      return result;
-    } catch (e) {
-      load(); // throw away any half-applied changes
-      throw e;
-    }
-  });
-}
-
-// ─── Public API ─────────────────────────────────────────────────────────────
-
-/** SELECT helper → array of plain objects. */
-export function queryAll(sql, params = []) {
-  ensureFresh();
+function rows(db, sql, params = []) {
   const stmt = db.prepare(sql);
   try {
     if (params.length) stmt.bind(params);
-    const rows = [];
-    while (stmt.step()) rows.push(stmt.getAsObject());
-    return rows;
+    const out = [];
+    while (stmt.step()) out.push(stmt.getAsObject());
+    return out;
   } finally {
     stmt.free();
   }
 }
 
-export function queryOne(sql, params = []) {
-  return queryAll(sql, params)[0] || null;
+function columnNames(db, table) {
+  return rows(db, `PRAGMA table_info(${table})`).map((r) => r.name);
 }
 
-/** Execute a single write statement and persist. Returns rows modified. */
-export function run(sql, params = []) {
-  return write((d) => {
-    d.run(sql, params);
-    return d.getRowsModified();
-  });
+/** Create missing tables and bring an older vault up to SCHEMA_VERSION. */
+export function migrate(db) {
+  db.run(BASE_SCHEMA);
+
+  // A file written by a newer MemVault may have changed shape. Opening it here and stamping our older
+  // version on it would hide that, so stop and say what to do.
+  const stamped = Number(rows(db, "SELECT value FROM meta WHERE key = 'schema_version'")[0]?.value || 0);
+  if (stamped > SCHEMA_VERSION) {
+    throw new Error(
+      `This vault was made by a newer version of MemVault (data version ${stamped}; this one understands ${SCHEMA_VERSION}). ` +
+      "Update MemVault instead of opening it with this older copy. Nothing was changed."
+    );
+  }
+
+  const cols = columnNames(db, "items");
+  if (!cols.includes("agent_id")) db.run("ALTER TABLE items ADD COLUMN agent_id TEXT");
+  if (!cols.includes("scope")) {
+    db.run(`ALTER TABLE items ADD COLUMN scope TEXT NOT NULL DEFAULT '${DEFAULT_SCOPE}'`);
+  }
+  db.run("CREATE INDEX IF NOT EXISTS idx_items_scope ON items(scope)");
+  db.run("CREATE INDEX IF NOT EXISTS idx_items_agent ON items(agent_id)");
+
+  db.run("INSERT OR IGNORE INTO meta (key,value) VALUES ('vault_id', ?)", [crypto.randomUUID()]);
+  db.run("INSERT OR REPLACE INTO meta (key,value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
 }
 
-/** Run several statements atomically with ONE persist. `fn` receives the raw db. */
-export function transaction(fn) {
-  return write((d) => {
-    d.run("BEGIN");
-    try {
-      const result = fn(d);
-      d.run("COMMIT");
-      return result;
-    } catch (e) {
-      try { d.run("ROLLBACK"); } catch { /* ignore */ }
-      throw e;
-    }
-  });
-}
+// ─── the handle ─────────────────────────────────────────────────────────────
 
 /**
- * Replace the live database with the SQLite file at `srcPath` (used by restore).
- * The file is validated first, then swapped in atomically under the write lock.
+ * Open the vault database.
+ *
+ * @param {object}   [opts]
+ * @param {string}   [opts.root]     vault root (default: config VAULT_ROOT)
+ * @param {object}   [opts.scope]    bind this handle to an agent. Omit for owner access.
+ * @param {string}   opts.scope.agentId
+ * @param {string[]} [opts.scope.readScopes]   extra scopes readable (exact or "prefix*"); "shared" is always readable
+ * @param {string[]} [opts.scope.writeScopes]  scopes this agent may write; defaults to shared + its own
+ * @param {boolean}  [opts.scope.allowSecrets] expose the encrypted secrets table (default false)
  */
-export function replaceDatabaseFile(srcPath) {
-  const buf = fs.readFileSync(srcPath);
+export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
+  const dir = path.join(root, "db");
+  const dbPath = path.join(dir, "index.sqlite");
+  fs.mkdirSync(dir, { recursive: true });
+  tighten(root, 0o700);
+  tighten(dir, 0o700);
+
+  // Temporary files from a write that crashed halfway are never needed again; a recent one may belong to a live writer.
   try {
-    const probe = new SQL.Database(buf);
-    probe.exec("SELECT count(*) FROM sqlite_master");
-    probe.close();
-  } catch (e) {
-    throw new Error(`Not a valid SQLite database (${path.basename(srcPath)}): ${e.message}`);
-  }
-  withLock(() => {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    const tmp = `${DB_PATH}.${process.pid}.restore.tmp`;
-    fs.writeFileSync(tmp, buf, { mode: 0o600 });
-    fs.renameSync(tmp, DB_PATH);
-    load();
-  });
-}
-
-/** Force the next call to re-read the file (mainly for tests). */
-export function reloadDb() {
-  withLock(() => load());
-}
-
-// ─── Items ──────────────────────────────────────────────────────────────────
-
-function normalizeDate(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
-
-const str = (v, max) => (v == null || v === "" ? null : String(v).slice(0, max));
-
-/**
- * Insert one or more entries with a single database write.
- *
- * Duplicate protection: when an entry carries its own `created_at` (git commits,
- * browser visits, imported chats — anything with a real timestamp) its id is a
- * hash of what it *is*, so re-running a sync or an import is a no-op instead of
- * duplicating every row.
- *
- * Snapshots: set `upsert: true` for "current state" entries (system info, VS Code
- * extensions...). Older entries with the same source + title + file_path are
- * replaced, so running a scheduled sync every 30 minutes does not pile up
- * near-identical rows. Use `file_path` to tell apart snapshots that share a title
- * (two projects both called "app", two bridge resources with the same name).
- *
- * @param {Array<{type:string,source?:string,title?:string,content?:string,
- *                file_path?:string,tags?:string,created_at?:string,upsert?:boolean}>} entries
- * @returns {{inserted:number, duplicates:number, ids:string[]}}
- */
-export function addItems(entries) {
-  const list = Array.isArray(entries) ? entries : [entries];
-  return transaction((d) => {
-    let inserted = 0;
-    let duplicates = 0;
-    const ids = [];
-
-    for (const e of list) {
-      if (!ITEM_TYPES.includes(e.type)) throw new Error(`Invalid entry type: ${e.type}`);
-
-      const source = str(e.source, 200);
-      const title = str(e.title, 1000);
-      const content = e.content == null ? null : String(e.content);
-      const explicitDate = normalizeDate(e.created_at);
-      const createdAt = explicitDate || new Date().toISOString();
-
-      let id;
-      if (explicitDate) {
-        const fingerprint = [e.type, source, title, explicitDate, content].join("\u0000");
-        id = `${e.type}_${crypto.createHash("sha1").update(fingerprint).digest("hex").slice(0, 24)}`;
-      } else {
-        id = `${e.type}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
-      }
-
-      const filePath = str(e.file_path, 2000);
-      if (e.upsert && source && title) {
-        d.run("DELETE FROM items WHERE source = ? AND title = ? AND COALESCE(file_path, '') = ?", [source, title, filePath || ""]);
-      }
-
-      d.run(
-        `INSERT OR IGNORE INTO items (id,type,source,title,content,file_path,tags,created_at)
-         VALUES (?,?,?,?,?,?,?,?)`,
-        [id, e.type, source, title, content, filePath, str(e.tags, 2000), createdAt]
-      );
-      if (d.getRowsModified() > 0) inserted++;
-      else duplicates++;
-      ids.push(id);
+    for (const f of fs.readdirSync(dir)) {
+      if (!/^index\.sqlite\.\d+(?:\.restore)?\.tmp$/.test(f)) continue;
+      const full = path.join(dir, f);
+      if (Date.now() - fs.statSync(full).mtimeMs > 10 * 60_000) fs.rmSync(full, { force: true });
     }
-    return { inserted, duplicates, ids };
-  });
+  } catch { /* best effort */ }
+
+  const lock = new FileLock(`${dbPath}.lock`);
+  const scoped = !!scope;
+  const ownScope = scoped ? `agent:${scope.agentId}` : null;
+  const readScopes = scoped ? [DEFAULT_SCOPE, ownScope, ...(scope.readScopes || [])] : null;
+  const writeScopes = scoped ? scope.writeScopes || [DEFAULT_SCOPE, ownScope] : null;
+
+  let read = null; // in-memory copy used for reads (filtered when scoped)
+  let sig = null;  // signature of the file `read` was built from
+
+  // A random id rewritten on every publish. File stat alone can repeat (inode
+  // numbers get reused, sizes are page-aligned), and a repeat on the WRITE path
+  // would mean building on a stale copy — i.e. a lost write.
+  const genPath = `${dbPath}.gen`;
+  const readGen = () => {
+    try { return fs.readFileSync(genPath, "utf8"); } catch { return ""; }
+  };
+
+  const signature = () => {
+    try {
+      const s = fs.statSync(dbPath);
+      return `${readGen()}|${s.ino}:${s.size}:${s.mtimeMs}`;
+    } catch {
+      return null;
+    }
+  };
+
+  const loadFull = () => {
+    const db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database();
+    migrate(db);
+    return db;
+  };
+
+  const persist = (db) => {
+    const buf = Buffer.from(db.export());
+    const tmp = `${dbPath}.${process.pid}.tmp`;
+    const fd = fs.openSync(tmp, "w", 0o600);
+    try {
+      fs.writeSync(fd, buf);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    retryBusy(() => fs.renameSync(tmp, dbPath)); // a scanner or sync client may hold the file for a moment
+    fs.writeFileSync(genPath, crypto.randomBytes(8).toString("hex"), { mode: 0o600 });
+    tighten(dbPath, 0o600);
+  };
+
+  const scopeMatches = (s) =>
+    readScopes.some((p) => (p.endsWith("*") ? s.startsWith(p.slice(0, -1)) : s === p));
+
+  /** Remove everything this agent is not allowed to see from an in-memory copy. */
+  const applyScope = (db) => {
+    const visible = rows(db, "SELECT DISTINCT scope FROM items")
+      .map((r) => r.scope)
+      .filter(scopeMatches);
+    if (visible.length === 0) {
+      // NOT IN (NULL) is NULL for every row and would delete nothing — a leak.
+      db.run("DELETE FROM items");
+    } else {
+      const marks = visible.map(() => "?").join(",");
+      db.run(`DELETE FROM items WHERE scope NOT IN (${marks})`, visible);
+    }
+    if (!scope.allowSecrets) db.run("DELETE FROM secrets");
+    return db;
+  };
+
+  const build = (full) => (scoped ? applyScope(full) : full);
+
+  const refresh = () => {
+    const now = signature();
+    if (read && now === sig) return;
+    if (read) read.close();
+    if (!now) {
+      // First run: create the file with the current schema, under the lock.
+      lock.acquire();
+      try {
+        if (!signature()) persist(loadFull());
+      } finally {
+        lock.release();
+      }
+    }
+    sig = signature();
+    read = build(loadFull());
+  };
+
+  /**
+   * Run `fn(db)` on the freshest full copy, then publish the result atomically.
+   * When nobody else has written since we last loaded (the common, single-writer
+   * case) the copy we already hold IS the freshest — skip the full re-parse.
+   */
+  const writeOnce = (fn) => {
+    lock.acquire();
+    try {
+      const reuse = !scoped && read !== null && sig !== null && sig === signature();
+      const fresh = reuse ? read : loadFull(); // never a stale RAM copy
+      let result;
+      try {
+        fresh.run("BEGIN");
+        result = fn(fresh);
+        fresh.run("COMMIT");
+      } catch (e) {
+        try { fresh.run("ROLLBACK"); } catch { /* ignore */ }
+        if (!reuse) fresh.close();
+        throw e;
+      }
+      // If this process was paused so long that another writer took the lock over, our copy is out of date:
+      // publishing it now would erase their write. Throw it away and start again from the file on disk.
+      if (!lock.holds()) {
+        if (reuse) { read.close(); read = null; sig = null; } else fresh.close();
+        const lost = new Error("MemVault: the database lock was taken over during a write; retrying.");
+        lost.code = "LOCK_LOST";
+        throw lost;
+      }
+      persist(fresh);
+      if (reuse) {
+        sig = signature();
+      } else {
+        fresh.close();
+        sig = null; // rebuild the read copy from what we just wrote
+      }
+      return result;
+    } finally {
+      lock.release();
+    }
+  };
+
+  const write = (fn) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return writeOnce(fn);
+      } catch (e) {
+        if (e.code !== "LOCK_LOST" || attempt >= 3) throw e;
+      }
+    }
+  };
+
+  refresh();
+
+  const handle = {
+    path: dbPath,
+    root,
+    scoped,
+    agentId: scoped ? scope.agentId : null,
+    readScopes,
+    writeScopes,
+
+    /** SELECT rows (objects). Sees other processes' writes. */
+    query(sql, params = []) {
+      refresh();
+      return rows(read, sql, params);
+    },
+
+    /** Raw write — owner handles only. */
+    run(sql, params = []) {
+      if (scoped) throw new Error("Agent-scoped handles cannot run raw SQL; use addItem().");
+      return write((db) => db.run(sql, params));
+    },
+
+    /** Several writes in one atomic, serialised step — owner handles only. */
+    transaction(fn) {
+      if (scoped) throw new Error("Agent-scoped handles cannot run transactions.");
+      return write((db) => fn({ run: (s, p = []) => db.run(s, p), query: (s, p = []) => rows(db, s, p) }));
+    },
+
+    /** Insert one memory item, enforcing the handle's write scope. Returns the new id. */
+    addItem(item) {
+      return handle.addItems([item])[0];
+    },
+
+    /**
+     * Insert many items in ONE locked, atomic write (one DB rewrite, not N).
+     * Importers and sync engines should always use this. All-or-nothing: if any
+     * item is refused, none are stored. Returns the new ids in order.
+     */
+    addItems(items) {
+      const prepared = items.map((it) => {
+        let finalScope = it.scope || DEFAULT_SCOPE;
+        let finalAgent = it.agent_id || null;
+        if (scoped) {
+          finalAgent = scope.agentId; // identity comes from the binding, never from the caller
+          if (!writeScopes.includes(finalScope)) {
+            throw new Error(`Agent "${scope.agentId}" may not write to scope "${finalScope}".`);
+          }
+        }
+        return [
+          `${it.type}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`,
+          it.type, it.source ?? null, it.title ?? null, it.content ?? null, it.file_path ?? null,
+          it.tags ?? null, it.created_at || new Date().toISOString(), finalAgent, finalScope,
+        ];
+      });
+      write((db) => {
+        for (const row of prepared) {
+          db.run(
+            `INSERT INTO items (id,type,source,title,content,file_path,tags,created_at,agent_id,scope)
+             VALUES (?,?,?,?,?,?,?,?,?,?)`,
+            row
+          );
+        }
+      });
+      return prepared.map((r) => r[0]);
+    },
+
+    /** Re-read from disk on next access (e.g. after restoring a backup). */
+    invalidate() { sig = null; },
+
+    close() {
+      if (read) read.close();
+      read = null;
+    },
+  };
+
+  return handle;
 }
 
-/**
- * Search entries with LIKE (this sql.js build has no FTS5).
- * `terms` are matched literally against title, content and tags.
- *
- * @param {object} o
- * @param {string[]} o.terms    one or more search terms
- * @param {"any"|"all"} [o.match="any"]  OR vs AND across terms
- * @param {string} [o.type]     restrict to an item type
- * @param {string} [o.since]    only entries with created_at >= this ISO timestamp
- * @param {string} [o.until]    only entries with created_at <  this ISO timestamp
- * @param {"recent"|"matches"} [o.orderBy="recent"]  "matches" puts entries that contain
- *        the MOST of the given terms first (then newest), so an old entry that matches
- *        every keyword beats a recent one that matches a single common word.
- * @param {number} [o.limit=20]
- * @param {number} [o.snippet=300]  characters of content to return
- */
-export function searchItems({ terms, match = "any", type, since, until, orderBy = "recent", limit = 20, snippet = 300 }) {
-  const clean = (terms || []).map((t) => String(t).trim()).filter(Boolean);
-  const clauses = clean.map(
-    () => "(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
-  );
-  const params = clean.flatMap((t) => {
-    const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    return [like, like, like];
-  });
+// ─── process-wide default handle ────────────────────────────────────────────
 
-  const where = [];
-  if (clauses.length) where.push(`(${clauses.join(match === "all" ? " AND " : " OR ")})`);
-  if (type) {
-    where.push("type = ?");
-    params.push(type);
-  }
-  if (since) {
-    where.push("created_at >= ?");
-    params.push(since);
-  }
-  if (until) {
-    where.push("created_at < ?");
-    params.push(until);
-  }
+let shared = null;
 
-  const safeSnippet = Math.max(1, Math.min(Number(snippet) || 300, 5000));
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 500));
-
-  // Parameters appear in SQL order: WHERE first, then ORDER BY.
-  let orderBySql = "created_at DESC";
-  if (orderBy === "matches" && clean.length > 1) {
-    const termHit = "(CASE WHEN (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\') THEN 1 ELSE 0 END)";
-    const likeParams = clean.flatMap((t) => {
-      const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-      return [like, like, like];
-    });
-    orderBySql = `${clean.map(() => termHit).join(" + ")} DESC, created_at DESC`;
-    params.push(...likeParams);
-  }
-
-  return queryAll(
-    `SELECT id, type, source, title, substr(content, 1, ${safeSnippet}) AS snippet, file_path, tags, created_at
-     FROM items
-     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-     ORDER BY ${orderBySql}
-     LIMIT ${safeLimit}`,
-    params
-  );
-}
-
-/** Counts per type + secrets, used by the UI and the MCP stats tool. */
-export function getStats() {
-  const byType = queryAll("SELECT type, COUNT(*) AS count FROM items GROUP BY type ORDER BY count DESC");
-  const total = byType.reduce((n, r) => n + r.count, 0);
-  const range = queryOne("SELECT MIN(created_at) AS first, MAX(created_at) AS last FROM items");
-  const secrets = queryOne("SELECT COUNT(*) AS count FROM secrets WHERE id != '__sentinel__'")?.count || 0;
-  return { total, byType, first: range?.first || null, last: range?.last || null, secrets };
+/** The handle for this process: owner access unless `scope` is passed on first call. */
+export function getVaultDb(opts) {
+  if (!shared) shared = openVaultDb(opts);
+  return shared;
 }

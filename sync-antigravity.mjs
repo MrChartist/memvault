@@ -1,104 +1,209 @@
 #!/usr/bin/env node
 /**
- * sync-antigravity.mjs   (OFF by default)
+ * sync-antigravity.mjs
  * ─────────────────────────────────────────────────────────────────────────────
- * Reads Antigravity conversation artifacts (walkthrough.md, task.md,
- * implementation_plan.md) from its "brain" directory and saves them to the vault.
- * Nothing is ever deleted: re-running updates each artifact in place.
+ * Automatically reads ALL Antigravity conversation artifacts from the brain
+ * directory on Windows and syncs them into the Knowledge Vault.
  *
- * Default location: ~/.gemini/antigravity/brain   (on WSL the Windows-side
- * profile is detected automatically). Override with BRAIN_DIR / CONV_SUMMARY.
- *
- * Enable in sync-all with  "sync": { "antigravityEnabled": true }.
+ * What it does:
+ *   1. Replaces items written by a previous run of THIS sync (nothing else is touched)
+ *   2. Scans every conversation folder in the brain directory
+ *   3. Reads walkthrough.md, task.md, implementation_plan.md + their metadata
+ *   4. Stores each artifact as a structured entry (secrets masked)
+ *   5. Prints a summary of what was synced
  *
  * Usage:
  *   node sync-antigravity.mjs
- *   node sync-antigravity.mjs --dry-run    (preview, nothing is saved)
+ *   node sync-antigravity.mjs --no-clear   (keep items from the previous sync)
+ *   node sync-antigravity.mjs --dry-run    (preview without posting)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import fs from "fs";
 import path from "path";
-import { candidateHomes, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule, resolveUserPath } from "./util.mjs";
+import os from "os";
 
+import { createIngestQueue } from "./ingest.mjs";
+import { getVaultDb } from "./db.mjs";
+import { backupLocal } from "./storage.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("antigravityEnabled", "Saving Antigravity conversations");
+
+const queue = createIngestQueue({ actor: "antigravity" });
+
+// Where Antigravity keeps its conversation "brain": ~/.gemini/antigravity on every OS.
+// From WSL the app usually lives on the Windows side, so look there too. Override with BRAIN_DIR.
+function findAntigravityRoot() {
+  const candidates = [path.join(os.homedir(), ".gemini", "antigravity")];
+  try {
+    for (const u of fs.readdirSync("/mnt/c/Users")) candidates.push(`/mnt/c/Users/${u}/.gemini/antigravity`);
+  } catch { /* not WSL */ }
+  return candidates.find((c) => fs.existsSync(path.join(c, "brain"))) || candidates[0];
+}
+const AG_ROOT = findAntigravityRoot();
+const BRAIN_DIR = process.env.BRAIN_DIR || path.join(AG_ROOT, "brain");
+
+// Conversation summary file (updated per session by conversation_summaries)
+const CONV_SUMMARY_FILE = process.env.CONV_SUMMARY ||
+  path.join(AG_ROOT, ".system_generated", "conversation_summaries.json");
+
+// Parse flags
+const args = process.argv.slice(2);
+const DRY_RUN  = args.includes("--dry-run");
+const NO_CLEAR = args.includes("--no-clear");
+
+// Artifact types we care about
 const ARTIFACT_TYPES = [
-  { file: "walkthrough.md", type: "worklog", label: "Walkthrough" },
-  { file: "task.md", type: "worklog", label: "Task" },
-  { file: "implementation_plan.md", type: "conversation", label: "Plan" },
+  { file: "walkthrough.md",         type: "worklog",      label: "Walkthrough" },
+  { file: "task.md",                type: "worklog",      label: "Task"        },
+  { file: "implementation_plan.md", type: "conversation", label: "Plan"        },
 ];
 
-function resolveLocations() {
-  if (process.env.BRAIN_DIR) {
-    return { brain: resolveUserPath(process.env.BRAIN_DIR), summaries: process.env.CONV_SUMMARY ? resolveUserPath(process.env.CONV_SUMMARY) : null };
-  }
-  for (const home of candidateHomes()) {
-    const base = path.join(home, ".gemini", "antigravity");
-    if (fs.existsSync(path.join(base, "brain"))) {
-      return {
-        brain: path.join(base, "brain"),
-        summaries: process.env.CONV_SUMMARY || path.join(base, ".system_generated", "conversation_summaries.json"),
-      };
-    }
-  }
-  return { brain: null, summaries: null };
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function readJsonSafe(filePath) {
+  try { return JSON.parse(fs.readFileSync(filePath, "utf8")); }
+  catch { return null; }
 }
 
-const readJsonSafe = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
-const readFileSafe = (f) => { try { return fs.readFileSync(f, "utf8").trim(); } catch { return null; } };
+function readFileSafe(filePath) {
+  try { return fs.readFileSync(filePath, "utf8").trim(); }
+  catch { return null; }
+}
 
-export async function main(args = process.argv.slice(2)) {
-  const dryRun = args.includes("--dry-run");
-  const { brain, summaries } = resolveLocations();
-
-  if (!brain || !fs.existsSync(brain)) {
-    console.log("ℹ️  Antigravity brain directory not found (looked in ~/.gemini/antigravity/brain). Set BRAIN_DIR to point at it.\n");
-    return { inserted: 0, duplicates: 0 };
+/**
+ * Re-sync means "replace what a previous sync wrote" — NOT "wipe the vault".
+ * Items this script creates carry source "antigravity" AND a conv:<id> tag; your
+ * own diary entries, imported chats, saved memories and hand-written worklogs do
+ * not, so they are left alone. A local backup is taken first.
+ */
+function clearPreviousSync() {
+  console.log("🧹 Replacing items from the previous Antigravity sync...");
+  const backup = backupLocal();
+  if (!backup.ok) {
+    console.log(`   ⚠️  Backup failed (${backup.error}) — skipping cleanup; new items will be added alongside the old ones.`);
+    return;
   }
-  console.log(`🧠 Antigravity sync from ${brain}${dryRun ? " (dry run)" : ""}`);
+  const vdb = getVaultDb();
+  const where = "source = 'antigravity' AND (',' || REPLACE(IFNULL(tags,''),' ','')) LIKE '%,conv:%'";
+  const n = vdb.query(`SELECT COUNT(*) AS n FROM items WHERE ${where}`)[0].n;
+  vdb.run(`DELETE FROM items WHERE ${where}`);
+  console.log(`   ✅ Removed ${n} previously synced item(s). Backup: ${path.basename(backup.location)}`);
+}
 
-  // Conversation summaries give nicer titles
+// ─── Main ───────────────────────────────────────────────────────────────────
+
+async function main() {
+  console.log("╔══════════════════════════════════════╗");
+  console.log("║  Antigravity → Vault Auto-Sync       ║");
+  console.log(`║  ${DRY_RUN ? "DRY RUN — no data will be written" : "LIVE MODE"}`);
+  console.log("╚══════════════════════════════════════╝\n");
+
+  // 1. Make sure there is something to read BEFORE removing anything
+  if (!fs.existsSync(BRAIN_DIR)) {
+    console.error(`❌ Brain directory not found: ${BRAIN_DIR}`);
+    process.exit(1);
+  }
+
+  // 2. Replace only what the previous sync wrote
+  if (!NO_CLEAR && !DRY_RUN) {
+    clearPreviousSync();
+    console.log();
+  }
+
+  // Try loading conversation summaries for richer titles
   const convSummaries = {};
-  const raw = summaries && fs.existsSync(summaries) ? readJsonSafe(summaries) : null;
-  for (const conv of Array.isArray(raw) ? raw : Object.values(raw || {})) {
-    const id = conv?.id || conv?.conversationId;
-    if (id) convSummaries[id] = conv;
+  if (fs.existsSync(CONV_SUMMARY_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(CONV_SUMMARY_FILE, "utf8"));
+      for (const conv of (Array.isArray(raw) ? raw : Object.values(raw))) {
+        if (conv.id || conv.conversationId) {
+          const id = conv.id || conv.conversationId;
+          convSummaries[id] = conv;
+        }
+      }
+      console.log(`📋 Loaded ${Object.keys(convSummaries).length} conversation summaries.\n`);
+    } catch {}
   }
 
-  const folders = fs.readdirSync(brain, { withFileTypes: true }).filter((e) => e.isDirectory() && /^[0-9a-f-]{36}$/i.test(e.name));
-  console.log(`📁 ${folders.length} conversation folders`);
+  const entries = fs.readdirSync(BRAIN_DIR, { withFileTypes: true });
+  const convFolders = entries.filter(
+    (e) => e.isDirectory() && /^[0-9a-f-]{36}$/i.test(e.name)
+  );
 
-  const entries = [];
-  for (const folder of folders) {
+  console.log(`📁 Found ${convFolders.length} conversation folders.\n`);
+
+  let synced = 0;
+  let skipped = 0;
+  let errors = 0;
+
+  for (const folder of convFolders) {
     const convId = folder.name;
-    const convDir = path.join(brain, convId);
-    const meta = convSummaries[convId] || {};
-    const convTitle = meta.title || meta.name || "Conversation";
+    const convDir = path.join(BRAIN_DIR, convId);
+    const convMeta = convSummaries[convId] || {};
+    const convTitle = convMeta.title || convMeta.name || `Conversation ${convId.slice(0, 8)}`;
+
+    let anyFound = false;
 
     for (const art of ARTIFACT_TYPES) {
       const filePath = path.join(convDir, art.file);
-      const content = readFileSafe(filePath);
-      if (!content) continue;
+      const metaPath = path.join(convDir, `${art.file}.metadata.json`);
 
-      const artMeta = readJsonSafe(`${filePath}.metadata.json`) || {};
-      const summary = artMeta.summary || "";
-      entries.push({
-        type: art.type,
-        source: "antigravity",
-        upsert: true, // the latest version of an artifact replaces the previous one
-        title: `[${art.label}] ${convTitle} · ${convId.slice(0, 8)}`,
-        content: (summary ? `${summary}\n\n---\n\n${content}` : content).slice(0, 8000),
-        tags: `antigravity,${art.type},${art.label.toLowerCase()},conv:${convId.slice(0, 8)}`,
-        created_at: artMeta.updatedAt || fs.statSync(filePath).mtime.toISOString(),
-      });
+      const content = readFileSafe(filePath);
+      if (!content) continue; // File doesn't exist in this conversation
+
+      anyFound = true;
+      const meta = readJsonSafe(metaPath) || {};
+
+      const title = `[${art.label}] ${convTitle}`;
+      const createdAt = meta.updatedAt || new Date().toISOString();
+      const tags = `antigravity,${art.type},${art.label.toLowerCase()},conv:${convId.slice(0,8)}`;
+      const summary = meta.summary || "";
+
+      // Combine summary + content (cap at 8000 chars to avoid huge entries)
+      const fullContent = summary
+        ? `${summary}\n\n---\n\n${content}`.slice(0, 8000)
+        : content.slice(0, 8000);
+
+      if (DRY_RUN) {
+        console.log(`  [DRY] Would sync: ${title} (${art.type})`);
+        synced++;
+        continue;
+      }
+
+      try {
+        const result = { ok: queue.add({
+          type: art.type,
+          source: "antigravity",
+          title,
+          content: fullContent,
+          tags,
+          created_at: createdAt,
+        }) };
+
+        if (result.ok) {
+          synced++;
+          process.stdout.write(".");
+        } else {
+          errors++;
+          process.stdout.write("✗");
+        }
+      } catch (e) {
+        errors++;
+        process.stdout.write("!");
+      }
     }
+
+    if (!anyFound) skipped++;
   }
 
-  const result = saveEntries(entries, { dryRun });
-  console.log(`✅ ${entries.length} artifacts — ${describeResult(result)}\n`);
-  return result;
+  queue.done();
+  console.log(`\n\n═══════════════════════════════════════`);
+  console.log(`✅ Synced : ${synced} entries`);
+  console.log(`⏭  Skipped: ${skipped} folders (no artifacts)`);
+  if (errors) console.log(`❌ Errors : ${errors}`);
+  console.log(`═══════════════════════════════════════\n`);
+  console.log(`🌐 Open http://127.0.0.1:7799 to view your vault.`);
 }
 
-if (isMainModule(import.meta.url)) {
-  main().catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
-}
+main().catch(console.error);

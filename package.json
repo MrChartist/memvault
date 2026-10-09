@@ -1,85 +1,83 @@
 {
   "name": "@mrchartist/memvault",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "mcpName": "io.github.mrchartist/memvault",
-  "description": "Local-first persistent memory for AI tools. An MCP server that gives Claude, Cursor and any MCP client context from your Git history, VS Code, notes and past AI chats, with optional Google Drive backup.",
+  "description": "One private memory on your own computer, shared by every AI assistant you use. Agents with their own rules and limited views, secret masking, encrypted backups, and a dashboard built to be accessible to everyone.",
   "bin": {
     "memvault": "cli.mjs",
     "memvault-mcp": "mcp-server.mjs"
   },
   "type": "module",
   "main": "server.mjs",
-  "files": [
-    "*.mjs",
-    "public/",
-    "docs/*.md",
-    "!docs/promo.md",
-    "CHANGELOG.md",
-    "SECURITY.md"
-  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "start": "node server.mjs",
     "mcp": "node mcp-server.mjs",
-    "dev": "node --watch server.mjs",
-    "sync": "node sync-all.mjs",
+    "sync": "node sync-antigravity.mjs",
     "sync:git": "node sync-git.mjs",
+    "sync:clipboard": "node sync-clipboard.mjs",
     "sync:vscode": "node sync-vscode.mjs",
     "sync:files": "node sync-files.mjs",
     "sync:system": "node sync-system.mjs",
-    "sync:browser": "node sync-browser.mjs",
-    "sync:clipboard": "node sync-clipboard.mjs",
-    "sync:antigravity": "node sync-antigravity.mjs",
     "sync:all": "node sync-all.mjs",
     "backup": "node storage.mjs backup",
     "backup:list": "node storage.mjs list",
     "bridge": "node mcp-bridge.mjs list",
     "bridge:sync": "node mcp-bridge.mjs sync",
-    "check": "node scripts/check.mjs",
+    "dev": "node --watch server.mjs",
     "test": "vitest run",
-    "prepublishOnly": "npm run check && npm test"
+    "setup": "node cli.mjs setup",
+    "doctor": "node cli.mjs doctor",
+    "test:e2e": "node tests/e2e/dashboard.e2e.mjs"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "mcp-server",
     "ai-memory",
-    "persistent-memory",
+    "ai-agents",
+    "agent-profiles",
+    "local-first",
+    "privacy",
+    "second-brain",
+    "self-hosted",
+    "knowledge-base",
     "claude",
     "cursor",
-    "llm",
-    "context",
-    "second-brain",
-    "knowledge-base",
-    "self-hosted",
-    "local-first",
-    "sqlite",
-    "developer-tools",
-    "antigravity"
+    "accessibility"
   ],
-  "author": {
-    "name": "Rohit (Mr. Chartist)",
-    "url": "https://github.com/MrChartist"
-  },
+  "author": "Rohit",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MrChartist/memvault.git"
   },
   "homepage": "https://github.com/MrChartist/memvault#readme",
-  "bugs": {
-    "url": "https://github.com/MrChartist/memvault/issues"
-  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
-    "express": "^5.3.0",
-    "multer": "^2.4.0",
-    "sql.js": "^1.14.2",
-    "zod": "^4.6.5"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "express": "^5.2.1",
+    "multer": "^2.1.1",
+    "sql.js": "^1.14.1",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "vitest": "^4.1.11"
-  }
+    "axe-core": "^4.10.0",
+    "playwright-core": "^1.50.0",
+    "vitest": "^4.1.0"
+  },
+  "files": [
+    "*.mjs",
+    "public/",
+    "profiles/",
+    "examples/",
+    "docs/*.md",
+    "README.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "TRADEMARKS.md",
+    "THIRD_PARTY_LICENSES.md",
+    "server.json"
+  ]
 }

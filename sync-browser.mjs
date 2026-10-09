@@ -1,205 +1,263 @@
 #!/usr/bin/env node
 /**
- * sync-browser.mjs — MemVault Browser Activity Sync   (OFF by default)
+ * sync-browser.mjs — MemVault Browser Activity Sync
  * ─────────────────────────────────────────────────────────────────────────────
- * Reads Chrome / Edge / Brave history and bookmarks and saves them as searchable
- * entries. Browser history is sensitive, so this engine only runs when you turn
- * it on ("sync": { "browserEnabled": true } in ~/.memvaultrc.json) or run it by
- * hand. Only pages visited at least twice are kept; extra domains can be
- * excluded with "sync": { "browserExcludeDomains": ["bank.example", ...] }.
- *
- * Works on Windows, macOS, Linux, and WSL (reads the Windows-side profiles).
+ * Reads Chrome & Edge history/bookmarks from Windows paths (via WSL /mnt/c)
+ * and syncs them into the Knowledge Vault as searchable entries.
  *
  * Usage:
- *   node sync-browser.mjs                (Chrome + Edge + Brave)
- *   node sync-browser.mjs --chrome       (one browser: --chrome | --edge | --brave)
- *   node sync-browser.mjs --dry-run      (preview, nothing is saved)
- *   Env: BROWSER_PROFILE=Default   (Chromium profile folder name)
+ *   node sync-browser.mjs           (sync everything)
+ *   node sync-browser.mjs --dry-run (preview, no posts)
+ *   node sync-browser.mjs --chrome  (Chrome only)
+ *   node sync-browser.mjs --edge    (Edge only)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import fs from "fs";
-import os from "os";
 import path from "path";
-import { SYNC_CONFIG } from "./config.mjs";
-import { candidateHomes, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import os from "os";
 
-const PROFILE = process.env.BROWSER_PROFILE || "Default";
+import { createIngestQueue } from "./ingest.mjs";
+import { getVaultDb } from "./db.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("browserEnabled", "Saving browser history and bookmarks");
 
-/** "User Data" folder of each Chromium browser, relative to a home directory, per OS. */
-const BROWSERS = {
-  chrome: { name: "Chrome", dirs: {
-    win32: ["AppData", "Local", "Google", "Chrome", "User Data"],
-    darwin: ["Library", "Application Support", "Google", "Chrome"],
-    linux: [".config", "google-chrome"],
-  } },
-  edge: { name: "Edge", dirs: {
-    win32: ["AppData", "Local", "Microsoft", "Edge", "User Data"],
-    darwin: ["Library", "Application Support", "Microsoft Edge"],
-    linux: [".config", "microsoft-edge"],
-  } },
-  brave: { name: "Brave", dirs: {
-    win32: ["AppData", "Local", "BraveSoftware", "Brave-Browser", "User Data"],
-    darwin: ["Library", "Application Support", "BraveSoftware", "Brave-Browser"],
-    linux: [".config", "BraveSoftware", "Brave-Browser"],
-  } },
-};
+const queue = createIngestQueue({ actor: "browser" });
+const args = process.argv.slice(2);
+const DRY_RUN = args.includes("--dry-run");
+const ONLY_CHROME = args.includes("--chrome");
+const ONLY_EDGE = args.includes("--edge");
 
-/** Every profile folder we can find for the requested browsers. */
-export function findProfiles(which = Object.keys(BROWSERS), homes = candidateHomes()) {
-  const found = [];
-  for (const key of which) {
-    const b = BROWSERS[key];
-    for (const home of homes) {
-      // Under WSL the Windows-side home holds Windows-layout data.
-      const layout = home.startsWith("/mnt/") ? "win32" : process.platform === "win32" ? "win32" : process.platform === "darwin" ? "darwin" : "linux";
-      const base = path.join(home, ...b.dirs[layout]);
-      const historyPath = path.join(base, PROFILE, "History");
-      if (fs.existsSync(historyPath)) {
-        found.push({ name: b.name, historyPath, bookmarksPath: path.join(base, PROFILE, "Bookmarks") });
-      }
+// Where each browser keeps its profile, per operating system. Only folders that exist are used.
+// WIN_USER lets WSL users point at the Windows side (/mnt/c/Users/<name>).
+const IS_WSL = process.platform === "linux" && /microsoft/i.test(os.release());
+
+function browserProfiles() {
+    const home = os.homedir();
+    const found = [];
+    const add = (name, userDataDir) => {
+        const dir = path.join(userDataDir, "Default");
+        found.push({ name, historyPath: path.join(dir, "History"), bookmarksPath: path.join(dir, "Bookmarks") });
+    };
+    if (process.platform === "win32") {
+        const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+        add("Chrome", path.join(local, "Google", "Chrome", "User Data"));
+        add("Edge", path.join(local, "Microsoft", "Edge", "User Data"));
+        add("Brave", path.join(local, "BraveSoftware", "Brave-Browser", "User Data"));
+    } else if (process.platform === "darwin") {
+        const app = path.join(home, "Library", "Application Support");
+        add("Chrome", path.join(app, "Google", "Chrome"));
+        add("Edge", path.join(app, "Microsoft Edge"));
+        add("Brave", path.join(app, "BraveSoftware", "Brave-Browser"));
+    } else {
+        const cfg = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+        add("Chrome", path.join(cfg, "google-chrome"));
+        add("Edge", path.join(cfg, "microsoft-edge"));
+        add("Brave", path.join(cfg, "BraveSoftware", "Brave-Browser"));
+        add("Chromium", path.join(cfg, "chromium"));
+        if (IS_WSL) {
+            let users = [];
+            try {
+                users = process.env.WIN_USER
+                    ? [process.env.WIN_USER]
+                    : fs.readdirSync("/mnt/c/Users").filter((d) => !["Public", "Default", "Default User", "All Users"].includes(d));
+            } catch { /* no Windows drive mounted */ }
+            for (const u of users) {
+                const local = `/mnt/c/Users/${u}/AppData/Local`;
+                add(`Chrome (Windows ${u})`, path.join(local, "Google", "Chrome", "User Data"));
+                add(`Edge (Windows ${u})`, path.join(local, "Microsoft", "Edge", "User Data"));
+            }
+        }
     }
-  }
-  return found;
+    return found.filter((p) => fs.existsSync(p.historyPath) || fs.existsSync(p.bookmarksPath));
 }
 
-// Skip internal pages, local dev servers and files (patterns are anchored to the full URL).
-const SKIP_URLS = [
-  /^(chrome|edge|brave|about|chrome-extension|devtools|file|view-source|data|blob):/i,
-  /^https?:\/\/(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1\])(?=[:/?#]|$)/i,
-];
+const BROWSER_PROFILES = browserProfiles().filter((p) =>
+    (!ONLY_CHROME || /^chrome/i.test(p.name)) && (!ONLY_EDGE || /^edge/i.test(p.name)));
 
-export function shouldSkip(url, excludeDomains = SYNC_CONFIG.browserExcludeDomains || []) {
-  if (!url || SKIP_URLS.some((r) => r.test(url))) return true;
-  let host = "";
-  try { host = new URL(url).hostname.toLowerCase(); } catch { return false; }
-  return excludeDomains.some((d) => host === d.toLowerCase() || host.endsWith(`.${d.toLowerCase()}`));
+// Pages that are private to this computer or network are never saved.
+function parse(url) { try { return new URL(url); } catch { return null; } }
+function shouldSkip(url) {
+    const u = parse(url);
+    if (!u || !/^https?:$/.test(u.protocol)) return true; // chrome:, edge:, about:, file:, extensions …
+    const h = u.hostname.toLowerCase();
+    return h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h === "[::1]" ||
+        /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h);
+}
+// Only the site and page are kept. The part after "?" or "#" can hold search words, e-mail addresses and
+// one-time links, so it is dropped before anything is stored.
+function cleanUrl(url) {
+    const u = parse(url);
+    return u ? `${u.origin}${u.pathname}` : url;
 }
 
-// Chrome stores times as microseconds since 1601-01-01 (Windows FILETIME).
-export function chromeTimeToISO(t) {
-  const ms = (BigInt(t) - 11644473600n * 1000000n) / 1000n;
-  return new Date(Number(ms)).toISOString();
+// Running this again must not add the same visit or bookmark twice.
+const stored = new Set();
+if (!DRY_RUN) {
+    for (const r of getVaultDb().query("SELECT source, content, created_at FROM items WHERE tags LIKE 'browser,%'")) {
+        stored.add(`${r.source}|${String(r.created_at).slice(0, 10)}|${String(r.content).split("\n")[0]}`);
+    }
 }
 
-async function readHistory(profile) {
-  // Chrome locks the live file while it runs, so read a copy.
-  const tmp = path.join(os.tmpdir(), `memvault_${profile.name.toLowerCase()}_history_${process.pid}_${Date.now()}`);
-  fs.copyFileSync(profile.historyPath, tmp);
-  try {
-    const { default: initSqlJs } = await import("sql.js");
-    const SQL = await initSqlJs();
-    const db = new SQL.Database(fs.readFileSync(tmp));
+async function postToVault(entry) {
+    const key = `${entry.source}|${String(entry.created_at).slice(0, 10)}|${String(entry.content).split("\n")[0]}`;
+    if (stored.has(key)) return true;
+    stored.add(key);
+    if (DRY_RUN) {
+        console.log(`  [DRY] ${entry.title || entry.content?.slice(0, 60)}`);
+        return true;
+    }
+    queue.add(entry);
+    return true;
+}
+
+// ─── Chrome/Edge History (SQLite via sql.js) ─────────────────────────────────
+// Chrome stores visit time as microseconds since 1601-01-01 (Windows FILETIME)
+function chromeTimeToISO(t) {
+    const EPOCH_DIFF = 11644473600n * 1000000n;
+    const ms = (BigInt(t) - EPOCH_DIFF) / 1000n;
+    return new Date(Number(ms)).toISOString();
+}
+
+async function syncHistory(profile) {
+    const src = profile.historyPath;
+    if (!fs.existsSync(src)) {
+        console.log(`  ⚠️  ${profile.name} history not found: ${src}`);
+        return 0;
+    }
+
+    // The browser locks its history file while running, so read a private, short-lived copy.
+    const safeName = profile.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const tmp = path.join(os.tmpdir(), `memvault_${safeName}_history_${process.pid}_${Date.now()}`);
+    fs.copyFileSync(src, tmp);
+    try { fs.chmodSync(tmp, 0o600); } catch { /* non-POSIX */ }
+
+    let db;
+    try {
+        const { default: initSqlJs } = await import("sql.js");
+        const SQL = await initSqlJs();
+        db = new SQL.Database(fs.readFileSync(tmp));
+    } finally {
+        fs.rmSync(tmp, { force: true }); // never leave a copy of someone's browsing history behind
+    }
+
     const stmt = db.prepare(`
-      SELECT u.url, u.title, u.visit_count, v.visit_time
-      FROM urls u JOIN visits v ON u.id = v.url
-      WHERE u.visit_count >= 2 AND u.hidden = 0
-      ORDER BY v.visit_time DESC
-      LIMIT 500`);
-    const rows = [];
+    SELECT u.url, u.title, u.visit_count, v.visit_time
+    FROM urls u
+    JOIN visits v ON u.id = v.url
+    WHERE u.visit_count >= 2
+      AND u.hidden = 0
+    ORDER BY v.visit_time DESC
+    LIMIT 500
+  `);
+
+    const toSync = [];
     const seen = new Set();
+
     while (stmt.step()) {
-      const row = stmt.getAsObject();
-      if (shouldSkip(row.url)) continue;
-      const iso = chromeTimeToISO(row.visit_time);
-      const key = `${row.url}::${iso.slice(0, 10)}`; // one entry per URL per day
-      if (seen.has(key)) continue;
-      seen.add(key);
-      rows.push({ ...row, iso });
+        const row = stmt.getAsObject();
+        if (shouldSkip(row.url)) continue;
+        const dateKey = `${cleanUrl(row.url)}::${chromeTimeToISO(row.visit_time).slice(0, 10)}`;
+        if (seen.has(dateKey)) continue;
+        seen.add(dateKey);
+        toSync.push(row);
     }
     stmt.free();
     db.close();
-    return rows;
-  } finally {
-    fs.rmSync(tmp, { force: true });
-  }
+
+    console.log(`  📖 ${profile.name} history: ${toSync.length} entries to sync`);
+
+    let ok = 0;
+    for (const row of toSync) {
+        const iso = chromeTimeToISO(row.visit_time);
+        const synced = await postToVault({
+            type: "worklog",
+            source: profile.name.toLowerCase(),
+            title: row.title || cleanUrl(row.url),
+            content: `Visited: ${cleanUrl(row.url)}\nVisit count: ${row.visit_count}`,
+            tags: `browser,history,${profile.name.toLowerCase()}`,
+            created_at: iso,
+        });
+        if (synced) { ok++; process.stdout.write("."); }
+        else process.stdout.write("✗");
+    }
+    console.log(`\n  ✅ ${ok}/${toSync.length} synced`);
+    return ok;
 }
 
+// ─── Bookmarks (JSON file) ───────────────────────────────────────────────────
 function extractBookmarks(node, folderPath = "") {
-  const out = [];
-  if (node.type === "url") {
-    out.push({ ...node, folder: folderPath });
-  } else if (node.children) {
-    const next = node.name ? `${folderPath}/${node.name}`.replace(/^\//, "") : folderPath;
-    for (const child of node.children) out.push(...extractBookmarks(child, next));
-  }
-  return out;
+    const results = [];
+    if (node.type === "url") {
+        results.push({ ...node, folder: folderPath });
+    } else if (node.children) {
+        const nextFolder = node.name ? `${folderPath}/${node.name}`.replace(/^\//, "") : folderPath;
+        for (const child of node.children) {
+            results.push(...extractBookmarks(child, nextFolder));
+        }
+    }
+    return results;
 }
 
-function readBookmarks(profile) {
-  if (!fs.existsSync(profile.bookmarksPath)) return [];
-  const fallback = fs.statSync(profile.bookmarksPath).mtime.toISOString();
-  const raw = JSON.parse(fs.readFileSync(profile.bookmarksPath, "utf8"));
-  return Object.values(raw.roots || {})
-    .filter((r) => r && typeof r === "object")
-    .flatMap((r) => extractBookmarks(r))
-    .filter((b) => b.url && !shouldSkip(b.url))
-    .map((b) => {
-      let iso = fallback;
-      try { if (b.date_added) iso = chromeTimeToISO(b.date_added); } catch { /* keep fallback */ }
-      return { ...b, iso };
-    });
+async function syncBookmarks(profile) {
+    const src = profile.bookmarksPath;
+    if (!fs.existsSync(src)) {
+        console.log(`  ⚠️  ${profile.name} bookmarks not found: ${src}`);
+        return 0;
+    }
+
+    const raw = JSON.parse(fs.readFileSync(src, "utf8"));
+    const roots = Object.values(raw.roots || {});
+    const all = roots.flatMap(r => extractBookmarks(r));
+    const valid = all.filter(b => b.url && !shouldSkip(b.url));
+
+    console.log(`  🔖 ${profile.name} bookmarks: ${valid.length} entries to sync`);
+
+    let ok = 0;
+    for (const bm of valid) {
+        const synced = await postToVault({
+            type: "conversation",
+            source: `${profile.name.toLowerCase()}-bookmarks`,
+            title: bm.name || cleanUrl(bm.url),
+            content: `Bookmarked URL: ${cleanUrl(bm.url)}\nFolder: ${bm.folder || "Root"}`,
+            tags: `browser,bookmark,${profile.name.toLowerCase()},${bm.folder?.split("/")[0] || "root"}`,
+            created_at: bm.date_added
+                ? chromeTimeToISO(bm.date_added)
+                : new Date().toISOString(),
+        });
+        if (synced) { ok++; process.stdout.write("."); }
+        else process.stdout.write("✗");
+    }
+    console.log(`\n  ✅ ${ok}/${valid.length} synced`);
+    return ok;
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
+async function main() {
+    console.log("╔════════════════════════════════════════╗");
+    console.log("║  Browser → MemVault Sync               ║");
+    console.log(`║  ${DRY_RUN ? "DRY RUN                             " : "LIVE MODE                           "}║`);
+    console.log("╚════════════════════════════════════════╝\n");
 
-export async function main(args = process.argv.slice(2)) {
-  const dryRun = args.includes("--dry-run");
-  const only = Object.keys(BROWSERS).filter((k) => args.includes(`--${k}`));
-  const profiles = findProfiles(only.length ? only : undefined);
+    if (!BROWSER_PROFILES.length) {
+        console.log("No Chrome, Edge, Brave or Chromium profile was found on this computer, so there is nothing to sync.");
+        return;
+    }
+    let totalOk = 0;
 
-  console.log(`🌐 Browser sync${dryRun ? " (dry run)" : ""}`);
-  if (profiles.length === 0) {
-    console.log(`ℹ️  No Chrome/Edge/Brave profile "${PROFILE}" found on this machine.\n`);
-    return { inserted: 0, duplicates: 0 };
-  }
-
-  let total = { inserted: 0, duplicates: 0 };
-  for (const profile of profiles) {
-    const tag = profile.name.toLowerCase();
-    const entries = [];
-
-    try {
-      const history = await readHistory(profile);
-      console.log(`  📖 ${profile.name} history: ${history.length} pages`);
-      for (const row of history) {
-        entries.push({
-          type: "worklog", source: tag,
-          title: row.title || row.url,
-          content: `Visited: ${row.url}`, // no volatile fields (e.g. visit count): they would defeat de-duplication
-          tags: `browser,history,${tag}`,
-          created_at: row.iso, // real timestamp → de-duplicated on re-run
-        });
-      }
-    } catch (e) {
-      console.log(`  ⚠️  ${profile.name} history unreadable: ${e.message}`);
+    for (const profile of BROWSER_PROFILES) {
+        console.log(`\n── ${profile.name} ────────────────────────`);
+        console.log("  History:");
+        totalOk += await syncHistory(profile);
+        console.log("  Bookmarks:");
+        totalOk += await syncBookmarks(profile);
     }
 
-    try {
-      const marks = readBookmarks(profile);
-      console.log(`  🔖 ${profile.name} bookmarks: ${marks.length}`);
-      for (const b of marks) {
-        entries.push({
-          type: "conversation", source: `${tag}-bookmarks`,
-          title: b.name || b.url,
-          content: `Bookmarked URL: ${b.url}\nFolder: ${b.folder || "Root"}`,
-          tags: `browser,bookmark,${tag},${b.folder?.split("/")[0] || "root"}`,
-          created_at: b.iso,
-        });
-      }
-    } catch (e) {
-      console.log(`  ⚠️  ${profile.name} bookmarks unreadable: ${e.message}`);
-    }
-
-    const r = saveEntries(entries, { dryRun });
-    console.log(`  ✅ ${profile.name}: ${describeResult(r)}`);
-    total = { inserted: total.inserted + r.inserted, duplicates: total.duplicates + r.duplicates };
-  }
-  console.log("");
-  return total;
+    queue.done();
+    console.log(`\n═══════════════════════════════════════`);
+    console.log(`✅ Total synced: ${totalOk} entries`);
+    console.log(`🌐 Open http://127.0.0.1:7799 to browse`);
+    console.log(`═══════════════════════════════════════\n`);
 }
 
-if (isMainModule(import.meta.url)) {
-  main().catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
-}
+main().catch((e) => { console.error(e); process.exitCode = 1; });

@@ -1,310 +1,615 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'fs';
-import http from 'http';
 import os from 'os';
 import path from 'path';
+import http from 'http';
+import crypto from 'crypto';
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-server-'));
-process.env.VAULT_ROOT = TMP;
-process.env.HOME = process.env.USERPROFILE = path.join(TMP, 'home');
-fs.mkdirSync(process.env.HOME, { recursive: true });
-fs.writeFileSync(
-  path.join(process.env.HOME, '.memvaultrc.json'),
-  JSON.stringify({ server: { allowedOrigins: ['https://trusted.example'], allowedHosts: ['memvault.internal'] } })
-);
+const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-srv-'));
+process.env.VAULT_ROOT = ROOT;
+process.env.MEMVAULT_TOKEN_FILE = path.join(ROOT, 'token');
 
-let server;
-let port;
-let security;
+const TOKEN = 'test-token-' + crypto.randomBytes(8).toString('hex');
+let server, port, S, D, cfgFile;
 
-/** Raw HTTP so tests can send ANY Host / Origin header (fetch() forbids some). */
-function request(method, urlPath, { headers = {}, body, json } = {}) {
+/** Raw HTTP so tests can control Host / Origin headers exactly (fetch will not). */
+function req(method, p, { headers = {}, body, token = TOKEN, host } = {}) {
   return new Promise((resolve, reject) => {
-    const payload = json !== undefined ? JSON.stringify(json) : body;
-    // Explicit Content-Length: Node does not frame bodies on DELETE/GET by itself.
-    const framing = payload !== undefined ? { 'content-length': Buffer.byteLength(payload) } : {};
-    const req = http.request(
-      { host: '127.0.0.1', port, method, path: urlPath, agent: false, headers: { ...(json !== undefined ? { 'content-type': 'application/json' } : {}), ...framing, ...headers } },
-      (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
-        res.on('end', () => {
-          let parsed = null;
-          try { parsed = JSON.parse(data); } catch { /* not json */ }
-          resolve({ status: res.statusCode, headers: res.headers, body: parsed, text: data });
-        });
-      }
-    );
-    req.on('error', reject);
-    if (payload !== undefined) req.write(payload);
-    req.end();
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    const h = { ...headers };
+    if (token) h.authorization = `Bearer ${token}`;
+    if (payload) { h['content-type'] = 'application/json'; h['content-length'] = Buffer.byteLength(payload); }
+    if (host) h.host = host;
+    const r = http.request({ host: '127.0.0.1', port, method, path: p, headers: h }, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(data); } catch { /* not json */ }
+        resolve({ status: res.statusCode, headers: res.headers, json, text: data });
+      });
+    });
+    r.on('error', reject);
+    if (payload) r.write(payload);
+    r.end();
   });
 }
 
 beforeAll(async () => {
-  security = await import('../security.mjs');
-  const { createApp } = await import('../server.mjs');
-  server = await new Promise((resolve) => {
-    const s = createApp().listen(0, '127.0.0.1', () => resolve(s));
+  D = await import('../db.mjs');
+  S = await import('../server.mjs');
+  const vdb = D.openVaultDb({ root: ROOT });
+  // pick a free port first so the Host allow-list matches it
+  port = await new Promise((res) => {
+    const probe = http.createServer().listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => res(p)); });
   });
-  port = server.address().port;
-});
-afterAll(async () => {
-  await new Promise((r) => server.close(r));
-  fs.rmSync(TMP, { recursive: true, force: true });
-});
-
-describe('server — basic API', () => {
-  it('GET /health', async () => {
-    const r = await request('GET', '/health');
-    expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ ok: true, vault: TMP });
-    expect(r.body.version).toMatch(/^\d+\.\d+\.\d+/);
-  });
-
-  it('serves the web UI', async () => {
-    const r = await request('GET', '/');
-    expect(r.status).toBe(200);
-    expect(r.text).toContain('<title>MemVault');
-  });
-
-  it('POST /add then GET /search and /list', async () => {
-    const add = await request('POST', '/add', { json: { type: 'diary', title: 'Hello vault', content: 'first note', tags: 'x' } });
-    expect(add.body.ok).toBe(true);
-    expect((await request('GET', '/search?q=first%20note')).body.results[0].title).toBe('Hello vault');
-    expect((await request('GET', '/list?type=diary')).body.results.length).toBeGreaterThan(0);
-  });
-
-  it('validates input', async () => {
-    expect((await request('POST', '/add', { json: { type: 'nonsense' } })).status).toBe(400);
-    expect((await request('POST', '/add', { json: { type: 'diary', source: 'x'.repeat(500) } })).status).toBe(400);
-  });
-
-  it('malformed JSON gives a clean 400, not a stack trace', async () => {
-    const r = await request('POST', '/add', { headers: { 'content-type': 'application/json' }, body: '{not json' });
-    expect(r.status).toBe(400);
-    expect(r.body.ok).toBe(false);
-    expect(r.text).not.toMatch(/at .*\.js|node_modules/);
-  });
-
-  it('de-duplicates entries that carry a timestamp', async () => {
-    const e = { type: 'worklog', source: 'git', title: 'c', content: 'x', created_at: '2026-01-01T00:00:00Z' };
-    expect((await request('POST', '/add', { json: e })).body.duplicate).toBe(false);
-    expect((await request('POST', '/add', { json: e })).body.duplicate).toBe(true);
-  });
-
-  it('POST /add/batch inserts many with one write and enforces the cap', async () => {
-    const entries = Array.from({ length: 50 }, (_, i) => ({ type: 'worklog', title: `b${i}`, created_at: `2026-02-01T00:00:${String(i).padStart(2, '0')}Z` }));
-    const r = await request('POST', '/add/batch', { json: { entries } });
-    expect(r.body).toMatchObject({ ok: true, inserted: 50, duplicates: 0 });
-    expect((await request('POST', '/add/batch', { json: { entries } })).body).toMatchObject({ inserted: 0, duplicates: 50 });
-    const tooMany = Array.from({ length: 501 }, () => ({ type: 'diary' }));
-    expect((await request('POST', '/add/batch', { json: { entries: tooMany } })).status).toBe(400);
-    expect((await request('POST', '/add/batch', { json: { entries: [] } })).status).toBe(400);
-  });
-
-  it('GET /list tolerates garbage limits', async () => {
-    for (const q of ['abc', '-5', '0', '1e9', '']) {
-      const r = await request('GET', `/list?limit=${q}`);
-      expect(r.status, q).toBe(200);
-    }
-  });
-
-  it('GET /stats', async () => {
-    const r = await request('GET', '/stats');
-    expect(r.body.ok).toBe(true);
-    expect(r.body.total).toBeGreaterThan(50);
-  });
-
-  it('has no /clear endpoint (nothing on an unauthenticated API should wipe the vault)', async () => {
-    const before = (await request('GET', '/stats')).body.total;
-    expect((await request('POST', '/clear')).status).toBe(404);
-    expect((await request('POST', '/reset')).status).toBe(404);
-    expect((await request('GET', '/stats')).body.total).toBe(before);
-  });
+  cfgFile = path.join(ROOT, 'rc.json');
+  fs.writeFileSync(cfgFile, JSON.stringify({ mcpBridges: [{ name: 'keep-me', command: 'x' }], security: { host: '127.0.0.1' } }));
+  const config = { load: () => JSON.parse(fs.readFileSync(cfgFile, 'utf8')), save: (c) => fs.writeFileSync(cfgFile, JSON.stringify(c)), passphraseFile: path.join(ROOT, 'outside', 'backup-passphrase') };
+  const app = S.createApp({ vdb, token: TOKEN, port, root: ROOT, config });
+  server = await new Promise((res) => { const s = app.listen(port, '127.0.0.1', () => res(s)); });
 });
 
-describe('server — browser attack surface', () => {
-  it('rejects requests whose Host header is not local (DNS rebinding)', async () => {
-    for (const host of ['evil.example', 'evil.example:80', '192.168.1.5:7799', '127.0.0.1.evil.example']) {
-      const r = await request('GET', '/list', { headers: { host } });
-      expect(r.status, host).toBe(403);
+afterAll(() => {
+  server?.close();
+  fs.rmSync(ROOT, { recursive: true, force: true });
+});
+
+describe('server — who may talk to it', () => {
+  it('serves the UI shell and a minimal /health without a token', async () => {
+    const ui = await req('GET', '/', { token: null });
+    expect(ui.status).toBe(200);
+    const h = await req('GET', '/health', { token: null });
+    expect(h.json).toMatchObject({ ok: true, name: 'memvault' });
+    expect(JSON.stringify(h.json)).not.toContain(ROOT); // no filesystem paths
+  });
+
+  it('rejects data routes with no token or a wrong token', async () => {
+    for (const p of ['/list', '/search?q=x', '/agents', '/secrets/list', '/audit']) {
+      expect((await req('GET', p, { token: null })).status).toBe(401);
+      expect((await req('GET', p, { token: 'wrong' })).status).toBe(401);
     }
+    expect((await req('POST', '/clear', { token: null, body: { confirm: 'DELETE ALL' } })).status).toBe(401);
   });
 
-  it('accepts localhost, 127.0.0.1, [::1] and configured hosts', async () => {
-    for (const host of ['localhost:7799', '127.0.0.1:7799', '[::1]:7799', 'memvault.internal']) {
-      expect((await request('GET', '/health', { headers: { host } })).status, host).toBe(200);
-    }
+  it('accepts the right token', async () => {
+    expect((await req('GET', '/list')).status).toBe(200);
   });
 
-  it('rejects cross-origin requests, including "simple" ones that need no preflight', async () => {
-    const before = (await request('GET', '/stats')).body.total;
-    const r = await request('POST', '/add', {
-      headers: { origin: 'https://evil.example', 'content-type': 'text/plain' },
-      body: JSON.stringify({ type: 'diary', title: 'planted by a web page' }),
-    });
-    expect(r.status).toBe(403);
-    expect((await request('GET', '/stats')).body.total).toBe(before);
-  });
-
-  it('rejects Origin: null (sandboxed iframes, file://)', async () => {
-    expect((await request('GET', '/list', { headers: { origin: 'null' } })).status).toBe(403);
-  });
-
-  it('refuses cross-origin preflights', async () => {
-    const r = await request('OPTIONS', '/add', { headers: { origin: 'https://evil.example', 'access-control-request-method': 'POST' } });
-    expect(r.status).toBe(403);
-    expect(r.headers['access-control-allow-origin']).toBeUndefined();
-  });
-
-  it('allows same-origin browser requests', async () => {
-    const r = await request('GET', '/list', { headers: { origin: `http://127.0.0.1:${port}`, host: `127.0.0.1:${port}` } });
-    expect(r.status).toBe(200);
-  });
-
-  it('never sends a wildcard Access-Control-Allow-Origin', async () => {
-    const r = await request('GET', '/health');
-    expect(r.headers['access-control-allow-origin']).toBeUndefined();
-  });
-
-  it('allows a cross-origin caller only if the user explicitly listed it', async () => {
-    const r = await request('GET', '/health', { headers: { origin: 'https://trusted.example' } });
-    expect(r.status).toBe(200);
-    expect(r.headers['access-control-allow-origin']).toBe('https://trusted.example');
-  });
-
-  it('blocks cross-site state-changing requests flagged by Sec-Fetch-Site', async () => {
-    const r = await request('POST', '/add', { json: { type: 'diary', title: 'x' }, headers: { 'sec-fetch-site': 'cross-site' } });
+  it('blocks DNS-rebinding: a foreign Host header is refused even with a valid token', async () => {
+    const r = await req('GET', '/list', { host: 'evil.example.com' });
     expect(r.status).toBe(403);
   });
 
-  it('sets security headers', async () => {
-    const r = await request('GET', '/');
-    expect(r.headers['content-security-policy']).toContain("default-src 'self'");
-    expect(r.headers['content-security-policy']).toContain("frame-ancestors 'none'");
-    expect(r.headers['x-frame-options']).toBe('DENY');
+  it('blocks cross-site browser requests: a foreign Origin is refused even with a valid token', async () => {
+    const r = await req('GET', '/list', { headers: { origin: 'https://evil.example.com' } });
+    expect(r.status).toBe(403);
+    const ok = await req('GET', '/list', { headers: { origin: `http://127.0.0.1:${port}` } });
+    expect(ok.status).toBe(200);
+  });
+
+  it('never sends CORS headers, and refuses preflights', async () => {
+    const pre = await req('OPTIONS', '/list', { headers: { origin: 'https://evil.example.com', 'access-control-request-method': 'GET' } });
+    expect(pre.status).toBe(403);
+    const normal = await req('GET', '/list');
+    expect(normal.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('sends hardening headers', async () => {
+    const r = await req('GET', '/', { token: null });
     expect(r.headers['x-content-type-options']).toBe('nosniff');
-    expect(r.headers['x-powered-by']).toBeUndefined();
+    expect(r.headers['x-frame-options']).toBe('DENY');
+    const csp = r.headers['content-security-policy'];
+    expect(csp).toMatch(/frame-ancestors 'none'/);
+    expect(csp).not.toMatch(/unsafe-inline/);     // no inline script or style
+    expect(csp).not.toMatch(/https?:\/\//);        // no third-party origins at all
   });
 
-  it('the UI makes no third-party requests', async () => {
-    const html = (await request('GET', '/')).text;
-    expect(html).not.toMatch(/fonts\.googleapis|fonts\.gstatic|cdn\.|unpkg|jsdelivr/i);
-    expect(html).not.toMatch(/(src|href)=["']https?:\/\//i);
+  it('says so and exits non-zero when the port is already taken (it used to claim success)', async () => {
+    const busy = http.createServer();
+    await new Promise((r) => busy.listen(0, '127.0.0.1', r));
+    const busyPort = busy.address().port;
+    const exits = [];
+    const exit = vi.spyOn(process, 'exit').mockImplementation((c) => { exits.push(c); });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const second = S.start({ app: S.createApp({ vdb: D.openVaultDb({ root: ROOT }), token: TOKEN, port: busyPort, root: ROOT }), port: busyPort, host: '127.0.0.1' });
+    await new Promise((r) => setTimeout(r, 300));
+    const printed = log.mock.calls.flat().join('\n');
+    const errored = err.mock.calls.flat().join('\n');
+    exit.mockRestore(); err.mockRestore(); log.mockRestore();
+    second.close(); busy.close();
+    expect(exits).toEqual([1]);
+    expect(errored).toMatch(/already in use/);
+    expect(printed).not.toMatch(/API & dashboard on/);
+  });
+
+  it('refuses to start on a non-loopback address unless allowRemote is set', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('exit'); });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => S.start({ app: { listen: () => {} }, host: '0.0.0.0', port: 1 })).toThrow('exit');
+    expect(err.mock.calls.join('\n')).toMatch(/Refusing to listen/);
+    exit.mockRestore();
+    err.mockRestore();
   });
 });
 
-function multipart(field, filename, content) {
-  const boundary = '----memvault' + Math.random().toString(16).slice(2);
-  const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\nContent-Type: text/plain\r\n\r\n`, 'utf8');
-  const body = Buffer.concat([head, Buffer.from(content), Buffer.from(`\r\n--${boundary}--\r\n`)]);
-  return { body, headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
-}
-
-describe('server — uploads', () => {
-  it('keeps non-ASCII file names intact (multer decodes them as latin1)', async () => {
-    const m = multipart('file', 'résumé 日本語.txt', 'hello');
-    const r = await request('POST', '/upload', { headers: m.headers, body: m.body });
+describe('server — adding and finding memory', () => {
+  it('masks secrets on /add and says so', async () => {
+    const r = await req('POST', '/add', { body: { type: 'diary', title: 'ci', content: 'DB_PASSWORD=correcthorsebattery' } });
     expect(r.status).toBe(200);
-    const row = (await request('GET', '/search?q=' + encodeURIComponent('résumé'))).body.results[0];
-    expect(row.title).toBe('résumé 日本語.txt');
+    expect(r.json.redacted).toEqual([{ type: 'secret-assignment', count: 1 }]);
+    const s = await req('GET', '/search?q=DB_PASSWORD');
+    expect(s.text).not.toContain('correcthorsebattery');
   });
 
-  it('a wrong form field name is a 400, not a 500', async () => {
-    const m = multipart('not-file', 'x.txt', 'hello');
-    const r = await request('POST', '/upload', { headers: m.headers, body: m.body });
+  it('/add-many stores a batch in one call and validates every item', async () => {
+    const items = Array.from({ length: 50 }, (_, i) => ({ type: 'conversation', source: 'bulk', title: `bulk ${i}`, content: 'x' }));
+    const r = await req('POST', '/add-many', { body: { items } });
+    expect(r.json.ids).toHaveLength(50);
+    const bad = await req('POST', '/add-many', { body: { items: [{ type: 'diary' }, { type: 'nope' }] } });
+    expect(bad.status).toBe(400);
+  });
+
+  it('rejects malformed scopes and agent ids', async () => {
+    expect((await req('POST', '/add', { body: { type: 'diary', scope: 'everything' } })).status).toBe(400);
+    expect((await req('POST', '/add', { body: { type: 'diary', agent_id: 'Bad Id' } })).status).toBe(400);
+  });
+
+  it('/upload goes through the same door: the file name is masked and the write is audited', async () => {
+    const boundary = 'mvtest' + crypto.randomBytes(6).toString('hex');
+    const name = 'deploy ghp_abcdefghijklmnopqrstuvwxyz0123456789.txt';
+    const body = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: text/plain\r\n\r\n` +
+      `hello\r\n--${boundary}--\r\n`
+    );
+    const r = await new Promise((resolve, reject) => {
+      const q = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/upload', headers: {
+        authorization: `Bearer ${TOKEN}`, 'content-type': `multipart/form-data; boundary=${boundary}`, 'content-length': body.length,
+      } }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode, json: JSON.parse(d) })); });
+      q.on('error', reject);
+      q.end(body);
+    });
+    expect(r.status).toBe(200);
+    const row = D.openVaultDb({ root: ROOT }).query('SELECT title, file_path FROM items WHERE id = ?', [r.json.id])[0];
+    expect(row.title).not.toContain('ghp_abc');
+    expect(row.title).toContain('REDACTED');
+    expect(row.file_path).not.toMatch(/abcdefghijklmnop/); // not in the name on disk either
+    expect(fs.readFileSync(row.file_path, 'utf8')).toBe('hello');
+    const { tailAudit } = await import('../audit.mjs');
+    const adds = tailAudit(50, {}, ROOT).filter((x) => x.action === 'add' && x.detail.type === 'file');
+    expect(adds.length).toBeGreaterThan(0);
+    expect(JSON.stringify(tailAudit(500, {}, ROOT))).not.toContain('ghp_abc');
+  });
+
+  it('"view as agent" filters search and list to what that agent may see', async () => {
+    await req('PUT', '/agents/ana', { body: { name: 'Ana' } });
+    await req('PUT', '/agents/bob', { body: { name: 'Bob' } });
+    await req('POST', '/add', { body: { type: 'diary', title: 'ana-private-note', agent_id: 'ana', scope: 'agent:ana' } });
+    await req('POST', '/add', { body: { type: 'diary', title: 'shared-note-for-all' } });
+    const asBob = await req('GET', '/search?q=note&agent=bob');
+    const titles = asBob.json.results.map((r) => r.title);
+    expect(titles).toContain('shared-note-for-all');
+    expect(titles).not.toContain('ana-private-note');
+    const asAna = await req('GET', '/list?agent=ana');
+    expect(asAna.json.results.map((r) => r.title)).toContain('ana-private-note');
+    expect((await req('GET', '/list?agent=ghost')).status).toBe(404);
+  });
+});
+
+describe('server — working with one memory at a time', () => {
+  const add = async (over = {}) => (await req('POST', '/add', { body: { type: 'diary', source: 'manual', title: 'one-memory ' + crypto.randomBytes(3).toString('hex'), content: 'full text of the note', tags: 'diary', ...over } })).json.id;
+
+  it('reads one memory in full', async () => {
+    const id = await add({ content: 'x'.repeat(1000) });
+    const r = await req('GET', `/items/${id}`);
+    expect(r.status).toBe(200);
+    expect(r.json.item.content).toHaveLength(1000); // lists only carry a 300-character snippet
+    expect((await req('GET', '/items/nope')).status).toBe(404);
+  });
+
+  it('edits title, content and tags, masks secrets, and audits without content', async () => {
+    const id = await add();
+    const r = await req('PATCH', `/items/${id}`, { body: { title: 'edited', content: 'now API_KEY=abcd1234efgh5678', tags: 'a,b' } });
+    expect(r.status).toBe(200);
+    expect(r.json.redacted).toEqual([{ type: 'secret-assignment', count: 1 }]);
+    const item = (await req('GET', `/items/${id}`)).json.item;
+    expect(item.title).toBe('edited');
+    expect(item.content).not.toContain('abcd1234efgh5678');
+    expect(item.tags).toBe('a,b');
+    const { tailAudit } = await import('../audit.mjs');
+    const last = tailAudit(5, {}, ROOT).filter((x) => x.action === 'edit').pop();
+    expect(last.detail.id).toBe(id);
+    expect(JSON.stringify(last)).not.toContain('abcd1234');
+    expect((await req('PATCH', `/items/${id}`, { body: { scope: 'agent:x' } })).status).toBe(400); // only text fields can change
+    expect((await req('PATCH', '/items/nope', { body: { title: 'x' } })).status).toBe(404);
+  });
+
+  it('pins and unpins, and pinned memories list first', async () => {
+    const id = await add({ title: 'pin me' });
+    await add({ title: 'newer than the pinned one' });
+    expect((await req('PATCH', `/items/${id}`, { body: { pinned: true } })).status).toBe(200);
+    expect((await req('GET', '/list?limit=5')).json.results[0].id).toBe(id);
+    await req('PATCH', `/items/${id}`, { body: { pinned: false } });
+    expect((await req('GET', '/list?limit=5')).json.results[0].id).not.toBe(id);
+    expect((await req('GET', `/items/${id}`)).json.item.tags).not.toMatch(/pinned/);
+  });
+
+  it('deletes one memory and can bring it back (undo)', async () => {
+    const id = await add({ title: 'delete then undo', agent_id: 'ana', scope: 'agent:ana' });
+    const del = await req('DELETE', `/items/${id}`);
+    expect(del.status).toBe(200);
+    expect((await req('GET', `/items/${id}`)).status).toBe(404);
+    const back = await req('POST', `/items/${id}/restore`);
+    expect(back.status).toBe(200);
+    const item = (await req('GET', `/items/${id}`)).json.item;
+    expect(item.title).toBe('delete then undo');
+    expect(item.scope).toBe('agent:ana'); // comes back exactly as it was, private notes stay private
+    expect((await req('POST', `/items/${id}/restore`)).status).toBe(404); // nothing left to restore
+  });
+
+  it('lists what was deleted recently, so Undo still works after the toast is gone', async () => {
+    const id = await add({ title: 'listed in trash', content: 'private words that must not be listed' });
+    expect((await req('GET', '/trash')).json.items.some((i) => i.id === id)).toBe(false);
+    await req('DELETE', `/items/${id}`);
+    const t = await req('GET', '/trash');
+    const row = t.json.items.find((i) => i.id === id);
+    expect(row.title).toBe('listed in trash');
+    expect(t.text).not.toContain('private words'); // titles only
+    await req('POST', `/items/${id}/restore`);
+    expect((await req('GET', '/trash')).json.items.some((i) => i.id === id)).toBe(false);
+  });
+
+  it('bulk delete needs the phrase, takes a backup first, and can be undone', async () => {
+    const ids = [await add({ title: 'bulk-a' }), await add({ title: 'bulk-b' })];
+    expect((await req('POST', '/items/delete-many', { body: { ids } })).status).toBe(400);
+    expect((await req('GET', `/items/${ids[0]}`)).status).toBe(200);
+    const r = await req('POST', '/items/delete-many', { body: { ids, confirm: 'DELETE 2' } });
+    expect(r.json).toMatchObject({ ok: true, deleted: 2 });
+    expect(r.json.backup).toMatch(/^index-.*\.sqlite$/);
+    expect((await req('GET', `/items/${ids[0]}`)).status).toBe(404);
+    const back = await req('POST', '/items/restore-many', { body: { ids } });
+    expect(back.json.restored).toBe(2);
+    expect((await req('GET', `/items/${ids[1]}`)).status).toBe(200);
+  });
+
+  it('deleting, bulk deleting, editing and clearing also deal with the readable Markdown copies', async () => {
+    const { writeMirror } = await import('../mirror.mjs');
+    const mk = async (title, content) => {
+      const r = await req('POST', '/add', { body: { type: 'diary', source: 'mcp', title, content, tags: 'x' } });
+      const row = D.openVaultDb({ root: ROOT }).query('SELECT * FROM items WHERE id = ?', [r.json.id])[0];
+      const file = writeMirror(ROOT, row);
+      return { id: r.json.id, file };
+    };
+    const a = await mk('mirror-a', 'AAA-original');
+    const b = await mk('mirror-b', 'BBB-original');
+    const c = await mk('mirror-c', 'CCC-original');
+    await req('PATCH', `/items/${a.id}`, { body: { content: 'AAA-edited' } });
+    expect(fs.readFileSync(a.file, 'utf8')).toContain('AAA-edited');
+    expect(fs.readFileSync(a.file, 'utf8')).not.toContain('AAA-original');
+    await req('DELETE', `/items/${a.id}`);
+    expect(fs.existsSync(a.file)).toBe(false);
+    await req('POST', '/items/delete-many', { body: { ids: [b.id], confirm: 'DELETE 1' } });
+    expect(fs.existsSync(b.file)).toBe(false);
+    expect(fs.existsSync(c.file)).toBe(true);
+    await req('POST', '/clear', { body: { confirm: 'DELETE', source: 'mcp' } }); // a clear by source removes those copies too
+    expect(fs.existsSync(c.file)).toBe(false);
+  });
+
+  it('exports everything as JSON without the encrypted secrets', async () => {
+    const id = await add({ title: 'export me' });
+    const r = await req('GET', '/export');
+    expect(r.status).toBe(200);
+    expect(r.json.items.some((i) => i.id === id)).toBe(true);
+    expect(r.text).not.toContain('"encrypted"');
+    expect(r.headers['content-disposition']).toMatch(/attachment; filename="memvault-export-/);
+  });
+});
+
+describe('server — settings', () => {
+  it('starts with every kind of automatic capture off and no passphrase', async () => {
+    const r = (await req('GET', '/settings')).json;
+    expect(Object.values(r.capture).every((c) => c.on === false)).toBe(true);
+    expect(r.projects).toEqual([]);
+    expect(r.backup.passphrase).toEqual({ set: false, via: null });
+    expect(r.backup.cloud).toEqual({ folder: false, api: false });
+  });
+
+  it('turns capture on and off, saves projects, and leaves every other setting alone', async () => {
+    const r = await req('PUT', '/settings', { body: { capture: { git: true, browser: false }, projects: [{ name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' }] } });
+    expect(r.status).toBe(200);
+    const file = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    expect(file.sync).toMatchObject({ gitEnabled: true, browserEnabled: false });
+    expect(file.projects).toEqual([{ name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' }]);
+    expect(file.mcpBridges).toEqual([{ name: 'keep-me', command: 'x' }]); // untouched
+    expect(file.security).toEqual({ host: '127.0.0.1' });
+    expect((await req('GET', '/settings')).json.capture.git.on).toBe(true);
+    await req('PUT', '/settings', { body: { capture: { git: false } } });
+  });
+
+  it('refuses anything that is not a plain setting (no way to change the network address, bridges or keys from here)', async () => {
+    for (const body of [{ security: { host: '0.0.0.0' } }, { mcpBridges: [] }, { capture: { evil: true } }, { projects: [{ name: '' }] }, { projects: 'x' }, { storage: { allowPlaintextCloud: true } }]) {
+      expect((await req('PUT', '/settings', { body })).status).toBe(400);
+    }
+    expect(JSON.parse(fs.readFileSync(cfgFile, 'utf8')).security).toEqual({ host: '127.0.0.1' });
+  });
+
+  it('sets a backup passphrase: checked, stored privately outside the vault, never sent back or logged', async () => {
+    expect((await req('PUT', '/settings/passphrase', { body: { passphrase: 'short', confirm: 'short' } })).status).toBe(400);
+    expect((await req('PUT', '/settings/passphrase', { body: { passphrase: 'a long enough phrase', confirm: 'a different phrase!' } })).status).toBe(400);
+    const ok = await req('PUT', '/settings/passphrase', { body: { passphrase: 'a long enough phrase', confirm: 'a long enough phrase' } });
+    expect(ok.status).toBe(200);
+    expect(ok.text).not.toContain('a long enough phrase');
+    const file = path.join(ROOT, 'outside', 'backup-passphrase');
+    expect(fs.readFileSync(file, 'utf8').trim()).toBe('a long enough phrase');
+    if (process.platform !== 'win32') expect(fs.statSync(file).mode & 0o077).toBe(0);
+    expect(JSON.parse(fs.readFileSync(cfgFile, 'utf8')).storage.passphraseFile).toBe(file);
+    const st = await req('GET', '/settings');
+    expect(st.json.backup.passphrase).toEqual({ set: true, via: 'file' });
+    expect(st.text).not.toContain('a long enough phrase');
+    const { tailAudit } = await import('../audit.mjs');
+    expect(JSON.stringify(tailAudit(500, {}, ROOT))).not.toContain('a long enough phrase');
+  });
+
+  it('a cloud backup made right after setting the passphrase is encrypted (no restart needed)', async () => {
+    const drive = path.join(ROOT, 'drive');
+    const file = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    file.storage = { ...file.storage, gdriveFolder: { enabled: true, path: drive } };
+    fs.writeFileSync(cfgFile, JSON.stringify(file));
+    const r = await req('POST', '/backup');
+    expect(r.status).toBe(200);
+    const cloud = r.json.results.find((x) => x.backend === 'gdriveFolder');
+    expect(cloud).toMatchObject({ ok: true, encrypted: true });
+    expect(fs.readdirSync(path.join(drive, 'MemVault')).some((f) => f.endsWith('.mvbak'))).toBe(true);
+  });
+
+  it('checks the dashboard key without touching data', async () => {
+    expect((await req('GET', '/whoami')).json).toEqual({ ok: true });
+    expect((await req('GET', '/whoami', { token: 'wrong' })).status).toBe(401);
+  });
+
+  it('"save now" says plainly when nothing is switched on', async () => {
+    const r = await req('POST', '/sync/run');
+    expect(r.status).toBe(200);
+    expect(r.json.ran).toEqual([]);
+  });
+});
+
+describe('server — /clear can no longer silently wipe the vault', () => {
+  async function seed() {
+    await req('POST', '/add-many', {
+      body: {
+        items: [
+          { type: 'worklog', source: 'antigravity', title: 'synced', tags: 'antigravity,conv:abcd1234' },
+          { type: 'worklog', source: 'antigravity', title: 'hand-written', tags: 'worklog' },
+          { type: 'diary', source: 'manual', title: 'my diary', tags: 'diary' },
+        ],
+      },
+    });
+  }
+  const count = async () => (await req('GET', '/list?limit=500')).json.results.length;
+
+  it('refuses without the confirmation phrase and deletes nothing', async () => {
+    await seed();
+    const before = await count();
+    const r = await req('POST', '/clear', { body: {} });
     expect(r.status).toBe(400);
-    expect(r.body.ok).toBe(false);
+    expect(r.json.error).toMatch(/DELETE ALL/);
+    expect(await count()).toBe(before);
   });
 
-  it('fixFilenameEncoding leaves real Unicode and genuine latin1 names alone', async () => {
-    const { fixFilenameEncoding } = await import('../server.mjs');
-    expect(fixFilenameEncoding('plain.txt')).toBe('plain.txt');
-    expect(fixFilenameEncoding('日本語.txt')).toBe('日本語.txt');
-    expect(fixFilenameEncoding('caf\u00e9.txt')).toBe('caf\u00e9.txt'); // lone 0xE9 is invalid UTF-8
-    expect(fixFilenameEncoding(Buffer.from('café.txt', 'utf8').toString('latin1'))).toBe('café.txt');
+  it('a scoped clear removes only matching items, and takes a backup first', async () => {
+    const r = await req('POST', '/clear', { body: { confirm: 'DELETE', source: 'antigravity', tagPrefix: 'conv:' } });
+    expect(r.status).toBe(200);
+    expect(r.json.deleted).toBe(1);
+    expect(r.json.backup).toMatch(/^index-.*\.sqlite$/);
+    const titles = (await req('GET', '/list?limit=500')).json.results.map((x) => x.title);
+    expect(titles).not.toContain('synced');
+    expect(titles).toContain('hand-written');
+    expect(titles).toContain('my diary');
+  });
+
+  it('a full wipe needs the stronger phrase, and is recoverable from the backup', async () => {
+    expect((await req('POST', '/clear', { body: { confirm: 'DELETE' } })).status).toBe(400); // wrong phrase for a full wipe
+    const r = await req('POST', '/clear', { body: { confirm: 'DELETE ALL' } });
+    expect(r.status).toBe(200);
+    expect(await count()).toBe(0);
+    // The pre-wipe backup really contains the data we just deleted.
+    const initSqlJs = (await import('sql.js')).default;
+    const SQL = await initSqlJs();
+    const backup = new SQL.Database(fs.readFileSync(path.join(ROOT, 'backups', r.json.backup)));
+    const n = backup.exec('SELECT COUNT(*) FROM items')[0].values[0][0];
+    expect(n).toBeGreaterThan(50); // the 50 bulk items + seeds were all there
+    expect(backup.exec("SELECT COUNT(*) FROM items WHERE title = 'my diary'")[0].values[0][0]).toBe(1);
   });
 });
 
 describe('server — secrets', () => {
-  const pw = 'correct horse battery';
+  const PW = 'correct horse battery';
+  let id;
 
-  it('reports whether a master password exists yet (so the UI can ask for it twice)', async () => {
-    expect((await request('GET', '/secrets/status')).body).toEqual({ ok: true, initialized: false });
+  it('tells the page whether the Secure Vault has been set up yet', async () => {
+    expect((await req('GET', '/secrets/status')).json).toEqual({ ok: true, initialised: false });
   });
 
-  it('refuses a weak master password on first use', async () => {
-    const r = await request('POST', '/secrets/verify', { json: { password: 'short' } });
+  it('insists on a real master password the first time', async () => {
+    const r = await req('POST', '/secrets/add', { body: { password: 'short', category: 'apikey', label: 'x', fields: { k: 'v' } } });
     expect(r.status).toBe(400);
+    expect(r.json.error).toMatch(/at least 10/);
+    expect((await req('GET', '/secrets/status')).json.initialised).toBe(false); // refused, so still not set up
   });
 
-  it('status flips to initialized once a master password is set', async () => {
-    expect((await request('POST', '/secrets/verify', { json: { password: pw } })).body.ok).toBe(true);
-    expect((await request('GET', '/secrets/status')).body.initialized).toBe(true);
+  it('stores encrypted (v2) and round-trips', async () => {
+    const add = await req('POST', '/secrets/add', { body: { password: PW, category: 'apikey', label: 'OpenAI', fields: { key: 'sk-test-123' } } });
+    expect(add.status).toBe(200);
+    id = add.json.id;
+    const raw = D.openVaultDb({ root: ROOT }).query('SELECT encrypted FROM secrets WHERE id = ?', [id])[0].encrypted;
+    expect(raw).not.toContain('sk-test-123');
+    expect(JSON.parse(raw).v).toBe(2);
+    const get = await req('POST', '/secrets/get', { body: { password: PW, id } });
+    expect(get.json.fields).toEqual({ key: 'sk-test-123' });
   });
 
-  it('add → list (labels only) → get → delete', async () => {
-    const add = await request('POST', '/secrets/add', { json: { password: pw, category: 'password', label: 'Gmail', fields: { username: 'me', password: 'hunter2' } } });
-    expect(add.body.ok).toBe(true);
-
-    const list = await request('GET', '/secrets/list');
-    expect(list.body.secrets.map((s) => s.label)).toEqual(['Gmail']);
-    expect(list.text).not.toContain('hunter2');
-
-    const get = await request('POST', '/secrets/get', { json: { password: pw, id: add.body.id } });
-    expect(get.body.fields).toEqual({ username: 'me', password: 'hunter2' });
-
-    expect((await request('DELETE', `/secrets/delete/${add.body.id}`, { json: { password: pw } })).body.ok).toBe(true);
-    expect((await request('GET', '/secrets/list')).body.count).toBe(0);
+  it('reports the Secure Vault as set up once it has a password', async () => {
+    expect((await req('GET', '/secrets/status')).json).toEqual({ ok: true, initialised: true });
   });
 
-  it('the sentinel is never listed, readable or deletable', async () => {
-    expect((await request('GET', '/secrets/list')).text).not.toContain('__sentinel__');
-    expect((await request('POST', '/secrets/get', { json: { password: pw, id: '__sentinel__' } })).status).toBe(404);
+  it('lists labels only', async () => {
+    const r = await req('GET', '/secrets/list');
+    expect(r.json.secrets[0]).toMatchObject({ label: 'OpenAI', category: 'apikey' });
+    expect(r.text).not.toMatch(/encrypted|sk-test-123|ciphertext/);
   });
 
-  it('stores nothing readable in the database file', async () => {
-    await request('POST', '/secrets/add', { json: { password: pw, category: 'apikey', label: 'OpenAI', fields: { key: 'sk-PLAINTEXT-MARKER-12345' } } });
-    expect(fs.readFileSync(path.join(TMP, 'db', 'index.sqlite')).includes('sk-PLAINTEXT-MARKER-12345')).toBe(false);
+  it('upgrades an old v1 secret to v2 the first time it is opened', async () => {
+    const key = crypto.pbkdf2Sync(PW, 'memvault-salt-v1', 100_000, 32, 'sha256');
+    const iv = crypto.randomBytes(12);
+    const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+    const ct = Buffer.concat([c.update(JSON.stringify({ user: 'rohit' }), 'utf8'), c.final()]);
+    const legacy = JSON.stringify({ iv: iv.toString('base64'), authTag: c.getAuthTag().toString('base64'), ciphertext: ct.toString('base64') });
+    D.openVaultDb({ root: ROOT }).run(
+      "INSERT INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES ('legacy1','userid','Old','" + legacy + "','x','x')"
+    );
+    const get = await req('POST', '/secrets/get', { body: { password: PW, id: 'legacy1' } });
+    expect(get.json.fields).toEqual({ user: 'rohit' });
+    const after = D.openVaultDb({ root: ROOT }).query("SELECT encrypted FROM secrets WHERE id='legacy1'")[0].encrypted;
+    expect(JSON.parse(after).v).toBe(2);
+    expect((await req('POST', '/secrets/get', { body: { password: PW, id: 'legacy1' } })).json.fields).toEqual({ user: 'rohit' });
   });
 
-  it('throttles repeated wrong passwords, even for the right password while locked', async () => {
-    let last;
-    for (let i = 0; i < 8; i++) last = await request('POST', '/secrets/verify', { json: { password: 'wrong password!' } });
-    expect(last.status).toBe(429);
-    expect(Number(last.headers['retry-after'])).toBeGreaterThan(0);
-    expect((await request('POST', '/secrets/verify', { json: { password: pw } })).status).toBe(429);
+  it('locks out after repeated wrong passwords, even for the right one, then reports when to retry', async () => {
+    for (let i = 0; i < 5; i++) {
+      expect((await req('POST', '/secrets/get', { body: { password: 'wrong-wrong-wrong', id } })).status).toBe(401);
+    }
+    const locked = await req('POST', '/secrets/get', { body: { password: PW, id } });
+    expect(locked.status).toBe(429);
+    expect(Number(locked.headers['retry-after'])).toBeGreaterThan(0);
   });
 });
 
-describe('security.mjs — units', () => {
-  it('parses Host headers', () => {
-    const h = security.hostnameFromHostHeader;
-    expect(h('localhost:7799')).toBe('localhost');
-    expect(h('LocalHost')).toBe('localhost');
-    expect(h('[::1]:7799')).toBe('[::1]');
-    expect(h('127.0.0.1')).toBe('127.0.0.1');
-    expect(h(undefined)).toBe('');
+describe('server — secrets in a vault that has no check row', () => {
+  it('an old vault (secrets, no sentinel) still needs the real password, with the lockout', async () => {
+    const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-nosentinel-'));
+    const vdb2 = D.openVaultDb({ root: root2 });
+    const { encryptString } = await import('../crypto-vault.mjs');
+    vdb2.run("INSERT INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES ('secret_old','password','Old','" + encryptString('{"password":"x"}', 'the real master password', 'secret_old') + "','x','x')");
+    const p2 = await new Promise((res) => { const pr = http.createServer().listen(0, '127.0.0.1', () => { const n = pr.address().port; pr.close(() => res(n)); }); });
+    const srv = await new Promise((res) => { const sv = S.createApp({ vdb: vdb2, token: TOKEN, port: p2, root: root2 }).listen(p2, '127.0.0.1', () => res(sv)); });
+    const call = (m, u, body) => new Promise((resolve, reject) => {
+      const payload = JSON.stringify(body);
+      const r = http.request({ host: '127.0.0.1', port: p2, method: m, path: u, headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode })); });
+      r.on('error', reject); r.end(payload);
+    });
+    try {
+      expect((await call('POST', '/secrets/verify', { password: 'a wrong guess here' })).status).toBe(401);
+      expect((await call('DELETE', '/secrets/delete/secret_old', { password: 'a wrong guess here' })).status).toBe(401);
+      expect(vdb2.query("SELECT COUNT(*) n FROM secrets")[0].n).toBe(1); // not deleted
+      const codes = [];
+      for (let i = 0; i < 6; i++) codes.push((await call('POST', '/secrets/get', { id: 'secret_old', password: 'wrong guess ' + i })).status);
+      expect(codes).toContain(429); // the lockout applies here too
+      expect((await call('POST', '/secrets/verify', { password: 'the real master password' })).status).toBe(429); // locked for a minute
+    } finally {
+      srv.close();
+      fs.rmSync(root2, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('server — agents and audit', () => {
+  it('lists packs, installs the default one, a named one, and refuses an unknown one', async () => {
+    const packs = await req('GET', '/agents/packs');
+    expect(packs.json.packs.map((p) => p.id)).toEqual(['general', 'markets']);
+    const def = await req('POST', '/agents/starter', { body: {} });
+    expect(def.json.installed).toContain('assistant');
+    expect(def.json.installed).not.toContain('market-analyst');
+    const markets = await req('POST', '/agents/starter', { body: { pack: 'markets' } });
+    expect(markets.json.installed).toContain('market-analyst');
+    expect((await req('POST', '/agents/starter', { body: { pack: 'nope' } })).status).toBe(400);
   });
 
-  it('recognises loopback bind addresses', () => {
-    for (const a of ['127.0.0.1', 'localhost', '::1', '127.1.2.3']) expect(security.isLoopbackAddress(a), a).toBe(true);
-    for (const a of ['0.0.0.0', '192.168.1.2', '::', 'example.com']) expect(security.isLoopbackAddress(a), a).toBe(false);
+  it('serves an activation briefing built from the profile', async () => {
+    const b = await req('GET', '/agents/market-analyst/brief?task=nifty');
+    expect(b.json.briefing).toMatch(/You are acting as: Market Analyst/);
   });
 
-  it('attempt limiter: free attempts, exponential back-off, cap, reset on success', () => {
-    let t = 0;
-    const l = security.createAttemptLimiter({ freeAttempts: 2, baseMs: 1000, maxMs: 5000, now: () => t });
-    l.fail(); l.fail();
-    expect(l.retryAfterMs()).toBe(0);
-    l.fail(); expect(l.retryAfterMs()).toBe(1000);
-    t += 1000; l.fail(); expect(l.retryAfterMs()).toBe(2000);
-    t += 2000; l.fail(); expect(l.retryAfterMs()).toBe(4000);
-    t += 4000; l.fail(); expect(l.retryAfterMs()).toBe(5000); // capped
-    l.succeed();
-    expect(l.retryAfterMs()).toBe(0);
-    l.fail(); l.fail();
-    expect(l.retryAfterMs()).toBe(0); // counter was reset
+  it('drafts a profile from a prompt without saving it', async () => {
+    const r = await req('POST', '/agents/draft', { body: { prompt: 'You are a patient maths tutor. Never give the final answer first.', name: 'Tutor' } });
+    expect(r.json.profile.role).toMatch(/^A patient maths tutor/);
+    expect((await req('GET', '/agents/tutor')).status).toBe(404);
+  });
+
+  it('rejects an invalid profile with a readable message', async () => {
+    const r = await req('PUT', '/agents/bad', { body: { name: 'x', memory: { readScopes: ['everything'] } } });
+    expect(r.status).toBe(400);
+    expect(r.json.error).toMatch(/readScopes/);
+  });
+
+  it('delete with purge backs up first and removes only that agent\'s private memory', async () => {
+    await req('PUT', '/agents/temp', { body: { name: 'Temp' } });
+    await req('POST', '/add', { body: { type: 'diary', title: 'temp-private', agent_id: 'temp', scope: 'agent:temp' } });
+    const r = await req('DELETE', '/agents/temp?purge=1');
+    expect(r.json.ok).toBe(true);
+    expect(r.json.backup).toMatch(/^index-/);
+    expect((await req('GET', '/list?limit=500')).json.results.map((x) => x.title)).not.toContain('temp-private');
+  });
+
+  it('exposes a verifiable audit trail that never contains content', async () => {
+    const a = await req('GET', '/audit?limit=200');
+    expect(a.json.chain.ok).toBe(true);
+    expect(a.json.recent.some((r) => r.action === 'clear')).toBe(true);
+    expect(a.text).not.toMatch(/correcthorsebattery|sk-test-123/);
+  });
+});
+
+
+describe('server — stats, status and client config', () => {
+  it('/stats aggregates in one call', async () => {
+    await req('POST', '/add', { body: { type: 'diary', title: 'stat me' } });
+    await req('POST', '/add', { body: { type: 'worklog', title: 'and me', agent_id: 'ana', scope: 'agent:ana' } });
+    const r = await req('GET', '/stats');
+    expect(r.json.total).toBeGreaterThanOrEqual(2);
+    expect(r.json.byType.diary).toBeGreaterThanOrEqual(1);
+    expect(r.json.privateItems).toBeGreaterThanOrEqual(1);
+    expect(r.json.byAgent.find((a) => a.agent_id === 'ana').n).toBeGreaterThanOrEqual(1);
+  });
+
+  it('/status reports the real posture (loopback, masking on, audit intact)', async () => {
+    const r = await req('GET', '/status?deep=1');
+    expect(r.json.ok).toBe(true);
+    const titles = r.json.rows.map((x) => x.title).join('\n');
+    expect(titles).toMatch(/Secret masking is ON/);
+    expect(titles).toMatch(/Audit log intact/);
+    expect(r.json.counts.bad).toBe(0);
+  });
+
+  it('/agents/:id/mcp-config returns config bound to that agent, 404 for unknown', async () => {
+    const r = await req('GET', '/agents/market-analyst/mcp-config');
+    const entry = r.json.config.mcpServers['memvault-market-analyst'];
+    expect(entry.env.MEMVAULT_AGENT).toBe('market-analyst');
+    expect(entry.args[0]).toMatch(/mcp-server\.mjs$/);
+    expect((await req('GET', '/agents/ghost/mcp-config')).status).toBe(404);
+  });
+});
+
+describe('diagnostics', () => {
+  it('shows paths as ~/… so the account name is not revealed', async () => {
+    const { tildify } = await import('../diagnostics.mjs');
+    const j = (...a) => path.join(path.sep, ...a); // a root-based path in this system's own style
+    const home = j('home', 'alice');
+    expect(tildify(j('home', 'alice', '.memvault', 'data'), home)).toBe(`~${path.sep}.memvault${path.sep}data`);
+    expect(tildify(home, home)).toBe('~');
+    expect(tildify(j('home', 'alicia', 'x'), home)).toBe(j('home', 'alicia', 'x')); // not a prefix match on a longer name
+    expect(tildify(j('srv', 'vault'), home)).toBe(j('srv', 'vault'));
+  });
+});
+
+describe('server — errors', () => {
+  it('returns clean JSON for malformed bodies, never a stack trace', async () => {
+    const r = await new Promise((resolve) => {
+      const q = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/add', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' } },
+        (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode, text: d })); });
+      q.write('{not json'); q.end();
+    });
+    expect(r.status).toBe(400);
+    expect(r.text).not.toMatch(/at .*\.js|node_modules/);
   });
 });

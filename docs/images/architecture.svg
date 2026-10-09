@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 626" width="1000" height="626" role="img" aria-labelledby="t d" font-family="Inter, 'Plus Jakarta Sans', 'Segoe UI', system-ui, sans-serif">
+<title id="t">How MemVault gives every AI one shared, private memory</title>
+<desc id="d">Each AI app connects through its own MemVault server, bound to an agent by the app's settings. Each server reads through a filtered copy: shared notes plus that agent's private notes. Every write passes through one step that masks secrets, then lands in one local database. Optional automatic capture feeds the same step. The Secure Vault is locked separately. Backups are local, and cloud copies are encrypted first.</desc>
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1F0D14"/></marker></defs>
+<rect width="1000" height="626" rx="18" fill="#F4F5F0"/>
+<text x="30" y="38" font-size="20" font-weight="800" fill="#1F0D14" text-anchor="start">One memory, many AIs: how MemVault keeps it private</text>
+<text x="30" y="76" font-size="12" font-weight="800" fill="#56434A" text-anchor="start">YOUR AI APPS</text>
+<text x="350" y="76" font-size="12" font-weight="800" fill="#56434A" text-anchor="start">ONE SERVER PER APP</text>
+<text x="660" y="76" font-size="12" font-weight="800" fill="#56434A" text-anchor="start">ONE VAULT ON YOUR COMPUTER</text>
+<rect x="30" y="90.0" width="260" height="92" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="50" y="130.0" font-size="16" font-weight="700" fill="#1F0D14" text-anchor="start">Claude Desktop</text>
+<text x="50" y="156.0" font-size="13.5" font-weight="500" fill="#B43F0E" text-anchor="start">agent: writer</text>
+<path d="M290 136.0 L350 136.0" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="30" y="214.0" width="260" height="92" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="50" y="254.0" font-size="16" font-weight="700" fill="#1F0D14" text-anchor="start">Cursor</text>
+<text x="50" y="280.0" font-size="13.5" font-weight="500" fill="#B43F0E" text-anchor="start">agent: coder</text>
+<path d="M290 260.0 L350 260.0" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="30" y="338.0" width="260" height="92" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="50" y="378.0" font-size="16" font-weight="700" fill="#1F0D14" text-anchor="start">Antigravity / VS Code</text>
+<text x="50" y="404.0" font-size="13.5" font-weight="500" fill="#B43F0E" text-anchor="start">you (full access)</text>
+<path d="M290 384.0 L350 384.0" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="30" y="462.0" width="260" height="92" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="50" y="502.0" font-size="16" font-weight="700" fill="#1F0D14" text-anchor="start">Any MCP app</text>
+<text x="50" y="528.0" font-size="13.5" font-weight="500" fill="#B43F0E" text-anchor="start">agent: planner</text>
+<path d="M290 508.0 L350 508.0" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="350" y="90" width="250" height="464" rx="14" fill="#FEFEFE" stroke="#EE6125" stroke-width="2"/>
+<text x="372" y="124" font-size="16" font-weight="800" fill="#1F0D14" text-anchor="start">MemVault server</text>
+<text x="372" y="158" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">It knows which agent it serves.</text>
+<text x="372" y="180" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">That is set in the app's own</text>
+<text x="372" y="202" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">settings, never by what the</text>
+<text x="372" y="224" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">AI says.</text>
+<text x="372" y="258" font-size="13.5" font-weight="700" fill="#B43F0E" text-anchor="start">Reads through a filtered copy</text>
+<text x="372" y="280" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">Shared notes plus that agent's</text>
+<text x="372" y="302" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">own private notes. Nothing else.</text>
+<text x="372" y="336" font-size="13.5" font-weight="700" fill="#B43F0E" text-anchor="start">Offers only allowed tools</text>
+<text x="372" y="358" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">An agent never even sees the</text>
+<text x="372" y="380" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">tools it may not use.</text>
+<text x="372" y="414" font-size="13.5" font-weight="700" fill="#B43F0E" text-anchor="start">Keeps a tamper-evident log</text>
+<text x="372" y="436" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">Who used what, and when.</text>
+<text x="372" y="458" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">Never the content.</text>
+<rect x="660" y="90" width="310" height="48" rx="14" fill="#FFFFFF" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="680" y="120" font-size="13.5" font-weight="700" fill="#1F0D14" text-anchor="start">Optional capture (off until you turn it on)</text>
+<path d="M815 138 L815 158" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="660" y="158" width="310" height="88" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="680" y="186" font-size="15.5" font-weight="800" fill="#1F0D14" text-anchor="start">1  Ingest, for every write</text>
+<text x="680" y="210" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">Mask passwords, IDs and codes,</text>
+<text x="680" y="230" font-size="13.5" font-weight="400" fill="#1F0D14" text-anchor="start">write once, record who did it.</text>
+<path d="M600 202 L660 202" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="660" y="258" width="310" height="142" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="680" y="286" font-size="15.5" font-weight="800" fill="#1F0D14" text-anchor="start">2  Memory, one local file</text>
+<rect x="680" y="300" width="270" height="26" rx="13" fill="#FBDCC8" stroke="#D9D8CF"/>
+<text x="695" y="318" font-size="13" font-weight="600" fill="#1F0D14" text-anchor="start">shared</text>
+<rect x="680" y="332" width="270" height="26" rx="13" fill="#EFEDE3" stroke="#D9D8CF"/>
+<text x="695" y="350" font-size="13" font-weight="600" fill="#1F0D14" text-anchor="start">agent:writer  (private)</text>
+<rect x="680" y="364" width="270" height="26" rx="13" fill="#EFEDE3" stroke="#D9D8CF"/>
+<text x="695" y="382" font-size="13" font-weight="600" fill="#1F0D14" text-anchor="start">project:garden  (opt-in)</text>
+<path d="M600 329 L660 329" stroke="#1F0D14" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+<rect x="660" y="412" width="310" height="56" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="680" y="436" font-size="15.5" font-weight="800" fill="#1F0D14" text-anchor="start">3  Secure Vault</text>
+<text x="680" y="456" font-size="13" font-weight="400" fill="#1F0D14" text-anchor="start">Each item locked with AES-256</text>
+<rect x="660" y="480" width="310" height="74" rx="14" fill="#FEFEFE" stroke="#D9D8CF" stroke-width="1.5"/>
+<text x="680" y="506" font-size="15" font-weight="800" fill="#1F0D14" text-anchor="start">Backups</text>
+<text x="680" y="527" font-size="13" font-weight="400" fill="#1F0D14" text-anchor="start">Local always. Cloud only with</text>
+<text x="680" y="546" font-size="13" font-weight="400" fill="#1F0D14" text-anchor="start">your passphrase, encrypted first.</text>
+<text x="500" y="598" font-size="13" font-weight="500" fill="#56434A" text-anchor="middle">Stored on your computer. When an AI app reads something, that text goes to that AI's company, like anything you type to it.</text>
+</svg>

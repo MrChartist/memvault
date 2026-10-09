@@ -14,8 +14,10 @@
 
 import fs from "fs";
 import path from "path";
-import { importConversations } from "./import-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+import { runImport, toIso } from "./import-common.mjs";
+
+const queue = createIngestQueue({ actor: "gemini-import" });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -54,53 +56,29 @@ function findGeminiFile(inputPath) {
   return findRecursive(inputPath);
 }
 
-/** Takeout stores formatted answers as HTML; reduce it to readable text. */
-export function htmlToText(html) {
-  return String(html || "")
-    .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+const decodeEntities = (t) => t.replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+const htmlToText = (h) => decodeEntities(String(h).replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|h[1-6])>/gi, "\n").replace(/<[^>]+>/g, "")).replace(/\n{3,}/g, "\n\n").trim();
 
-const PROMPT_PREFIX = /^(Used Gemini Apps?|Prompted)\s*/i;
+function formatGeminiActivity(activity) {
+  if (!activity || typeof activity !== "object") return null;
+  // Takeout writes "Prompted <what you asked>"; older files say "Used Gemini Apps".
+  const prompt = String(activity.title || "").replace(/^(?:Prompted|Used Gemini Apps?)\s*/i, "").trim();
+  const answers = [
+    ...(Array.isArray(activity.subtitles) ? activity.subtitles.map((s) => (typeof s === "string" ? s : s?.name)) : []),
+    ...(Array.isArray(activity.safeHtmlItem) ? activity.safeHtmlItem.map((x) => htmlToText(x?.html ?? "")) : []),
+  ].map((x) => String(x || "").trim()).filter(Boolean);
+  if (!prompt && !answers.length) return null; // nothing was said, only a header
 
-export function formatGeminiActivity(activity) {
-  const title = (activity.title || "").replace(PROMPT_PREFIX, "").trim() || "Gemini Conversation";
-  const time = activity.time || new Date().toISOString();
-
-  // Extract the response text from subtitles
-  const subtitles = [
-    ...(activity.subtitles || []).map((s) => s.name || s),
-    ...(activity.safeHtmlItem || []).map((i) => htmlToText(i?.html)),
-  ].filter(Boolean);
-
-  // Build content
+  const title = (prompt || "Gemini Conversation").slice(0, 200);
   const lines = [`# ${title}`, ""];
-
-  // The title usually contains the user's prompt
-  if (activity.title && activity.title !== "Gemini Apps") {
-    lines.push("### 👤 User");
-    lines.push(activity.title.replace(PROMPT_PREFIX, ""));
-    lines.push("");
-  }
-
-  if (subtitles.length > 0) {
-    lines.push("### 🤖 Gemini");
-    lines.push(subtitles.join("\n"));
-    lines.push("");
-  }
-
-  const content = lines.join("\n");
-  if (content.trim().length < 20) return null; // Too short to be useful
+  if (prompt) lines.push("### 👤 User", prompt, "");
+  if (answers.length) lines.push("### 🤖 Gemini", answers.join("\n\n"), "");
 
   return {
-    title: title.slice(0, 200),
-    content,
+    title,
+    content: lines.join("\n"),
     tags: ["import", "gemini", "conversation", "ai-history"].join(","),
-    created_at: time,
+    created_at: toIso(activity.time),
   };
 }
 
@@ -130,22 +108,29 @@ export async function importGemini(inputPath, options = {}) {
 
   // Filter for Gemini Apps activities only
   const geminiActivities = activities.filter((a) =>
-    (a.products || []).some((p) => p.toLowerCase().includes("gemini"))
-    || (a.header || "").toLowerCase().includes("gemini")
+    (Array.isArray(a?.products) ? a.products : []).some((p) => typeof p === "string" && p.toLowerCase().includes("gemini"))
+    || String(a?.header || "").toLowerCase().includes("gemini")
   );
 
   console.log(`📊 Found ${geminiActivities.length} Gemini activities (out of ${activities.length} total)`);
 
-  return importConversations(geminiActivities.map(formatGeminiActivity), {
-    label: "Gemini",
-    source: "gemini-import",
-    dryRun: options.dryRun || false,
+  const dryRun = options.dryRun || false;
+  const { imported, skipped, duplicates, errors } = await runImport({
+    source: "gemini-import", queue, items: geminiActivities, format: formatGeminiActivity, dryRun,
   });
+  if (!dryRun && errors === 0 && imported === 0 && duplicates === 0 && skipped === 0) console.log("Nothing found to import.");
+  console.log(`\n🎉 Gemini Import Complete!`);
+  console.log(`   ✅ Imported: ${imported}`);
+  if (duplicates) console.log(`   ♻️  Already in your vault: ${duplicates} (not added again)`);
+  console.log(`   ⏭️  Skipped:  ${skipped}`);
+  if (errors) console.log(`   ❌ Errors:   ${errors}`);
+
+  return { imported, skipped, duplicates, errors };
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (isMainModule(import.meta.url)) {
+if (process.argv[1] && process.argv[1].endsWith("import-gemini.mjs")) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`

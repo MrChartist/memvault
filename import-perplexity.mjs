@@ -10,8 +10,10 @@
 
 import fs from "fs";
 import path from "path";
-import { importConversations } from "./import-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+import { runImport, toIso } from "./import-common.mjs";
+
+const queue = createIngestQueue({ actor: "perplexity-import" });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -34,6 +36,7 @@ function findPerplexityFile(inputPath) {
 }
 
 function formatPerplexityConversation(conv) {
+  if (!conv || typeof conv !== "object") return null;
   const title = conv.title || conv.query || "Perplexity Search";
   const lines = [`# ${title}`, ""];
 
@@ -69,7 +72,9 @@ function formatPerplexityConversation(conv) {
     lines.push("### 📚 Sources");
     for (const src of sources.slice(0, 5)) {
       const srcTitle = src.title || src.name || src.url;
-      lines.push(`- [${srcTitle}](${src.url || "#"})`);
+      // Keep only the address itself: a link can carry a login token in its query or fragment.
+      const bare = String(src.url || "").split(/[?#]/)[0] || "#";
+      lines.push(`- [${String(srcTitle || bare).split(/[?#]/)[0]}](${bare})`);
     }
     lines.push("");
   }
@@ -81,7 +86,7 @@ function formatPerplexityConversation(conv) {
     title: title.slice(0, 200),
     content,
     tags: ["import", "perplexity", "conversation", "ai-history", "search"].join(","),
-    created_at: conv.created_at || conv.timestamp || new Date().toISOString(),
+    created_at: toIso(conv.created_at || conv.timestamp),
   };
 }
 
@@ -113,16 +118,23 @@ export async function importPerplexity(inputPath, options = {}) {
 
   console.log(`📊 Found ${conversations.length} Perplexity conversations`);
 
-  return importConversations(conversations.map(formatPerplexityConversation), {
-    label: "Perplexity",
-    source: "perplexity-import",
-    dryRun: options.dryRun || false,
+  const dryRun = options.dryRun || false;
+  const { imported, skipped, duplicates, errors } = await runImport({
+    source: "perplexity-import", queue, items: conversations, format: formatPerplexityConversation, dryRun,
   });
+  if (!dryRun && errors === 0 && imported === 0 && duplicates === 0 && skipped === 0) console.log("Nothing found to import.");
+  console.log(`\n🎉 Perplexity Import Complete!`);
+  console.log(`   ✅ Imported: ${imported}`);
+  if (duplicates) console.log(`   ♻️  Already in your vault: ${duplicates} (not added again)`);
+  console.log(`   ⏭️  Skipped:  ${skipped}`);
+  if (errors) console.log(`   ❌ Errors:   ${errors}`);
+
+  return { imported, skipped, duplicates, errors };
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (isMainModule(import.meta.url)) {
+if (process.argv[1] && process.argv[1].endsWith("import-perplexity.mjs")) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`

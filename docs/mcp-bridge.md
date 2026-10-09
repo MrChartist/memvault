@@ -16,9 +16,9 @@ MemVault ships a catalog of popular, **local, no-API-key** memory servers so
 bridging works out of the box. List them and enable one in a single command:
 
 ```bash
-npx -y @mrchartist/memvault bridge presets        # see the catalog
-npx -y @mrchartist/memvault bridge add memory     # enable the official knowledge-graph memory
-npx -y @mrchartist/memvault bridge sync memory    # pull its memories into your vault
+npx memvault bridge presets        # see the catalog
+npx memvault bridge add memory     # enable the official knowledge-graph memory
+npx memvault bridge sync memory    # pull its memories into your vault
 ```
 
 | Preset | Package | Notes |
@@ -62,7 +62,7 @@ external MCP server to connect to:
 | `name` | ✅ | Label used for tags/sources (`mcp:<name>`) |
 | `command` | ✅ | Executable to launch the external MCP server (stdio) |
 | `args` | | Arguments passed to the command |
-| `env` | | Extra environment variables for that server. It also gets a minimal default environment (`PATH`, `HOME`, …) — **not** your whole shell environment, so list anything else it needs (e.g. `HTTP_PROXY`, `NODE_EXTRA_CA_CERTS`) here |
+| `env` | | Environment variables for this bridge. It gets a small safe set (PATH, HOME, proxy settings) plus these, never your whole shell environment, so the backup passphrase and other keys stay private |
 | `enabled` | | Set `false` to keep the config but skip it |
 | `importTool` | | A tool on that server to call when syncing. If omitted, MemVault reads **all** of the server's resources instead. |
 | `importArgs` | | Arguments for `importTool` |
@@ -73,13 +73,13 @@ external MCP server to connect to:
 
 ```bash
 # Inspect what each connected server exposes (tools + resources)
-npx -y @mrchartist/memvault bridge list
+npx memvault bridge list
 
 # Pull data from all bridges into the vault
-npx -y @mrchartist/memvault bridge sync
+npx memvault bridge sync
 
 # Pull from just one bridge
-npx -y @mrchartist/memvault bridge sync openmemory
+npx memvault bridge sync openmemory
 
 # Call a specific tool on a bridge ad-hoc
 node mcp-bridge.mjs call openmemory search '{"query":"auth bug"}'
@@ -102,18 +102,18 @@ the tag `mcp-bridge`, so they show up in normal vault search.
 - Otherwise → MemVault lists every resource the server exposes and saves each
   one's contents.
 
-MemVault writes straight into the vault database, so bridging works whether or
-not the web server is running. Each sync **replaces** the previous copy of the
-same item (same bridge + tool/resource), so running it on a schedule does not pile
-up duplicates.
+Bridging writes straight to your vault, so it works whether or not the dashboard
+server is running. Everything it brings in goes through the same step as every
+other write: secrets are masked, the write is recorded in the access log, and the
+item is tagged with where it came from (`mcp:<bridge name>`).
 
-## Security notes
+## Trust
 
-- A bridge is a program that MemVault **launches on your machine** (`command` +
-  `args`). The presets use `npx -y`, which downloads and runs a package from npm.
-  Only add bridges you trust, and review `mcpBridges` in `~/.memvaultrc.json`.
-- Bridges receive a minimal environment (`PATH`, `HOME`, ...) plus whatever you put
-  in the bridge's own `"env"` — your other environment variables, such as API keys,
-  are **not** passed along.
-- Whatever a bridge returns is stored in your vault as ordinary text and can later
-  be shown to your AI clients, so treat it as untrusted input.
+- **A bridge runs a program on your computer**, as you, using the `command` in
+  your config (the presets use `npx -y <package>`, which downloads and runs that
+  package). Enable only bridges you trust.
+- **What a bridge returns is treated as untrusted text.** It is stored like any
+  other note, and agents are told to treat memory as information, never as
+  instructions. Still, review what you pull in.
+- Bridges are an owner feature: an agent bound to a profile is never offered
+  `vault_bridge_list` or `vault_bridge_sync`.

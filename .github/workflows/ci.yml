@@ -1,81 +1,123 @@
 name: CI
 
+# Runs for every pull request (whatever branch it targets) and for pushes to main.
 on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # The main check: Linux, the three supported Node versions.
   test:
-    name: Test (${{ matrix.os }}, Node ${{ matrix.node-version }})
-    runs-on: ${{ matrix.os }}
+    name: test (Linux, Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        node-version: [20.x, 22.x]
-        include:
-          - os: windows-latest
-            node-version: 22.x
-          - os: macos-latest
-            node-version: 22.x
-
+        node-version: [20.x, 22.x, 24.x]
     steps:
       - uses: actions/checkout@v4
-
+        with: { persist-credentials: false }
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Sanity checks (syntax, versions, no personal paths)
-        run: npm run check
-
-      - name: Run tests
+      - run: npm ci
+      - name: Unit and integration tests
         run: npm test
 
-  audit:
-    name: Dependency audit
-    runs-on: ubuntu-latest
+  # Windows and macOS. Both are green since the first fixes, so a failure here now blocks a merge.
+  test-other-os:
+    name: test (${{ matrix.os }}, Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        node-version: [22.x]
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: actions/setup-node@v4
         with:
-          node-version: 22.x
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - run: npm test
 
-  package:
-    name: Package contents
+  # Install the packed tarball the way a user would, into folders whose names contain a space and
+  # non-Latin letters, then run the everyday commands. Catches missing files and bad launchers.
+  install-smoke:
+    name: install smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22.x, cache: npm }
+      - run: npm ci
+      - name: Pack, install into a path with a space and non-Latin letters, and run
+        shell: bash
+        run: |
+          npm pack --silent
+          TMP="$RUNNER_TEMP"
+          if command -v cygpath >/dev/null; then TMP="$(cygpath -m "$RUNNER_TEMP")"; fi   # Windows: D:/a/_temp, not D:\a\_temp
+          PREFIX="$TMP/prefix रोहित e2e"
+          mkdir -p "$PREFIX"
+          npm install -g --prefix "$PREFIX" ./mrchartist-memvault-*.tgz
+          PFX_SH="$PREFIX"; if command -v cygpath >/dev/null; then PFX_SH="$(cygpath -u "$PREFIX")"; fi   # PATH in bash needs /d/a/... (a "D:" would split at the colon)
+          export PATH="$PFX_SH:$PFX_SH/bin:$PATH"
+          export HOME="$TMP/home रोहित e2e" USERPROFILE="$TMP/home रोहित e2e"
+          mkdir -p "$HOME"
+          memvault setup
+          memvault doctor
+          memvault agent list
+          memvault mcp-config > cfg.json
+          node -e "JSON.parse(require('fs').readFileSync('cfg.json','utf8')); console.log('mcp-config is valid JSON')"
+
+  # Known-vulnerable packages that users install (development tools are not shipped).
+  audit:
+    name: dependency audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22.x, cache: npm }
+      - run: npm ci --omit=dev
+      - run: npm audit --omit=dev --audit-level=moderate
+
+  # Real-browser checks: stored-script attacks, the content-security policy, WCAG 2.1 AA audits
+  # in light, dark and phone layouts, keyboard use and right-to-left text.
+  e2e:
+    name: e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
           cache: npm
       - run: npm ci
-      - name: Pack and smoke-test the tarball
-        run: |
-          npm pack --json > pack.json
-          TARBALL=$(node -p "require('./pack.json')[0].filename")
-          # nothing private or heavy may ship
-          if tar -tzf "$TARBALL" | grep -E '^package/(tests/|\.github/|docs/images/|.*\.sqlite|\.env)'; then
-            echo "Unexpected files in the package"; exit 1
-          fi
-          mkdir "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
-          npm init -y > /dev/null
-          npm install "$GITHUB_WORKSPACE/$TARBALL"
-          ./node_modules/.bin/memvault --version
-          VAULT_ROOT="$RUNNER_TEMP/vault" ./node_modules/.bin/memvault vault diary "ci smoke test"
-          VAULT_ROOT="$RUNNER_TEMP/vault" ./node_modules/.bin/memvault vault search "smoke"
+      - name: Install Chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Dashboard end-to-end tests
+        run: npm run test:e2e

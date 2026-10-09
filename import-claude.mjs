@@ -14,8 +14,10 @@
 
 import fs from "fs";
 import path from "path";
-import { importConversations } from "./import-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+import { runImport, toIso } from "./import-common.mjs";
+
+const queue = createIngestQueue({ actor: "claude-import" });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -43,27 +45,27 @@ function extractClaudeMessages(chatMessages) {
 
   return chatMessages.map((msg) => {
     // Claude content can be array of objects or string
-    let text = "";
-    if (typeof msg.text === "string") {
-      text = msg.text;
-    } else if (Array.isArray(msg.content)) {
+    // Newer exports can have an empty `text` and the words in `content` blocks, so an empty string is not an answer.
+    let text = typeof msg?.text === "string" ? msg.text : "";
+    if (!text.trim() && Array.isArray(msg?.content)) {
       text = msg.content
-        .filter((c) => c.type === "text")
+        .filter((c) => c && c.type === "text" && typeof c.text === "string")
         .map((c) => c.text)
         .join("\n");
-    } else if (typeof msg.content === "string") {
+    } else if (!text.trim() && typeof msg?.content === "string") {
       text = msg.content;
     }
 
     return {
-      role: msg.sender || "unknown",
+      role: msg?.sender || "unknown",
       text: text.trim(),
-      timestamp: msg.created_at || null,
+      timestamp: msg?.created_at || null,
     };
   }).filter((m) => m.text.length > 0);
 }
 
 function formatClaudeConversation(conv) {
+  if (!conv || typeof conv !== "object") return null;
   const messages = extractClaudeMessages(conv.chat_messages);
   if (messages.length === 0) return null;
 
@@ -85,7 +87,7 @@ function formatClaudeConversation(conv) {
     title,
     content: lines.join("\n"),
     tags: ["import", "claude", "conversation", "ai-history"].join(","),
-    created_at: conv.created_at || new Date().toISOString(),
+    created_at: toIso(conv.created_at),
     messageCount: messages.length,
   };
 }
@@ -119,16 +121,23 @@ export async function importClaude(inputPath, options = {}) {
 
   console.log(`📊 Found ${conversations.length} Claude conversations`);
 
-  return importConversations(conversations.map(formatClaudeConversation), {
-    label: "Claude",
-    source: "claude-import",
-    dryRun: options.dryRun || false,
+  const dryRun = options.dryRun || false;
+  const { imported, skipped, duplicates, errors } = await runImport({
+    source: "claude-import", queue, items: conversations, format: formatClaudeConversation, dryRun,
   });
+  if (!dryRun && errors === 0 && imported === 0 && duplicates === 0 && skipped === 0) console.log("Nothing found to import.");
+  console.log(`\n🎉 Claude Import Complete!`);
+  console.log(`   ✅ Imported: ${imported}`);
+  if (duplicates) console.log(`   ♻️  Already in your vault: ${duplicates} (not added again)`);
+  console.log(`   ⏭️  Skipped:  ${skipped}`);
+  if (errors) console.log(`   ❌ Errors:   ${errors}`);
+
+  return { imported, skipped, duplicates, errors };
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (isMainModule(import.meta.url)) {
+if (process.argv[1] && process.argv[1].endsWith("import-claude.mjs")) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`

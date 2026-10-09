@@ -2,13 +2,8 @@
 /**
  * sync-system.mjs — MemVault System Info Snapshot
  * ─────────────────────────────────────────────────────────────────────────────
- * Captures a snapshot of the machine — OS, hardware, disk, dev tool versions,
- * top processes — so an AI can understand your working environment. Each run
- * replaces the previous snapshot instead of piling up new entries.
- *
- * Captured data includes the hostname, home directory, local IP addresses and
- * the names of the largest running processes. Turn the engine off with
- * "sync": { "systemEnabled": false } in ~/.memvaultrc.json.
+ * Saves a snapshot of basic facts about this computer: OS, hardware, disk space and which developer
+ * tools are installed. It does NOT save the computer's name, network addresses or running programs.
  *
  * Usage:
  *   node sync-system.mjs              (capture and save)
@@ -16,25 +11,39 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import fs from "fs";
+import path from "path";
 import os from "os";
 import { execSync } from "child_process";
-import { saveEntries } from "./sync-lib.mjs";
-import { isMainModule } from "./util.mjs";
+
+import { createIngestQueue } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("systemEnabled", "Saving computer information");
+
+const queue = createIngestQueue({ actor: "system" });
+const DRY_RUN = process.argv.includes("--dry-run");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function execSafe(cmd, timeout = 10_000) {
+async function postToVault(entry) {
+  if (DRY_RUN) {
+    console.log(`  [DRY] ${entry.title}`);
+    console.log(`  Content preview: ${entry.content.slice(0, 200)}...`);
+    return true;
+  }
+  queue.add(entry);
+  return true;
+}
+
+function execSafe(cmd, timeout = 10000) {
   try {
-    return execSync(cmd, { encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execSync(cmd, { encoding: "utf8", timeout, stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch { return ""; }
 }
 
-const powershell = (script) =>
-  execSafe(`powershell -NoProfile -NonInteractive -Command "${script.replace(/"/g, '\\"')}"`, 15_000);
-
 function formatBytes(bytes) {
-  const gb = bytes / 1024 ** 3;
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  const gb = bytes / (1024 * 1024 * 1024);
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
 }
 
 // ─── Collectors ─────────────────────────────────────────────────────────────
@@ -43,100 +52,110 @@ function getSystemInfo() {
   const cpus = os.cpus();
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
+
   return {
-    hostname: os.hostname(),
     platform: os.platform(),
     arch: os.arch(),
     os: `${os.type()} ${os.release()}`,
     cpu: cpus[0]?.model || "unknown",
     cores: cpus.length,
     totalMemory: formatBytes(totalMem),
+    freeMemory: formatBytes(freeMem),
+    usedMemory: formatBytes(totalMem - freeMem),
+    memoryUsage: `${((1 - freeMem / totalMem) * 100).toFixed(0)}%`,
+    uptime: `${(os.uptime() / 3600).toFixed(1)} hours`,
     nodeVersion: process.version,
-    homeDir: os.homedir(),
+    tmpDir: os.tmpdir(),
   };
 }
 
 function getDiskUsage() {
-  if (process.platform !== "win32") return execSafe("df -h / | tail -n 1") || "N/A";
-
-  // WMIC was removed from current Windows builds; use CIM via PowerShell.
-  const out = powershell(
-    "Get-CimInstance Win32_LogicalDisk | ForEach-Object { '{0} {1}|{2}' -f $_.DeviceID, $_.FreeSpace, $_.Size }"
-  );
-  const lines = out.split(/\r?\n/).map((line) => {
-    const [name, nums = ""] = line.trim().split(" ");
-    const [free, total] = nums.split("|").map(Number);
-    if (!name || !total) return null;
+  // One built-in call for every system (no df, no wmic: wmic is gone from newer Windows).
+  try {
+    const root = process.platform === "win32" ? path.parse(process.cwd()).root : "/";
+    const st = fs.statfsSync(root);
+    const total = st.blocks * st.bsize, free = st.bavail * st.bsize;
+    if (!total) return "N/A";
     const gb = (n) => (n / 1024 ** 3).toFixed(0);
-    return `${name} ${gb(free)}GB free / ${gb(total)}GB total (${((1 - free / total) * 100).toFixed(0)}% used)`;
-  }).filter(Boolean);
-  return lines.join("\n") || "N/A";
-}
-
-export function getRunningProcesses() {
-  if (process.platform === "win32") {
-    return powershell(
-      "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name, @{N='MemMB';E={[Math]::Round($_.WorkingSet64/1MB)}} | Format-Table -AutoSize | Out-String"
-    ) || "N/A";
+    return `${root} ${gb(free)}GB free / ${gb(total)}GB total (${((1 - free / total) * 100).toFixed(0)}% used)`;
+  } catch {
+    return "N/A";
   }
-  // Executable names only. `ps aux` would also record every process's command-line
-  // ARGUMENTS, which routinely contain passwords, tokens and session ids.
-  // GNU ps understands --sort; BSD/macOS ps uses -m (sort by memory).
-  const cmd = process.platform === "darwin" ? "ps -Ao pid,%mem,comm -m | head -n 21" : "ps -Ao pid,%mem,comm --sort=-%mem | head -n 21";
-  return execSafe(cmd) || "N/A";
 }
 
-function getDevTools() {
-  return {
-    node: execSafe("node --version"),
-    npm: execSafe("npm --version"),
-    git: execSafe("git --version"),
-    // On Windows `python`/`python3` can be Microsoft Store stubs; the `py` launcher is the safe probe.
-    python: (process.platform === "win32" ? execSafe("py -3 --version") : execSafe("python3 --version") || execSafe("python --version")) || "not found",
-  };
-}
+function getInstalledNodeVersions() {
+  const nodeV = execSafe("node --version");
+  const npmV = execSafe("npm --version");
+  const gitV = execSafe("git --version");
+  const pythonV = execSafe("python --version 2>&1") || execSafe("python3 --version 2>&1");
 
-function getNetworkInfo() {
-  const found = [];
-  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
-    for (const addr of addrs || []) {
-      if (addr.family === "IPv4" && !addr.internal) found.push(`${name}: ${addr.address}`);
-    }
-  }
-  return found.join(", ") || "No active network";
+  return { node: nodeV, npm: npmV, git: gitV, python: pythonV || "not found" };
 }
-
-const bullets = (obj) => Object.entries(obj).map(([k, v]) => `- **${k}**: ${v}`).join("\n");
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-export async function main(args = process.argv.slice(2)) {
-  const dryRun = args.includes("--dry-run");
+async function main() {
+  console.log("╔══════════════════════════════════════╗");
+  console.log("║  System → MemVault Snapshot          ║");
+  console.log(`║  ${DRY_RUN ? "DRY RUN                            " : "LIVE MODE                          "}║`);
+  console.log("╚══════════════════════════════════════╝\n");
+
+let totalSynced = 0;
+
+  // 1. System Info
+  console.log("── System Info ─────────────────────────");
   const sys = getSystemInfo();
+  const sysContent = Object.entries(sys)
+    .map(([k, v]) => `- **${k}**: ${v}`)
+    .join("\n");
+
+  const sysOk = await postToVault({
+    type: "worklog",
+    source: "system",
+    title: `[System] ${sys.os} (${sys.arch})`,
+    content: `## System Information\n\n${sysContent}`,
+    tags: "system,hardware,environment",
+  });
+  if (sysOk) totalSynced++;
+  console.log(`  💻 ${sys.os} | ${sys.cpu} | ${sys.cores} cores | ${sys.totalMemory} RAM`);
+
+  // 2. Disk Usage
+  console.log("\n── Disk Usage ──────────────────────────");
   const disk = getDiskUsage();
-  const tools = getDevTools();
-  const network = getNetworkInfo();
-  const procs = getRunningProcesses();
+  const diskOk = await postToVault({
+    type: "worklog",
+    source: "system",
+    title: "[System] Disk Usage Snapshot",
+    content: `## Disk Usage\n\n\`\`\`\n${disk}\n\`\`\``,
+    tags: "system,disk,storage",
+  });
+  if (diskOk) totalSynced++;
+  console.log(`  💾 ${disk.split("\n")[0]}`);
 
-  const snap = { type: "worklog", source: "system", upsert: true };
-  const entries = [
-    { ...snap, title: `[System] ${sys.hostname}`, tags: "system,hardware,environment",
-      content: `## System Information\n\n${bullets(sys)}` },
-    { ...snap, title: "[System] Disk Usage", tags: "system,disk,storage",
-      content: `## Disk Usage\n\n\`\`\`\n${disk}\n\`\`\`` },
-    { ...snap, title: "[System] Developer Tools", tags: "system,tools,development",
-      content: `## Developer Tools\n\n${bullets(tools)}` },
-    { ...snap, title: "[System] Running Processes", tags: "system,processes,runtime",
-      content: `## Top Processes (by memory)\n\n\`\`\`\n${procs}\n\`\`\`\n\n**Network**: ${network}\n\n_Captured: ${new Date().toISOString()}_` },
-  ];
+  // 3. Dev Tools
+  console.log("\n── Developer Tools ─────────────────────");
+  const tools = getInstalledNodeVersions();
+  const toolsContent = Object.entries(tools)
+    .map(([k, v]) => `- **${k}**: ${v}`)
+    .join("\n");
 
-  console.log(`💻 ${sys.os} | ${sys.cpu} | ${sys.cores} cores | ${sys.totalMemory} RAM`);
-  console.log(`🛠️  Node ${tools.node} | npm ${tools.npm} | ${tools.git}`);
-  const result = saveEntries(entries, { dryRun });
-  console.log(`✅ ${entries.length} system snapshots ${dryRun ? "found (dry run, nothing saved)" : "saved"}\n`);
-  return result;
+  const toolsOk = await postToVault({
+    type: "worklog",
+    source: "system",
+    title: "[System] Developer Tools Installed",
+    content: `## Developer Tools\n\n${toolsContent}`,
+    tags: "system,tools,development",
+  });
+  if (toolsOk) totalSynced++;
+  console.log(`  🛠️  Node ${tools.node} | npm ${tools.npm} | ${tools.git}`);
+
+  // The computer's name, its network addresses and the programs running on it are deliberately NOT saved:
+  // program command lines often contain passwords, and none of it is needed to help with a task.
+
+  queue.done();
+  console.log(`\n═══════════════════════════════════════`);
+  console.log(`✅ Synced: ${totalSynced} snapshots to vault`);
+  console.log(`═══════════════════════════════════════\n`);
 }
 
-if (isMainModule(import.meta.url)) {
-  main().catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
-}
+main().catch(console.error);

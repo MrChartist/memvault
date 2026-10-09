@@ -14,67 +14,72 @@
 
 import fs from "fs";
 import path from "path";
-import { importConversations } from "./import-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+import { runImport, toIso } from "./import-common.mjs";
+
+const queue = createIngestQueue({ actor: "chatgpt-import" });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/**
- * The export is either one `conversations.json` or — for larger accounts — numbered
- * shards (`conversations-000.json`, `conversations-001.json`, ...). Returns every file to read.
- */
-export function findConversationFiles(inputPath) {
-  if (fs.statSync(inputPath).isFile()) return [inputPath];
-
-  for (const dir of [inputPath, path.join(inputPath, "chatgpt")]) {
-    if (!fs.existsSync(dir)) continue;
-    const single = path.join(dir, "conversations.json");
-    if (fs.existsSync(single)) return [single];
-    const shards = fs.readdirSync(dir).filter((f) => /^conversations-\d+\.json$/.test(f)).sort();
-    if (shards.length) return shards.map((f) => path.join(dir, f));
+function findConversationsFile(inputPath) {
+  if (fs.statSync(inputPath).isFile()) {
+    return inputPath;
   }
-  return [];
+  // Look inside folder for conversations.json
+  const candidates = [
+    path.join(inputPath, "conversations.json"),
+    path.join(inputPath, "chatgpt", "conversations.json"),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
 }
 
-function extractMessages(mapping) {
-  if (!mapping) return [];
-
-  const messages = [];
-  for (const nodeId of Object.keys(mapping)) {
-    const node = mapping[nodeId];
-    const msg = node?.message;
-    if (!msg || !msg.content?.parts) continue;
-
-    const role = msg.author?.role || "unknown";
-    const textParts = msg.content.parts
-      .filter((p) => typeof p === "string")
-      .join("\n");
-
-    if (textParts.trim()) {
-      messages.push({
-        role,
-        text: textParts.trim(),
-        timestamp: msg.create_time
-          ? new Date(msg.create_time * 1000).toISOString()
-          : null,
-      });
-    }
+/** The messages in the order the user actually saw them: from the first message to the one the chat ended on. */
+function orderedNodes(conv) {
+  const mapping = conv.mapping;
+  if (!mapping || typeof mapping !== "object") return [];
+  if (conv.current_node && mapping[conv.current_node]) {
+    // Follow parent links from the last message back to the start. This leaves out answers the user
+    // regenerated and abandoned, which are also stored in the mapping.
+    const chain = [];
+    const seen = new Set();
+    let id = conv.current_node;
+    while (id && mapping[id] && !seen.has(id)) { seen.add(id); chain.push(mapping[id]); id = mapping[id].parent; }
+    return chain.reverse();
   }
+  // No marker for the last message: keep export order, and let a message with no time follow the one before it.
+  let last = 0;
+  return Object.values(mapping)
+    .map((node, index) => { const t = node?.message?.create_time; if (t) last = t; return { node, index, t: t || last }; })
+    .sort((a, b) => a.t - b.t || a.index - b.index)
+    .map((x) => x.node);
+}
 
-  // Sort by timestamp
-  messages.sort((a, b) => {
-    if (!a.timestamp || !b.timestamp) return 0;
-    return new Date(a.timestamp) - new Date(b.timestamp);
-  });
-
+function extractMessages(conv) {
+  const messages = [];
+  for (const node of orderedNodes(conv)) {
+    const msg = node?.message;
+    if (!msg || !Array.isArray(msg.content?.parts)) continue;
+    const role = msg.author?.role || "unknown";
+    if (role === "tool") continue; // tool output is noise, not conversation
+    const text = msg.content.parts
+      .map((p) => (typeof p === "string" ? p : p && /image/i.test(p.content_type || "") ? "[image]" : ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (text) messages.push({ role, text, timestamp: toIso(msg.create_time) });
+  }
   return messages;
 }
 
 function formatConversation(conv) {
-  const messages = extractMessages(conv.mapping);
+  if (!conv || typeof conv !== "object") return null;
+  const messages = extractMessages(conv);
   if (messages.length === 0) return null;
 
-  const lines = [`# ${conv.title || "Untitled Conversation"}`, ""];
+  const lines = [`# ${conv.title || "Untitled ChatGPT Conversation"}`, ""];
 
   for (const msg of messages) {
     const roleLabel =
@@ -91,9 +96,7 @@ function formatConversation(conv) {
     title: conv.title || "Untitled ChatGPT Conversation",
     content: lines.join("\n"),
     tags: ["import", "chatgpt", "conversation", "ai-history"].join(","),
-    created_at: conv.create_time
-      ? new Date(conv.create_time * 1000).toISOString()
-      : new Date().toISOString(),
+    created_at: toIso(conv.create_time),
     messageCount: messages.length,
   };
 }
@@ -101,41 +104,47 @@ function formatConversation(conv) {
 // ─── Main Import ────────────────────────────────────────────────────────────
 
 export async function importChatGPT(inputPath, options = {}) {
-  const filePaths = findConversationFiles(inputPath);
-  if (filePaths.length === 0) {
-    console.error("❌ Could not find conversations.json (or conversations-000.json ...) in:", inputPath);
+  const filePath = findConversationsFile(inputPath);
+  if (!filePath) {
+    console.error("❌ Could not find conversations.json in:", inputPath);
     return { imported: 0, skipped: 0, errors: 0 };
   }
 
-  console.log(`📂 Reading: ${filePaths.length === 1 ? filePaths[0] : `${filePaths.length} files (${path.basename(filePaths[0])} ...)`}`);
-  const conversations = [];
-  for (const filePath of filePaths) {
-    let parsed;
-    try {
-      parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    } catch (e) {
-      console.error(`❌ Invalid JSON in ${path.basename(filePath)}:`, e.message);
-      return { imported: 0, skipped: 0, errors: 0 };
-    }
-    if (!Array.isArray(parsed)) {
-      console.error(`❌ Expected an array of conversations in ${path.basename(filePath)}`);
-      return { imported: 0, skipped: 0, errors: 0 };
-    }
-    conversations.push(...parsed);
+  console.log(`📂 Reading: ${filePath}`);
+  const raw = fs.readFileSync(filePath, "utf8");
+  let conversations;
+
+  try {
+    conversations = JSON.parse(raw);
+  } catch (e) {
+    console.error("❌ Invalid JSON:", e.message);
+    return { imported: 0, skipped: 0, errors: 0 };
+  }
+
+  if (!Array.isArray(conversations)) {
+    console.error("❌ Expected an array of conversations");
+    return { imported: 0, skipped: 0, errors: 0 };
   }
 
   console.log(`📊 Found ${conversations.length} ChatGPT conversations`);
 
-  return importConversations(conversations.map(formatConversation), {
-    label: "ChatGPT",
-    source: "chatgpt-import",
-    dryRun: options.dryRun || false,
+  const dryRun = options.dryRun || false;
+  const { imported, skipped, duplicates, errors } = await runImport({
+    source: "chatgpt-import", queue, items: conversations, format: formatConversation, dryRun,
   });
+  if (!dryRun && errors === 0 && imported === 0 && duplicates === 0 && skipped === 0) console.log("Nothing found to import.");
+  console.log(`\n🎉 ChatGPT Import Complete!`);
+  console.log(`   ✅ Imported: ${imported}`);
+  if (duplicates) console.log(`   ♻️  Already in your vault: ${duplicates} (not added again)`);
+  console.log(`   ⏭️  Skipped:  ${skipped} (empty conversations)`);
+  if (errors) console.log(`   ❌ Errors:   ${errors}`);
+
+  return { imported, skipped, duplicates, errors };
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (isMainModule(import.meta.url)) {
+if (process.argv[1] && process.argv[1].endsWith("import-chatgpt.mjs")) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`

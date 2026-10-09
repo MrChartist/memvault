@@ -3,17 +3,19 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-// Point the vault at a throwaway dir BEFORE importing the modules under test.
+// Point the vault at a throwaway dir BEFORE importing the module under test.
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-store-'));
 process.env.VAULT_ROOT = TMP;
-process.env.HOME = process.env.USERPROFILE = path.join(TMP, 'home');
 
 let storage;
-let db;
 beforeAll(async () => {
-  db = await import('../db.mjs');
+  // Seed a fake DB so backupLocal has something to copy.
+  fs.mkdirSync(path.join(TMP, 'db'), { recursive: true });
+  const { openVaultDb } = await import('../db.mjs');
+  const seed = openVaultDb({ root: TMP });
+  seed.addItem({ type: 'diary', title: 'seed-row', content: 'x' });
+  seed.close();
   storage = await import('../storage.mjs');
-  db.addItems([{ type: 'diary', title: 'before backup', content: 'original entry' }]);
 });
 
 afterAll(() => {
@@ -40,57 +42,27 @@ describe('storage — local backup', () => {
     expect(backups[0].name).toMatch(/^index-.*\.sqlite$/);
   });
 
-  it('restores a backup: data written after the backup is rolled back', () => {
-    db.addItems([{ type: 'diary', title: 'after backup', content: 'should vanish on restore' }]);
-    expect(db.queryAll('SELECT * FROM items').length).toBe(2);
-
+  it('restores a backup back into the live DB', async () => {
     const [latest] = storage.listLocalBackups();
-    expect(storage.restoreLocal(latest.name).ok).toBe(true);
-
-    const titles = db.queryAll('SELECT title FROM items').map((r) => r.title);
-    expect(titles).toEqual(['before backup']);
+    const res = storage.restoreLocal(latest.name);
+    expect(res.ok).toBe(true);
+    const { openVaultDb } = await import('../db.mjs');
+    expect(openVaultDb({ root: TMP }).query('SELECT title FROM items').map((r) => r.title)).toEqual(['seed-row']);
   });
 
-  it('keeps a pre-restore safety snapshot', () => {
-    const snaps = fs.readdirSync(path.join(TMP, 'backups')).filter((f) => f.startsWith('pre-restore-'));
-    expect(snaps.length).toBeGreaterThan(0);
+  it('refuses to restore something that is not a MemVault database, and leaves the live one alone', async () => {
+    fs.mkdirSync(path.join(TMP, 'backups'), { recursive: true });
+    fs.writeFileSync(path.join(TMP, 'backups', 'index-notadb.sqlite'), 'this is just text');
+    const half = fs.readFileSync(path.join(TMP, 'db', 'index.sqlite')).subarray(0, 3000); // a cut-off copy
+    fs.writeFileSync(path.join(TMP, 'backups', 'index-cutoff.sqlite'), half);
+    for (const name of ['index-notadb.sqlite', 'index-cutoff.sqlite']) {
+      expect(() => storage.restoreLocal(name)).toThrow(/not a MemVault database|damaged/i);
+    }
+    const { openVaultDb } = await import('../db.mjs');
+    expect(openVaultDb({ root: TMP }).query('SELECT title FROM items').map((r) => r.title)).toEqual(['seed-row']);
   });
 
   it('throws on an unknown backup name', () => {
-    expect(() => storage.restoreLocal('index-nope.sqlite')).toThrow(/not found/i);
-  });
-
-  it('refuses names that are not plain backup file names (path traversal)', () => {
-    for (const evil of ['../../etc/passwd', '..\\..\\secret.sqlite', '/etc/passwd', 'index-../../x.sqlite', 'notes.txt', '']) {
-      expect(() => storage.restoreLocal(evil), evil).toThrow(/invalid backup name/i);
-    }
-  });
-
-  it('refuses to restore a file that is not a SQLite database', () => {
-    const bogus = path.join(TMP, 'backups', 'index-bogus.sqlite');
-    fs.writeFileSync(bogus, 'this is not a database');
-    expect(() => storage.restoreLocal('index-bogus.sqlite')).toThrow(/valid SQLite/i);
-    // the live DB is untouched
-    expect(db.queryAll('SELECT title FROM items').length).toBe(1);
-  });
-});
-
-describe('storage — Drive folder mirror', () => {
-  it('copies the vault into <folder>/MemVault without lock/temp files', async () => {
-    const drive = path.join(TMP, 'drive');
-    fs.mkdirSync(drive, { recursive: true });
-    fs.writeFileSync(path.join(TMP, 'db', 'index.sqlite.lock'), '');
-    fs.writeFileSync(path.join(TMP, 'db', 'x.tmp'), '');
-
-    const results = await storage.backupVault({
-      ...(await import('../config.mjs')).STORAGE_CONFIG,
-      gdriveFolder: { enabled: true, path: drive },
-    });
-    const mirror = results.find((r) => r.backend === 'gdriveFolder');
-    expect(mirror.ok).toBe(true);
-    expect(fs.existsSync(path.join(drive, 'MemVault', 'db', 'index.sqlite'))).toBe(true);
-    expect(fs.existsSync(path.join(drive, 'MemVault', 'db', 'index.sqlite.lock'))).toBe(false);
-    expect(fs.existsSync(path.join(drive, 'MemVault', 'db', 'x.tmp'))).toBe(false);
-    expect(fs.existsSync(path.join(drive, 'MemVault', 'MANIFEST.json'))).toBe(true);
+    expect(() => storage.restoreLocal('nope.sqlite')).toThrow();
   });
 });

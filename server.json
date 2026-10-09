@@ -1,27 +1,34 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.mrchartist/memvault",
-  "description": "Local-first persistent memory for AI tools: gives Claude, Cursor and any MCP client context from your Git history, VS Code, notes and past AI chats.",
+  "description": "One private memory on your own computer, shared by every AI assistant you use.",
   "repository": {
     "url": "https://github.com/MrChartist/memvault",
     "source": "github"
   },
-  "version": "2.1.0",
+  "version": "3.0.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@mrchartist/memvault",
-      "version": "2.1.0",
+      "version": "3.0.0",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
-          "description": "Absolute path to the custom vault directory. If excluded, defaults to ~/.memvault",
+          "description": "Folder for the vault. If left out, MemVault uses ~/.memvault/data",
           "isRequired": false,
           "format": "string",
           "isSecret": false,
           "name": "VAULT_ROOT"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "valueHint": "mcp",
+          "value": "mcp"
         }
       ]
     }

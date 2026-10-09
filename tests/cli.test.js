@@ -2,137 +2,113 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { execFileSync, spawnSync } from 'child_process';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-cli-'));
-const HOME = path.join(TMP, 'home');
-fs.mkdirSync(HOME, { recursive: true });
-const env = { ...process.env, VAULT_ROOT: path.join(TMP, 'vault'), HOME, USERPROFILE: HOME };
-const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'cli.mjs');
+// A home folder with a space and non-Latin letters, like a real person's.
+const HOME = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'memvault cli ')), 'रोहित Singh');
+const run = (...args) => spawnSync(process.execPath, [CLI, ...args], {
+  encoding: 'utf8', timeout: 60_000,
+  env: { ...process.env, HOME, USERPROFILE: HOME, VAULT_ROOT: '', MEMVAULT_TOKEN_FILE: '', MEMVAULT_TOKEN: '', MEMVAULT_AGENT: '', MEMVAULT_BACKUP_PASSPHRASE: '' },
+});
 
-const cli = (...args) => spawnSync(process.execPath, [path.join(ROOT, 'cli.mjs'), ...args], { env, encoding: 'utf8' });
+beforeAll(() => fs.mkdirSync(HOME, { recursive: true }));
+afterAll(() => fs.rmSync(path.dirname(HOME), { recursive: true, force: true }));
 
-afterAll(() => fs.rmSync(TMP, { recursive: true, force: true }));
-
-describe('cli', () => {
-  it('--version prints the package version', () => {
-    expect(cli('--version').stdout.trim()).toBe(pkg.version);
-  });
-
-  it('help succeeds (exit 0) and lists every command', () => {
-    const r = cli('help');
+describe('command line', () => {
+  it('help lists the everyday commands, including the clipboard watcher', () => {
+    const r = run('help');
     expect(r.status).toBe(0);
-    for (const c of ['init', 'serve', 'mcp', 'sync', 'import', 'backup', 'bridge', 'vault']) expect(r.stdout).toContain(c);
+    for (const c of ['setup', 'open', 'doctor', 'scrub', 'agent', 'audit', 'token', 'mcp-config', 'backup', 'import', 'sync', 'clipboard']) expect(r.stdout).toContain(c);
   });
 
-  it('no command / unknown command fail (exit 1)', () => {
-    expect(cli().status).toBe(1);
-    const r = cli('definitely-not-a-command');
+  it('an unknown command says so and fails', () => {
+    const r = run('nonsense');
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain('Unknown command');
+    expect(r.stderr + r.stdout).toMatch(/Unknown command/);
   });
 
-  it('does not treat inherited object properties as commands', () => {
-    expect(cli('constructor').status).toBe(1);
-    expect(cli('toString').status).toBe(1);
-  });
-
-  it('vault diary → vault search works end to end through the CLI', () => {
-    expect(cli('vault', 'diary', 'remember the milk').stdout).toContain('OK');
-    const r = cli('vault', 'search', 'milk');
+  it('setup creates the vault, a private access key and the starter agents, and can be run again', () => {
+    const r = run('setup');
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('remember the milk');
+    expect(r.stdout).toMatch(/Vault ready/);
+    const token = path.join(HOME, '.memvault', 'api-token');
+    expect(fs.existsSync(token)).toBe(true);
+    if (process.platform !== 'win32') expect(fs.statSync(token).mode & 0o077).toBe(0);
+    expect(run('setup').status).toBe(0);
   });
 
-  it('backup writes a backup and a missing restore name fails cleanly', () => {
-    const b = cli('backup');
-    expect(b.status).toBe(0);
-    expect(b.stdout).toMatch(/local/);
-    expect(cli('backup', 'list').stdout).toMatch(/1 local backup/);
-    expect(cli('backup', 'restore', '../../etc/passwd').status).not.toBe(0);
+  it('token prints the key, and --rotate replaces it', () => {
+    const a = run('token').stdout.trim();
+    expect(a.length).toBeGreaterThan(30);
+    expect(run('token').stdout.trim()).toBe(a);
+    run('token', '--rotate');
+    expect(run('token').stdout.trim()).not.toBe(a);
   });
 
-  it('bridge presets lists the catalog', () => {
-    const r = cli('bridge', 'presets');
+  it('doctor reports a healthy new vault', () => {
+    const r = run('doctor');
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('memory');
+    expect(r.stdout).toMatch(/No problems/);
+    expect(r.stdout).not.toContain(HOME); // paths are shown as ~/… so a screenshot does not reveal the account name
+  });
+
+  it('mcp-config prints valid JSON even when the install path has spaces and non-Latin letters', () => {
+    const r = run('mcp-config');
+    const cfg = JSON.parse(r.stdout);
+    expect(cfg.mcpServers.memvault.args[0]).toMatch(/mcp-server\.mjs$/);
+    expect(cfg.mcpServers.memvault.command).toBe(process.execPath);
+    const bound = JSON.parse(run('mcp-config', '--agent', 'study-buddy').stdout);
+    expect(bound.mcpServers['memvault-study-buddy'].env.MEMVAULT_AGENT).toBe('study-buddy');
+    expect(run('mcp-config', '--agent', 'nobody').status).toBe(1);
+  });
+
+  it('agent commands list, show and export the starter agents', () => {
+    expect(run('agent', 'list').stdout).toMatch(/study-buddy/);
+    expect(JSON.parse(run('agent', 'show', 'coder').stdout).id).toBe('coder');
+    expect(run('agent', 'brief', 'planner').stdout).toMatch(/You are acting as: Planner/);
+    expect(run('agent', 'show', 'ghost').status).toBe(1);
+  });
+
+  it('deleting an agent needs --yes', () => {
+    expect(run('agent', 'delete', 'writer').status).toBe(1);
+    expect(run('agent', 'delete', 'writer', '--yes').status).toBe(0);
+    expect(run('agent', 'list').stdout).not.toMatch(/\bwriter\b/);
+  });
+
+  it('audit --verify says the log is intact', () => {
+    expect(run('audit', '--verify').stdout).toMatch(/intact/);
+  });
+
+  it('scrub previews and changes nothing until --apply', () => {
+    const r = run('scrub');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/Nothing to mask|preview/i);
+  });
+
+  it('backup writes a backup that doctor then notices', () => {
+    expect(run('backup').status).toBe(0);
+    expect(run('doctor').stdout).toMatch(/Latest local backup is from today/);
   });
 });
 
-describe('isMainModule — works where `import.meta.url === file://${argv[1]}` does not', () => {
-  const run = (script) => execFileSync(process.execPath, [script], { encoding: 'utf8' }).trim();
-  // file:// URLs: bare absolute paths are not valid ESM specifiers on Windows
-  const body = `import { isMainModule } from ${JSON.stringify(pathToFileURL(path.join(ROOT, 'util.mjs')).href)};\nconsole.log(isMainModule(import.meta.url));`;
-
-  it('true for a script in a directory whose path contains spaces', () => {
-    const dir = path.join(TMP, 'dir with spaces');
-    fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, 'x.mjs'), body);
-    expect(run(path.join(dir, 'x.mjs'))).toBe('true');
-  });
-
-  it('true when started through a symlink (how npm installs bins)', () => {
-    if (process.platform === 'win32') return;
-    const real = path.join(TMP, 'real.mjs');
-    fs.writeFileSync(real, body);
-    const link = path.join(TMP, 'link.mjs');
-    fs.symlinkSync(real, link);
-    expect(run(link)).toBe('true');
-  });
-
-  it('false when the module is only imported', () => {
-    const target = path.join(TMP, 'imported-target.mjs');
-    fs.writeFileSync(target, body);
-    const importer = path.join(TMP, 'importer.mjs');
-    fs.writeFileSync(importer, `import ${JSON.stringify(pathToFileURL(target).href)};`);
-    expect(run(importer)).toBe('false');
-  });
-
-});
-
-describe('setup wizard', () => {
-  const wizard = (answers, rc) => {
-    const home = fs.mkdtempSync(path.join(TMP, 'wiz-'));
-    if (rc) fs.writeFileSync(path.join(home, '.memvaultrc.json'), JSON.stringify(rc));
-    const r = spawnSync(process.execPath, [path.join(ROOT, 'init.mjs')], {
-      env: { ...process.env, HOME: home, USERPROFILE: home, VAULT_ROOT: '' },
-      input: answers.join('\n') + '\n', encoding: 'utf8',
-    });
-    const cfgFile = path.join(home, '.memvaultrc.json');
-    return { ...r, home, cfg: fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : null };
-  };
-  // 1 vault path · 6 engines (git vscode system files browser clipboard) · git dir · gemini key · drive folder? · drive api? · bridges?
-  const ALL_DEFAULT = (vault) => [vault, '', '', '', '', '', '', '', '', '', '', ''];
-
-  it('works with piped answers and saves an owner-only config', () => {
-    const r = wizard(['', 'y', 'y', 'y', 'y', 'n', 'n', '', '', 'n', 'n', 'n']);
-    expect(r.status).toBe(0);
-    expect(r.cfg.sync.browserEnabled).toBe(false);
-    expect(r.cfg.sync.clipboardEnabled).toBe(false);
-    expect(r.stdout).toContain('@mrchartist/memvault');
-    if (process.platform !== 'win32') expect(fs.statSync(path.join(r.home, '.memvaultrc.json')).mode & 0o777).toBe(0o600);
-  });
-
-  it('expands "~" in the vault location instead of creating a folder named "~"', () => {
-    const r = wizard(['~/myvault', 'n', 'n', 'n', 'n', 'n', 'n', '', 'n', 'n', 'n']);
-    expect(r.cfg.vaultRoot).toBe(path.join(r.home, 'myvault'));
-    expect(fs.existsSync(path.join(r.home, 'myvault', 'db'))).toBe(true);
-  });
-
-  it('answering "n" really turns Drive API upload off, even if it was enabled before', () => {
-    const r = wizard(['', 'n', 'n', 'n', 'n', 'n', 'n', '', 'n', 'n', 'n'], {
-      storage: { gdriveApi: { enabled: true, clientId: 'x', clientSecret: 'y', refreshToken: 'z' } },
-    });
-    expect(r.cfg.storage.gdriveApi.enabled).toBe(false);
-    expect(r.cfg.storage.gdriveApi.clientId).toBe('x'); // credentials are kept, just disabled
-  });
-
-  it('fails loudly (non-zero, nothing saved) if its input ends early', () => {
-    const r = wizard(['only-one-answer']);
-    expect(r.status).not.toBe(0);
-    expect(r.stderr).toContain('nothing was saved');
-    expect(r.cfg).toBeNull();
+describe('opening the dashboard', () => {
+  it('keeps the key out of the browser\'s command line: it opens a private page that redirects', async () => {
+    const { makeOpenPage } = await import('../cli-tools.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault open '));
+    try {
+      const old = path.join(dir, 'open-0000.html');
+      fs.writeFileSync(old, 'stale');
+      const longAgo = new Date(Date.now() - 3600_000);
+      fs.utimesSync(old, longAgo, longAgo);
+      const file = makeOpenPage({ url: 'http://127.0.0.1:7799/#token=abc_DEF-123', dir });
+      expect(path.dirname(file)).toBe(dir);
+      expect(fs.readFileSync(file, 'utf8')).toContain('url=http://127.0.0.1:7799/#token=abc_DEF-123');
+      if (process.platform !== 'win32') expect(fs.statSync(file).mode & 0o077).toBe(0);
+      expect(fs.existsSync(old)).toBe(false); // an earlier page that was never cleaned up is removed
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

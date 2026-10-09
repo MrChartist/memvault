@@ -28,11 +28,11 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import { isMain } from "./is-main.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
-import { addItems } from "./db.mjs";
-import { isMainModule, getVersion } from "./util.mjs";
+import { ingest } from "./ingest.mjs";
 
 const CONNECT_TIMEOUT_MS = 20000;
 
@@ -78,36 +78,38 @@ export function addPreset(name) {
 
 // ─── Bridge connection ──────────────────────────────────────────────────────
 
+// A bridge is somebody else's program. It gets a small safe environment (PATH, HOME and the like),
+// the proxy and certificate settings that npx needs, and whatever the user lists for it under "env".
+// It does NOT get the rest of this process's environment, which can hold the backup passphrase,
+// the dashboard key or API keys for other services.
+const NETWORK_ENV = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "npm_config_registry", "NPM_CONFIG_REGISTRY"];
+
+export function bridgeEnv(bridge) {
+  const env = getDefaultEnvironment();
+  for (const k of NETWORK_ENV) if (process.env[k] !== undefined) env[k] = process.env[k];
+  return { ...env, ...(bridge.env || {}) };
+}
+
 /** Open an MCP client connection to a bridge. Caller must close() it. */
 export async function connectBridge(bridge) {
   if (!bridge?.command) throw new Error(`Bridge "${bridge?.name}" is missing a "command".`);
 
-  // Only a safe default environment (PATH, HOME, ...) plus the bridge's own "env"
-  // is passed on — never the whole of process.env, which may hold API keys that
-  // a third-party server has no business seeing.
   const transport = new StdioClientTransport({
     command: bridge.command,
     args: bridge.args || [],
-    env: bridge.env || undefined,
+    env: bridgeEnv(bridge),
   });
 
   const client = new Client(
-    { name: "memvault-bridge", version: getVersion() },
+    { name: "memvault-bridge", version: "2.1.0" },
     { capabilities: {} }
   );
 
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error("connection timed out")), CONNECT_TIMEOUT_MS);
-  });
-  try {
-    await Promise.race([client.connect(transport), timeout]);
-  } catch (e) {
-    await client.close().catch(() => {});
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
+  const connect = client.connect(transport);
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("connection timed out")), CONNECT_TIMEOUT_MS)
+  );
+  await Promise.race([connect, timeout]);
   return { client, transport };
 }
 
@@ -150,9 +152,11 @@ function extractText(result) {
 
 // ─── Ingestion into the vault ───────────────────────────────────────────────
 
-/** Save one pulled item. The title is stable per bridge+tool/resource, so every sync replaces the previous copy. */
-function ingest(entry) {
-  addItems([{ ...entry, upsert: true }]);
+// Bridged content comes from OTHER tools' servers, so it is untrusted: ingest() masks
+// secrets and writes it as ordinary shared memory tagged with its source.
+async function ingestEntry(entry) {
+  ingest(entry, { actor: `bridge:${entry.source || "mcp"}` });
+  return true;
 }
 
 /**
@@ -174,7 +178,7 @@ export async function syncBridge(bridge) {
       });
       const text = extractText(result);
       if (text.trim()) {
-        ingest({
+        await ingestEntry({
           type: "conversation",
           source: `mcp:${bridge.name}`,
           title: `[${bridge.name}] ${bridge.importTool}`,
@@ -191,11 +195,10 @@ export async function syncBridge(bridge) {
           const read = await client.readResource({ uri: r.uri });
           const text = extractText(read);
           if (!text.trim()) continue;
-          ingest({
+          await ingestEntry({
             type: "conversation",
             source: `mcp:${bridge.name}`,
             title: `[${bridge.name}] ${r.name || r.uri}`,
-            file_path: r.uri, // distinguishes two resources that share a display name
             content: text,
             tags: `mcp-bridge,${bridge.name}`,
             created_at: now,
@@ -220,7 +223,7 @@ export function enabledBridges() {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (isMainModule(import.meta.url)) {
+if (isMain(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
   const bridges = enabledBridges();
 
@@ -279,7 +282,7 @@ if (isMainModule(import.meta.url)) {
       const args = jsonArgs ? JSON.parse(jsonArgs) : {};
       console.log(await callBridgeTool(bridge, tool, args));
     } else {
-      console.error(`Unknown command: ${cmd}\nUsage: memvault bridge [list|presets|add <name>|sync [name]|call <name> <tool> '<json>']`);
+      console.error(`Unknown command: ${cmd}\nUsage: node mcp-bridge.mjs [list|sync|call]`);
       process.exit(1);
     }
   };

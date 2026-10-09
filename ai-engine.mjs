@@ -8,9 +8,8 @@
  *  - Semantic search re-ranking
  *  - Weekly digest generation
  *
- * Privacy: Uses YOUR API key. Nothing is sent anywhere unless you add a key;
- * when you do, the entry text needed for a request (titles + snippets) is sent
- * to Google's Gemini API. Fully optional.
+ * Privacy: Uses YOUR API key. No data leaves your machine except
+ * to your own Gemini API calls. Fully optional.
  * ═══════════════════════════════════════════════════════════════════
  */
 
@@ -57,27 +56,26 @@ async function callGemini(prompt, options = {}) {
   }
 
   const model = options.model || getModel();
-  // The key goes in a header, not the URL, so it cannot leak into logs or error text.
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{
       parts: [{ text: prompt }],
     }],
     generationConfig: {
-      temperature: options.temperature ?? 0.7,
+      temperature: options.temperature || 0.7,
       maxOutputTokens: options.maxTokens || 2048,
     },
   };
 
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 
   if (!res.ok) {
-    const err = (await res.text()).slice(0, 500);
+    const err = await res.text();
     throw new Error(`Gemini API error (${res.status}): ${err}`);
   }
 

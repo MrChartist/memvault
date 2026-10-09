@@ -12,37 +12,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import { USER_PROJECTS } from "./config.mjs";
-import { escapeRegExp } from "./util.mjs";
-
-// ─── Keyword extraction ─────────────────────────────────────────────────────
-
-const STOPWORDS = new Set((
-  "a an the and or but if of to in on at by for with about from into over after before between is are was were be been being " +
-  "do does did doing done have has had i me my we our you your he she it its they them their this that these those what which " +
-  "who whom when where why how can could should would will shall may might must not no yes so as than then there here just also " +
-  "any some all more most other such only own same too very tell show find get give let make need want know think like please " +
-  "recent recently latest last"
-).split(/\s+/));
-
-/**
- * Pull the meaningful words out of a natural-language topic or question.
- *   "what did I decide about the database schema" → ["decide", "database", "schema"]
- * Short symbolic tokens ("c++", "c#") are kept. If nothing survives (e.g. the topic
- * is just "Go"), the whole text is used as one literal phrase instead of becoming an
- * empty — and therefore match-everything — query.
- */
-export function extractKeywords(topic) {
-  const text = String(topic || "").trim();
-  const keywords = [];
-  for (const raw of text.split(/\s+/)) {
-    const token = raw.replace(/^[^\w#+]+|[^\w#+]+$/g, "").toLowerCase();
-    if (!token || STOPWORDS.has(token)) continue;
-    const symbolic = /[^a-z0-9]/.test(token);
-    if ((token.length > 2 || (symbolic && token.length >= 2)) && !keywords.includes(token)) keywords.push(token);
-  }
-  return keywords.length ? keywords : text ? [text] : [];
-}
+import { PROJECTS } from "./config.mjs";
 
 // ─── Auto-Tagging ───────────────────────────────────────────────────────────
 
@@ -53,19 +23,19 @@ const TECH_PATTERNS = [
   { pattern: /\b(angular|ng-|rxjs)\b/i, tag: "angular" },
   { pattern: /\b(svelte|sveltekit)\b/i, tag: "svelte" },
   { pattern: /\b(tailwind|css|scss|styled-components)\b/i, tag: "css" },
-  { pattern: /\b(html5?|dom|web\s?component)\b/i, tag: "html" },
+  { pattern: /\b(html5?|web\s?components?)\b/i, tag: "html" },
   // Backend
   { pattern: /\b(node\.?js|express|fastify|koa)\b/i, tag: "nodejs" },
   { pattern: /\b(python|django|flask|fastapi)\b/i, tag: "python" },
   { pattern: /\b(java|spring|maven|gradle)\b/i, tag: "java" },
   { pattern: /\b(rust|cargo|tokio)\b/i, tag: "rust" },
-  { pattern: /\b(golang|goroutines?|go\s+(mod|build|test|run|get|install))\b/i, tag: "golang" },
+  { pattern: /\b(golang|goroutine)s?\b/i, tag: "golang" },
   // Database
   { pattern: /\b(sql|sqlite|postgres|mysql|supabase)\b/i, tag: "database" },
   { pattern: /\b(mongodb|mongoose|redis)\b/i, tag: "nosql" },
   // DevOps
   { pattern: /\b(docker|kubernetes|k8s|helm)\b/i, tag: "devops" },
-  { pattern: /\b(aws|azure|gcp|cloud)\b/i, tag: "cloud" },
+  { pattern: /\b(aws|azure|gcp|cloud\s(?:computing|hosting|storage|provider))\b/i, tag: "cloud" },
   { pattern: /\b(ci\/cd|github\s?actions|jenkins)\b/i, tag: "cicd" },
   // AI/ML
   { pattern: /\b(ai|ml|llm|gpt|claude|gemini|openai|anthropic)\b/i, tag: "ai" },
@@ -74,21 +44,27 @@ const TECH_PATTERNS = [
   { pattern: /\b(git|github|gitlab)\b/i, tag: "git" },
   { pattern: /\b(vscode|vs\s?code|cursor|copilot)\b/i, tag: "ide" },
   { pattern: /\b(npm|yarn|pnpm|bun)\b/i, tag: "packagemgr" },
-  // Trading / finance
-  { pattern: /\b(trading|candlestick|nifty|sensex|nse|bse)\b/i, tag: "trading" },
-  { pattern: /\b(fii|dii|sebi|portfolio)\b/i, tag: "finance" },
+  // Money & markets (any market, any country)
+  { pattern: /\b(trading|trader|candlesticks?|stocks?|shares|equity|nifty|sensex|nasdaq|nyse|s&p|forex|crypto|bitcoin|etf|options|futures)\b/i, tag: "trading" },
+  { pattern: /\b(invest(?:ing|ment|ments|or)?|portfolio|dividends?|mutual\sfunds?|retirement|savings?|budget|loan|mortgage|tax(?:es)?)\b/i, tag: "finance" },
 ];
 
 const TOPIC_PATTERNS = [
-  { pattern: /\b(bug|fix|error|crash|debug|issue)\b/i, tag: "bugfix" },
+  { pattern: /\b(bugs?|bugfix|crash(?:es|ed)?|debug(?:ging)?|exception|stack\strace|regression)\b/i, tag: "bugfix" },
   { pattern: /\b(deploy|hosting|hostinger|vercel|netlify)\b/i, tag: "deployment" },
   { pattern: /\b(design|ui|ux|layout|responsive)\b/i, tag: "design" },
-  { pattern: /\b(auth|login|signup|password|session)\b/i, tag: "auth" },
-  { pattern: /\b(api|endpoint|rest|graphql)\b/i, tag: "api" },
+  { pattern: /\b(auth|oauth|login|sign-?up|password|2fa|sso)\b/i, tag: "auth" },
+  { pattern: /\b(api|endpoints?|rest\sapi|restful|graphql)\b/i, tag: "api" },
   { pattern: /\b(test|jest|mocha|cypress|playwright)\b/i, tag: "testing" },
   { pattern: /\b(refactor|cleanup|optimize|performance)\b/i, tag: "refactor" },
   { pattern: /\b(security|encrypt|ssl|cors|xss)\b/i, tag: "security" },
-  { pattern: /\b(docs|documentation|readme|guide)\b/i, tag: "docs" },
+  { pattern: /\b(docs|documentation|readme)\b/i, tag: "docs" },
+  // Everyday topics, so the vault is useful beyond code
+  { pattern: /\b(study|studying|exam|homework|lesson|course|revision|syllabus|quiz|learn(?:ing)?)\b/i, tag: "learning" },
+  { pattern: /\b(essay|draft|blog|article|newsletter|manuscript|proofread|chapter)\b/i, tag: "writing" },
+  { pattern: /\b(plan|schedule|goals?|deadline|to-?do|checklist|routine|milestone)\b/i, tag: "planning" },
+  { pattern: /\b(travel|trip|itinerary|flight|hotel|visa)\b/i, tag: "travel" },
+  { pattern: /\b(recipe|meal\splan|cooking|grocery|groceries)\b/i, tag: "food" },
 ];
 
 /**
@@ -96,6 +72,22 @@ const TOPIC_PATTERNS = [
  * @param {string} text - Title + content to analyze
  * @returns {string[]} Array of detected tags
  */
+const SHORT_STOP = new Set(["an", "as", "at", "be", "by", "do", "if", "in", "is", "it", "me", "my", "of", "on", "or", "so", "to", "up", "us", "we"]);
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/**
+ * The words worth searching for in a question. Two-letter words count ("AI", "Go") except very common ones,
+ * and a Chinese, Japanese or Korean word counts however short (those scripts have no spaces and short words).
+ */
+export function searchWords(text, max = 8) {
+  const out = [];
+  for (const w of String(text).toLowerCase().split(/[^\p{L}\p{N}_@:.+#-]+/u)) {
+    if (!w) continue;
+    if (w.length > 2 || (w.length === 2 && !SHORT_STOP.has(w)) || CJK.test(w)) out.push(w);
+  }
+  return [...new Set(out)].slice(0, max);
+}
+
 export function autoTag(text) {
   if (!text) return [];
   const tags = new Set();
@@ -132,7 +124,7 @@ export function mergeAutoTags(existingTags, text) {
 export function scoreRelevance(entry, query) {
   let score = 0;
   const queryLower = query.toLowerCase();
-  const keywords = queryLower.split(/\s+/).filter(w => w.length > 2);
+  const keywords = searchWords(queryLower, 12);
 
   const title = (entry.title || "").toLowerCase();
   const content = (entry.content || entry.snippet || "").toLowerCase();
@@ -155,7 +147,8 @@ export function scoreRelevance(entry, query) {
   for (const kw of keywords) {
     if (content.includes(kw)) score += 10;
     // Count occurrences (capped at 5)
-    const count = Math.min((content.match(new RegExp(escapeRegExp(kw), "g")) || []).length, 5);
+    // Escape: search words are user input ("C++", "price [action") and must not be parsed as a regex.
+    const count = Math.min((content.match(new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")) || []).length, 5);
     score += count * 2;
   }
 
@@ -192,36 +185,25 @@ export function rankByRelevance(entries, query) {
 // ─── Project Detection ──────────────────────────────────────────────────────
 
 /**
- * Projects come from the "projects" array in ~/.memvaultrc.json:
- *   { "name": "My App", "patterns": ["my-?app", "myapp\\.com"], "tags": "myapp,web" }
- * `patterns` are case-insensitive regular expressions (strings).
+ * Projects are YOURS: define them in ~/.memvaultrc.json and notes that mention them are tagged automatically.
+ *   "projects": [ { "name": "Garden Shed", "match": ["shed", "garden build"], "tags": "garden,diy" } ]
+ * `match` entries are plain words or phrases (case-insensitive, whole words). Nothing is assumed by default.
  */
-export function compileProjects(projects = []) {
-  const compiled = [];
-  for (const p of projects) {
-    if (!p || typeof p.name !== "string" || !Array.isArray(p.patterns)) continue;
-    const patterns = [];
-    for (const src of p.patterns) {
-      try { patterns.push(new RegExp(src, "i")); } catch { /* skip an invalid pattern */ }
-    }
-    if (patterns.length) compiled.push({ name: p.name, tags: p.tags || "", patterns });
-  }
-  return compiled;
-}
-
-const DEFAULT_PROJECTS = compileProjects(USER_PROJECTS);
+const esc = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const slug = (n) => String(n).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /**
- * Detect a configured project from text
+ * Detect which of the user's projects a text is about
  * @param {string} text - Text to analyze
- * @param {Array} [projects] - compiled projects (defaults to the user's config)
+ * @param {Array<{name:string, match:string[], tags?:string}>} [projects] - defaults to the configured list
  * @returns {{name: string, tags: string} | null}
  */
-export function detectProject(text, projects = DEFAULT_PROJECTS) {
-  if (!text) return null;
-  for (const project of projects) {
-    for (const pattern of project.patterns) {
-      if (pattern.test(text)) return { name: project.name, tags: project.tags };
+export function detectProject(text, projects = PROJECTS) {
+  if (!text || !projects?.length) return null;
+  for (const p of projects) {
+    const words = (p.match?.length ? p.match : [p.name]).filter(Boolean);
+    if (words.some((w) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(String(w))}(?![\\p{L}\\p{N}])`, "iu").test(text))) {
+      return { name: p.name, tags: p.tags || slug(p.name) };
     }
   }
   return null;
@@ -231,13 +213,12 @@ export function detectProject(text, projects = DEFAULT_PROJECTS) {
 
 /**
  * Generate a daily digest summary from entries
- * @param {Object[]} entries - The day's vault entries
- * @param {Date} [day] - The day being summarised (default: today)
+ * @param {Object[]} entries - Today's vault entries
  * @returns {string} Formatted digest markdown
  */
-export function generateDigest(entries, day = new Date()) {
+export function generateDigest(entries) {
   if (!entries || entries.length === 0) {
-    return "No activity recorded for that day.";
+    return "No activity recorded today yet.";
   }
 
   // Group by type
@@ -252,7 +233,7 @@ export function generateDigest(entries, day = new Date()) {
     diary: "📔", conversation: "💬", worklog: "🛠️", file: "📎",
   };
 
-  let digest = `## 📋 Daily Digest — ${day.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}\n\n`;
+  let digest = `## 📋 Daily Digest — ${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}\n\n`;
   digest += `**Total activity**: ${entries.length} entries\n\n`;
 
   for (const [type, items] of Object.entries(grouped)) {
@@ -261,7 +242,7 @@ export function generateDigest(entries, day = new Date()) {
 
     for (const item of items.slice(0, 8)) {
       const time = item.created_at
-        ? new Date(item.created_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })
+        ? new Date(item.created_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
         : "?";
       const title = item.title || "Untitled";
       const snippet = (item.content || item.snippet || "").slice(0, 100).replace(/\n/g, " ");
@@ -290,7 +271,7 @@ export function generateDigest(entries, day = new Date()) {
   const allText = entries.map(e => `${e.title || ""} ${e.content || ""} ${e.tags || ""}`).join(" ");
   const techTags = autoTag(allText);
   if (techTags.length > 0) {
-    digest += `### 🏷️ Tech Stack\n${techTags.map(t => `\`${t}\``).join(", ")}\n`;
+    digest += `### 🏷️ Tech Stack Today\n${techTags.map(t => `\`${t}\``).join(", ")}\n`;
   }
 
   return digest;
@@ -330,10 +311,6 @@ export function deduplicateEntries(entries, threshold = 0.6) {
     let isDupe = false;
 
     for (const existing of unique) {
-      // Entries of one kind (commits, file snapshots...) share a lot of boilerplate
-      // in their body, so different titles mean different entries no matter how
-      // similar the bodies look.
-      if (entry.title && existing.title && jaccardSimilarity(entry.title, existing.title) <= 0.5) continue;
       const existingText = `${existing.title || ""} ${existing.content || existing.snippet || ""}`;
       if (jaccardSimilarity(entryText, existingText) > threshold) {
         isDupe = true;
@@ -353,19 +330,13 @@ export function deduplicateEntries(entries, threshold = 0.6) {
 const seenEntryIds = new Set();
 
 /**
- * Return up to `limit` entries not yet seen this session, and mark exactly those as seen
+ * Mark entries as seen and filter out already-seen ones
  * @param {Object[]} entries - Array with `id` field
- * @param {number} [limit] - Maximum entries to return (default: all unseen)
- * @returns {Object[]} Entries not yet seen this session
+ * @returns {Object[]} Only entries not yet seen this session
  */
-export function filterUnseen(entries, limit = Infinity) {
-  const unseen = [];
-  for (const e of entries) {
-    if (unseen.length >= limit) break;
-    if (seenEntryIds.has(e.id)) continue;
-    unseen.push(e);
-    seenEntryIds.add(e.id); // only entries that are actually returned count as "seen"
-  }
+export function filterUnseen(entries) {
+  const unseen = entries.filter(e => !seenEntryIds.has(e.id));
+  for (const e of unseen) seenEntryIds.add(e.id);
   return unseen;
 }
 

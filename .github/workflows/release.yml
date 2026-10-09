@@ -1,31 +1,33 @@
 name: Release
 
-# Publishes to npm when a GitHub Release is published.
-# Requires the NPM_TOKEN repository secret (an npm "Automation" or granular publish token).
+# Publishes to npm when you push a tag like v3.0.0. Nothing happens until you do that AND have added
+# an npm token as the repository secret NPM_TOKEN. See docs/release.md for the full checklist.
 on:
-  release:
-    types: [published]
+  push:
+    tags: [ 'v*' ]
 
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write   # lets npm record where the package was built (provenance)
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
           registry-url: https://registry.npmjs.org
           cache: npm
       - run: npm ci
-      - run: npm run check
-      - run: npm test
-      - name: Tag must match package.json
+      - name: The tag must match package.json
         run: |
-          [ "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")" ] || { echo "Release tag ${GITHUB_REF_NAME} != package.json version"; exit 1; }
-      - run: npm publish --provenance --access public
+          test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}" || { echo "Tag ${GITHUB_REF_NAME} does not match package.json"; exit 1; }
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

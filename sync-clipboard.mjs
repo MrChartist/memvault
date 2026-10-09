@@ -1,174 +1,177 @@
 #!/usr/bin/env node
 /**
- * sync-clipboard.mjs — MemVault Clipboard Capture   (OFF by default)
+ * sync-clipboard.mjs — MemVault Clipboard Capture
  * ─────────────────────────────────────────────────────────────────────────────
- * Polls the clipboard and saves interesting text to the vault. Runs as a
- * background daemon, so it is never started automatically by `memvault sync`.
- *
- * The clipboard is where passwords and tokens pass through, so anything that
- * looks like a secret (API keys, private keys, JWTs, card numbers, long
- * random-looking strings, "password=..." lines) is skipped and never stored.
- * This filter is best-effort — keep the daemon off while handling secrets.
- *
- * Needs: Windows (PowerShell), macOS (pbpaste) or Linux (wl-paste, xclip or xsel).
+ * Captures clipboard content periodically and saves interesting content to vault.
+ * Runs as a background polling daemon.
  *
  * Usage:
  *   node sync-clipboard.mjs              (start capturing, default 10s interval)
  *   node sync-clipboard.mjs --interval 5 (capture every 5 seconds)
  *   node sync-clipboard.mjs --once       (capture once and exit)
- *   node sync-clipboard.mjs --dry-run    (preview, nothing is saved)
+ *   node sync-clipboard.mjs --dry-run    (preview, no posts)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { execFileSync } from "child_process";
+import { execSync } from "child_process";
 import crypto from "crypto";
-import { flagNumber, saveEntries } from "./sync-lib.mjs";
-import { isMainModule } from "./util.mjs";
 
-const MIN_LENGTH = 20;   // skip tiny copies
-const MAX_LENGTH = 5000; // skip huge pastes
+import { ingest } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("clipboardEnabled", "Saving what you copy");
+const args = process.argv.slice(2);
+const DRY_RUN = args.includes("--dry-run");
+const ONCE = args.includes("--once");
 
-// ─── Sensitive-content filter ───────────────────────────────────────────────
+const intervalIdx = args.indexOf("--interval");
+const INTERVAL_SEC = intervalIdx !== -1 ? Number(args[intervalIdx + 1]) || 10 : 10;
 
-const SECRET_PATTERNS = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\bAKIA[0-9A-Z]{16}\b/,                       // AWS access key id
-  /\bgh[pousr]_[A-Za-z0-9]{30,}\b/,             // GitHub tokens
-  /\bgithub_pat_[A-Za-z0-9_]{30,}\b/,
-  /\bsk-[A-Za-z0-9_-]{20,}\b/,                  // OpenAI / Anthropic style keys
-  /\bAIza[0-9A-Za-z_-]{30,}\b/,                 // Google API key
-  /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/,           // Slack
-  /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\./, // JWT
-  /\b(pass(word|wd)?|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret)\b\s*[:=]\s*\S{6,}/i,
-  /\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{16,}/i,
-];
+// Minimum content length to save (skip tiny copies)
+const MIN_LENGTH = 20;
+// Maximum content length to save
+const MAX_LENGTH = 5000;
 
-function luhnValid(digits) {
-  let sum = 0;
-  for (let i = 0; i < digits.length; i++) {
-    let d = Number(digits[digits.length - 1 - i]);
-    if (i % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
-    sum += d;
-  }
-  return sum % 10 === 0;
-}
+// Track seen content to avoid duplicates
+const seenHashes = new Set();
+let captureCount = 0;
 
-/** Best-effort check: does this text look like a credential or other secret? */
-export function looksSensitive(text) {
-  if (SECRET_PATTERNS.some((re) => re.test(text))) return true;
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-  for (const m of text.matchAll(/\b(?:\d[ -]?){13,19}\b/g)) {
-    const digits = m[0].replace(/\D/g, "");
-    if (digits.length >= 13 && digits.length <= 19 && luhnValid(digits)) return true; // payment card
-  }
-
-  // A single long token with no spaces that is not a URL or path is probably a key/hash.
-  const t = text.trim();
-  if (!/\s/.test(t) && t.length >= 24 && !/^(https?:|www\.)/i.test(t) && !/[\\/]/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) {
-    return true;
-  }
-  return false;
-}
-
-// ─── Clipboard access ───────────────────────────────────────────────────────
-
-const LINUX_READERS = [
-  ["wl-paste", ["--no-newline"]],
-  ["xclip", ["-selection", "clipboard", "-o"]],
-  ["xsel", ["--clipboard", "--output"]],
-];
-let linuxReader = null; // remember which one works
-
-function run(cmd, args) {
-  return execFileSync(cmd, args, { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
-}
-
-export function getClipboard() {
+function getClipboard() {
   try {
-    if (process.platform === "win32") return run("powershell", ["-NoProfile", "-Command", "Get-Clipboard -Raw"]).trim();
-    if (process.platform === "darwin") return run("pbpaste", []).trim();
-
-    if (linuxReader) return run(...linuxReader).trim();
-    for (const reader of LINUX_READERS) {
-      try {
-        const out = run(...reader).trim();
-        linuxReader = reader;
-        return out;
-      } catch { /* try the next tool */ }
+    if (process.platform === "win32") {
+      return execSync("powershell -NoProfile -command Get-Clipboard", {
+        windowsHide: true,
+        encoding: "utf8",
+        timeout: 5000,
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
+    } else if (process.platform === "darwin") {
+      return execSync("pbpaste", { encoding: "utf8", timeout: 5000 }).trim();
+    } else {
+      // Linux: try the common tools in turn (X11: xclip, xsel; Wayland: wl-paste).
+      for (const cmd of ["xclip -selection clipboard -o", "xsel --clipboard --output", "wl-paste --no-newline"]) {
+        try { return execSync(cmd, { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { /* try the next one */ }
+      }
+      return "";
     }
-    return "";
   } catch {
     return "";
   }
 }
 
-// ─── Classification ─────────────────────────────────────────────────────────
+function hashContent(text) {
+  return crypto.createHash("md5").update(text).digest("hex");
+}
 
-export function classifyContent(text) {
+function classifyContent(text) {
+  // Detect content type
   if (/^(https?:\/\/|www\.)/i.test(text)) return { type: "url", tags: "clipboard,url" };
   if (/^(import |const |let |var |function |class |def |from )/m.test(text)) return { type: "code", tags: "clipboard,code" };
   if (/\{[\s\S]*\}/.test(text) && text.includes(":")) return { type: "json", tags: "clipboard,json,data" };
-  if (/\.(js|ts|py|mjs|css|html|json|md)\b/.test(text)) return { type: "path", tags: "clipboard,path" };
+  if (/^[A-Za-z0-9+/=]{20,}$/.test(text.replace(/\s/g, ""))) return { type: "encoded", tags: "clipboard,encoded" };
+  if (/\.(js|ts|py|mjs|css|html|json|md)/.test(text)) return { type: "path", tags: "clipboard,path" };
   if (text.split("\n").length > 3) return { type: "multiline", tags: "clipboard,text,long" };
   return { type: "text", tags: "clipboard,text" };
 }
 
-const TITLE_PREFIX = {
-  url: "🔗 URL", code: "💻 Code Snippet", json: "📋 JSON Data",
-  path: "📁 File Path", multiline: "📝 Text Block", text: "📋 Clipboard",
-};
-
 function generateTitle(text, classification) {
-  const preview = text.replace(/\s+/g, " ").slice(0, 60);
-  return `${TITLE_PREFIX[classification.type] || "📋 Clipboard"}: ${preview}${text.length > 60 ? "..." : ""}`;
+  const prefix = {
+    url: "🔗 URL",
+    code: "💻 Code Snippet",
+    json: "📋 JSON Data",
+    encoded: "🔐 Encoded Data",
+    path: "📁 File Path",
+    multiline: "📝 Text Block",
+    text: "📋 Clipboard",
+  }[classification.type] || "📋 Clipboard";
+
+  const preview = text.replace(/\n/g, " ").slice(0, 60);
+  return `${prefix}: ${preview}${text.length > 60 ? "..." : ""}`;
+}
+
+async function postToVault(entry) {
+  if (DRY_RUN) {
+    console.log(`  [DRY] ${entry.title}`);
+    return true;
+  }
+  try {
+    // Clipboards are where passwords get copied — ingest() masks secrets before storing.
+    ingest(entry, { actor: "clipboard" });
+    return true;
+  } catch (e) {
+    console.error(`  ⚠️ Could not store clip: ${e.message}`);
+    return false;
+  }
 }
 
 // ─── Capture ────────────────────────────────────────────────────────────────
 
-const seenHashes = new Set();
-let captureCount = 0;
-
-export function captureClipboard({ dryRun = false } = {}) {
+async function captureClipboard() {
   const text = getClipboard();
-  if (!text || text.length < MIN_LENGTH || text.length > MAX_LENGTH) return false;
 
-  const hash = crypto.createHash("sha1").update(text).digest("hex");
-  if (seenHashes.has(hash)) return false;
+  // Skip empty, too short, or too long
+  if (!text || text.length < MIN_LENGTH || text.length > MAX_LENGTH) return;
+
+  // Skip duplicates
+  const hash = hashContent(text);
+  if (seenHashes.has(hash)) return;
   seenHashes.add(hash);
-  if (seenHashes.size > 500) for (const h of [...seenHashes].slice(0, 100)) seenHashes.delete(h);
 
-  if (looksSensitive(text)) return false; // never store likely secrets
+  // Keep set bounded (max 500 recent entries)
+  if (seenHashes.size > 500) {
+    const arr = [...seenHashes];
+    for (let i = 0; i < 100; i++) seenHashes.delete(arr[i]);
+  }
 
   const classification = classifyContent(text);
   const title = generateTitle(text, classification);
-  saveEntries([{ type: "diary", source: "clipboard", title, content: text, tags: classification.tags }], { dryRun });
 
-  captureCount++;
-  console.log(`  ✅ [${new Date().toLocaleTimeString("en-IN")}] Captured: ${title.slice(0, 70)}`);
-  return true;
+  const synced = await postToVault({
+    type: "diary",
+    source: "clipboard",
+    title,
+    content: text.slice(0, MAX_LENGTH),
+    tags: classification.tags,
+  });
+
+  if (synced) {
+    captureCount++;
+    const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    console.log(`  ✅ [${time}] Captured: ${title.slice(0, 70)}`);
+  }
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-export async function main(args = process.argv.slice(2)) {
-  const dryRun = args.includes("--dry-run");
-  const once = args.includes("--once");
-  const intervalSec = flagNumber(args, "--interval", 10);
+async function main() {
+  console.log("╔══════════════════════════════════════╗");
+  console.log("║  Clipboard → MemVault Sync           ║");
+  console.log(`║  Interval: ${String(INTERVAL_SEC).padEnd(3)}s | ${DRY_RUN ? "DRY RUN" : (ONCE ? "ONCE   " : "LIVE   ")}              ║`);
+  console.log("╚══════════════════════════════════════╝\n");
 
-  captureClipboard({ dryRun });
-  if (once) {
-    console.log(`Done. Captured: ${captureCount} entries.`);
+
+  if (ONCE) {
+    await captureClipboard();
+    console.log(`\nDone. Captured: ${captureCount} entries.`);
     return;
   }
 
-  console.log(`📋 Monitoring clipboard every ${intervalSec}s... (Ctrl+C to stop)\n`);
-  setInterval(() => captureClipboard({ dryRun }), intervalSec * 1000);
+  console.log(`📋 Monitoring clipboard every ${INTERVAL_SEC}s... (Ctrl+C to stop)\n`);
+
+  // Initial capture
+  await captureClipboard();
+
+  // Poll
+  setInterval(captureClipboard, INTERVAL_SEC * 1000);
+
+  // Graceful shutdown
   process.on("SIGINT", () => {
-    console.log(`\n✅ Total captured: ${captureCount} entries`);
+    console.log(`\n\n═══════════════════════════════════════`);
+    console.log(`✅ Total captured: ${captureCount} entries`);
+    console.log(`═══════════════════════════════════════\n`);
     process.exit(0);
   });
 }
 
-if (isMainModule(import.meta.url)) {
-  main().catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
-}
+main().catch(console.error);
