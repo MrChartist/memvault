@@ -96,6 +96,16 @@ function columnNames(db, table) {
 export function migrate(db) {
   db.run(BASE_SCHEMA);
 
+  // A file written by a newer MemVault may have changed shape. Opening it here and stamping our older
+  // version on it would hide that, so stop and say what to do.
+  const stamped = Number(rows(db, "SELECT value FROM meta WHERE key = 'schema_version'")[0]?.value || 0);
+  if (stamped > SCHEMA_VERSION) {
+    throw new Error(
+      `This vault was made by a newer version of MemVault (data version ${stamped}; this one understands ${SCHEMA_VERSION}). ` +
+      "Update MemVault instead of opening it with this older copy. Nothing was changed."
+    );
+  }
+
   const cols = columnNames(db, "items");
   if (!cols.includes("agent_id")) db.run("ALTER TABLE items ADD COLUMN agent_id TEXT");
   if (!cols.includes("scope")) {
@@ -127,6 +137,15 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   tighten(root, 0o700);
   tighten(dir, 0o700);
+
+  // Temporary files from a write that crashed halfway are never needed again; a recent one may belong to a live writer.
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (!/^index\.sqlite\.\d+(?:\.restore)?\.tmp$/.test(f)) continue;
+      const full = path.join(dir, f);
+      if (Date.now() - fs.statSync(full).mtimeMs > 10 * 60_000) fs.rmSync(full, { force: true });
+    }
+  } catch { /* best effort */ }
 
   const lock = new FileLock(`${dbPath}.lock`);
   const scoped = !!scope;
@@ -218,7 +237,7 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
    * When nobody else has written since we last loaded (the common, single-writer
    * case) the copy we already hold IS the freshest — skip the full re-parse.
    */
-  const write = (fn) => {
+  const writeOnce = (fn) => {
     lock.acquire();
     try {
       const reuse = !scoped && read !== null && sig !== null && sig === signature();
@@ -233,6 +252,14 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
         if (!reuse) fresh.close();
         throw e;
       }
+      // If this process was paused so long that another writer took the lock over, our copy is out of date:
+      // publishing it now would erase their write. Throw it away and start again from the file on disk.
+      if (!lock.holds()) {
+        if (reuse) { read.close(); read = null; sig = null; } else fresh.close();
+        const lost = new Error("MemVault: the database lock was taken over during a write; retrying.");
+        lost.code = "LOCK_LOST";
+        throw lost;
+      }
       persist(fresh);
       if (reuse) {
         sig = signature();
@@ -243,6 +270,16 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
       return result;
     } finally {
       lock.release();
+    }
+  };
+
+  const write = (fn) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return writeOnce(fn);
+      } catch (e) {
+        if (e.code !== "LOCK_LOST" || attempt >= 3) throw e;
+      }
     }
   };
 
