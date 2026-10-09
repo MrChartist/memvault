@@ -1,4 +1,7 @@
 // server.mjs — MemVault API & Web UI server
+//
+// Listens on 127.0.0.1 only by default and has no login of its own: see
+// security.mjs and SECURITY.md before exposing it to any network.
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
@@ -6,51 +9,15 @@ import { fileURLToPath } from "url";
 import express from "express";
 import multer from "multer";
 import { z } from "zod";
-import initSqlJs from "sql.js";
-import { VAULT_ROOT, PORT } from "./config.mjs";
+import { VAULT_ROOT, PORT, HOST, SERVER_CONFIG } from "./config.mjs";
+import { DB_PATH, ITEM_TYPES, addItems, searchItems, queryAll, queryOne, run, getStats } from "./db.mjs";
+import { SENTINEL_ID, authenticate, decrypt, encrypt } from "./secrets.mjs";
+import { createSecurityMiddleware, createAttemptLimiter, isLoopbackAddress } from "./security.mjs";
+import { isMainModule, isoDate, clampInt, getVersion } from "./util.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// VAULT_ROOT and PORT come from config.mjs so the web UI, the MCP server, and the
-// sync engines all read and write the SAME vault. Override via ~/.memvaultrc.json
-// or the VAULT_ROOT / PORT env vars.
-const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
-
 const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
-
-ensureDir(path.join(VAULT_ROOT, "db"));
-ensureDir(path.join(VAULT_ROOT, "entries"));
-ensureDir(path.join(VAULT_ROOT, "conversations"));
-ensureDir(path.join(VAULT_ROOT, "worklogs"));
-ensureDir(path.join(VAULT_ROOT, "files"));
-
-const app = express();
-app.use(express.json({ limit: "20mb" }));
-
-// CORS — allow browser requests from any local origin
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "content-type,authorization");
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-
-// Serve the diary web UI
-app.use(express.static(path.join(__dirname, "public")));
-
-const upload = multer({
-  dest: path.join(VAULT_ROOT, "files"),
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
-});
-
-function isoDate() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function safeSlug(s) {
   return String(s)
@@ -60,395 +27,257 @@ function safeSlug(s) {
     .slice(0, 80) || "item";
 }
 
-const Sql = await initSqlJs();
-let db;
-
-function loadDb() {
-  if (fs.existsSync(DB_PATH)) {
-    const filebuf = fs.readFileSync(DB_PATH);
-    db = new Sql.Database(filebuf);
-  } else {
-    db = new Sql.Database();
-  }
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY,
-      type TEXT NOT NULL,              -- diary | conversation | worklog | file
-      source TEXT,                     -- chatgpt | openclaw | antigravity | manual
-      title TEXT,
-      content TEXT,
-      file_path TEXT,
-      tags TEXT,                       -- comma-separated
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
-    CREATE INDEX IF NOT EXISTS idx_items_created ON items(created_at);
-  `);
-
-  // Encrypted secrets table — ciphertext never stored in plaintext
-  db.run(`
-    CREATE TABLE IF NOT EXISTS secrets (
-      id TEXT PRIMARY KEY,
-      category TEXT NOT NULL,   -- apikey | password | userid | payment | phone | custom
-      label TEXT NOT NULL,      -- plaintext label only (e.g. "OpenAI Key")
-      encrypted TEXT NOT NULL,  -- JSON: { iv, authTag, ciphertext } — all base64
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_secrets_category ON secrets(category);
-  `);
-
-  persistDb();
-}
-
-function persistDb() {
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
-}
-
-loadDb();
-
-const AddSchema = z.object({
-  type: z.enum(["diary", "conversation", "worklog", "file"]),
-  source: z.string().optional(),
-  title: z.string().optional(),
-  content: z.string().optional(),
-  file_path: z.string().optional(),
-  tags: z.string().optional(),
-  created_at: z.string().optional(), // ISO
+const EntrySchema = z.object({
+  type: z.enum(ITEM_TYPES),
+  source: z.string().max(200).optional(),
+  title: z.string().max(1000).optional(),
+  content: z.string().max(5_000_000).optional(),
+  file_path: z.string().max(2000).optional(),
+  tags: z.string().max(2000).optional(),
+  created_at: z.string().max(64).optional(), // ISO; unparseable values fall back to "now"
+  upsert: z.boolean().optional(),
 });
-
-app.post("/add", (req, res) => {
-  const parsed = AddSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
-  const { type, source, title, content, file_path, tags } = parsed.data;
-  const created_at = parsed.data.created_at || new Date().toISOString();
-  const id = `${type}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-
-  db.run(
-    `INSERT INTO items (id,type,source,title,content,file_path,tags,created_at)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [id, type, source || null, title || null, content || null, file_path || null, tags || null, created_at]
-  );
-  persistDb();
-  res.json({ ok: true, id });
-});
-
-app.get("/search", (req, res) => {
-  const q = String(req.query.q || "").trim();
-  const type = String(req.query.type || "").trim();
-
-  if (!q) return res.json({ ok: true, results: [] });
-
-  const like = `%${q}%`;
-  const where = type ? `AND type = ?` : "";
-  const stmt = db.prepare(
-    `SELECT id,type,source,title,substr(content,1,300) as snippet,file_path,tags,created_at
-     FROM items
-     WHERE (title LIKE ? OR content LIKE ? OR tags LIKE ?)
-     ${where}
-     ORDER BY created_at DESC
-     LIMIT 50;`
-  );
-
-  const rows = [];
-  const params = type ? [like, like, like, type] : [like, like, like];
-  stmt.bind(params);
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-
-  res.json({ ok: true, results: rows });
-});
-
-app.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-
-  const original = req.file.originalname || "file";
-  const dayDir = path.join(VAULT_ROOT, "files", isoDate());
-  ensureDir(dayDir);
-
-  const target = path.join(dayDir, `${Date.now()}_${safeSlug(original)}${path.extname(original)}`);
-  fs.renameSync(req.file.path, target);
-
-  const id = `file_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  db.run(
-    `INSERT INTO items (id,type,source,title,content,file_path,tags,created_at)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [id, "file", "manual", original, null, target, null, new Date().toISOString()]
-  );
-  persistDb();
-
-  res.json({ ok: true, path: target, id });
-});
-
-app.get("/health", (req, res) => res.json({ ok: true, vault: VAULT_ROOT, db: DB_PATH }));
-
-// Clear ALL items — used by auto-sync to wipe test/old data
-app.post("/clear", (req, res) => {
-  try {
-    db.run("DELETE FROM items");
-    persistDb();
-    res.json({ ok: true, message: "All items cleared." });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// List all items (no search filter) — for UI browsing
-app.get("/list", (req, res) => {
-  const type = String(req.query.type || "").trim();
-  const limit = Math.min(Number(req.query.limit || 100), 500);
-  const where = type ? `WHERE type = ?` : "";
-  const params = type ? [type] : [];
-  const stmt = db.prepare(
-    `SELECT id,type,source,title,substr(content,1,300) as snippet,file_path,tags,created_at
-     FROM items ${where}
-     ORDER BY created_at DESC
-     LIMIT ${limit};`
-  );
-  const rows = [];
-  if (params.length) stmt.bind(params);
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  res.json({ ok: true, results: rows });
-});
-
-// ═══════════════════════════════════════════════════════
-//  ENCRYPTED SECRETS
-//  AES-256-GCM with PBKDF2 key derivation from master password
-// ═══════════════════════════════════════════════════════
-
-const CRYPTO_ITERATIONS = 100_000;
-const CRYPTO_KEYLEN = 32;  // 256 bits
-const CRYPTO_DIGEST = "sha256";
-const CRYPTO_SALT = "memvault-salt-v1"; // static salt is fine (key is per-user password)
-
-/** Derive a 256-bit key from the master password */
-function deriveKey(password) {
-  return crypto.pbkdf2Sync(password, CRYPTO_SALT, CRYPTO_ITERATIONS, CRYPTO_KEYLEN, CRYPTO_DIGEST);
-}
-
-/** Encrypt a plaintext value → base64 JSON blob */
-function encrypt(plaintext, password) {
-  const key = deriveKey(password);
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return JSON.stringify({
-    iv: iv.toString("base64"),
-    authTag: tag.toString("base64"),
-    ciphertext: ct.toString("base64"),
-  });
-}
-
-/** Decrypt a base64 JSON blob → plaintext (throws on wrong password) */
-function decrypt(blob, password) {
-  const { iv, authTag, ciphertext } = JSON.parse(blob);
-  const key = deriveKey(password);
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    key,
-    Buffer.from(iv, "base64")
-  );
-  decipher.setAuthTag(Buffer.from(authTag, "base64"));
-  const pt = Buffer.concat([
-    decipher.update(Buffer.from(ciphertext, "base64")),
-    decipher.final(),
-  ]);
-  return pt.toString("utf8");
-}
-
-// A known sentinel value stored encrypted on first use to verify password
-const SENTINEL_ID = "__sentinel__";
-const SENTINEL_VALUE = "memvault-ok";
-
-/** Return true if any sentinel exists in secrets table */
-function hasSentinel() {
-  const stmt = db.prepare("SELECT id FROM secrets WHERE id = ?");
-  stmt.bind([SENTINEL_ID]);
-  const found = stmt.step();
-  stmt.free();
-  return found;
-}
-
-/** Create sentinel (first time a password is used) */
-function createSentinel(password) {
-  const now = new Date().toISOString();
-  db.run(
-    "INSERT OR REPLACE INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES (?,?,?,?,?,?)",
-    [SENTINEL_ID, "system", "__sentinel__", encrypt(SENTINEL_VALUE, password), now, now]
-  );
-  persistDb();
-}
-
-/** Verify master password against sentinel */
-function verifyPassword(password) {
-  if (!hasSentinel()) return true; // first use — any password is accepted
-  const stmt = db.prepare("SELECT encrypted FROM secrets WHERE id = ?");
-  stmt.bind([SENTINEL_ID]);
-  if (!stmt.step()) { stmt.free(); return false; }
-  const { encrypted } = stmt.getAsObject();
-  stmt.free();
-  try {
-    return decrypt(encrypted, password) === SENTINEL_VALUE;
-  } catch {
-    return false;
-  }
-}
+const MAX_BATCH = 500;
+const BatchSchema = z.object({ entries: z.array(EntrySchema).min(1).max(MAX_BATCH) });
 
 const SecretAddSchema = z.object({
   password: z.string().min(1),
   category: z.enum(["apikey", "password", "userid", "payment", "phone", "custom"]),
-  label: z.string().min(1),
-  fields: z.record(z.string(), z.string()), // Zod v4: key + value schemas required
+  label: z.string().min(1).max(200),
+  fields: z
+    .record(z.string().max(100), z.string().max(20_000))
+    .refine((o) => Object.keys(o).length > 0 && Object.keys(o).length <= 50, "1–50 fields required"),
 });
 
-// POST /secrets/verify — check master password
-app.post("/secrets/verify", (req, res) => {
-  const { password } = req.body || {};
-  if (!password) return res.status(400).json({ ok: false, error: "password required" });
-  const ok = verifyPassword(password);
-  if (ok && !hasSentinel()) createSentinel(password); // first use — set password
-  res.json({ ok });
-});
+export function createApp() {
+  ["entries", "conversations", "worklogs", "files"].forEach((d) => ensureDir(path.join(VAULT_ROOT, d)));
 
-// POST /secrets/add — add an encrypted secret
-app.post("/secrets/add", (req, res) => {
-  const parsed = SecretAddSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const app = express();
+  app.disable("x-powered-by");
+  app.use(createSecurityMiddleware({ bindHost: HOST, ...SERVER_CONFIG }));
+  app.use(express.json({ limit: "25mb" }));
+  app.use(express.static(path.join(__dirname, "public")));
 
-  const { password, category, label, fields } = parsed.data;
-  if (!verifyPassword(password)) return res.status(401).json({ ok: false, error: "Wrong password" });
-  if (!hasSentinel()) createSentinel(password);
+  const upload = multer({
+    dest: path.join(VAULT_ROOT, "files"),
+    limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+  });
 
-  const id = `secret_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
-  const now = new Date().toISOString();
-  const encrypted = encrypt(JSON.stringify(fields), password);
+  // ── Entries ───────────────────────────────────────────────────────────────
 
-  db.run(
-    "INSERT INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES (?,?,?,?,?,?)",
-    [id, category, label, encrypted, now, now]
+  app.get("/health", (req, res) =>
+    res.json({ ok: true, version: getVersion(), vault: VAULT_ROOT, db: DB_PATH })
   );
-  persistDb();
-  res.json({ ok: true, id });
-});
 
-// POST /secrets/get — decrypt and return a secret
-app.post("/secrets/get", (req, res) => {
-  const { password, id } = req.body || {};
-  if (!password || !id) return res.status(400).json({ error: "password and id required" });
-  if (!verifyPassword(password)) return res.status(401).json({ ok: false, error: "Wrong password" });
+  app.post("/add", (req, res) => {
+    const parsed = EntrySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    const { inserted, ids } = addItems([parsed.data]);
+    res.json({ ok: true, id: ids[0], duplicate: inserted === 0 });
+  });
 
-  const stmt = db.prepare("SELECT * FROM secrets WHERE id = ? AND id != ?");
-  stmt.bind([id, SENTINEL_ID]);
-  if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: "Not found" }); }
-  const row = stmt.getAsObject();
-  stmt.free();
+  // Many entries, one database write. Used by importers and sync engines.
+  app.post("/add/batch", (req, res) => {
+    const parsed = BatchSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    res.json({ ok: true, ...addItems(parsed.data.entries) });
+  });
 
-  try {
-    const fields = JSON.parse(decrypt(row.encrypted, password));
-    res.json({ ok: true, id: row.id, category: row.category, label: row.label, fields, created_at: row.created_at });
-  } catch {
-    res.status(401).json({ ok: false, error: "Decryption failed — wrong password?" });
-  }
-});
+  app.get("/search", (req, res) => {
+    const q = String(req.query.q || "").trim();
+    const type = ITEM_TYPES.includes(String(req.query.type)) ? String(req.query.type) : undefined;
+    if (!q) return res.json({ ok: true, results: [] });
+    res.json({ ok: true, results: searchItems({ terms: [q], type, limit: clampInt(req.query.limit, 1, 200, 50) }) });
+  });
 
-// GET /secrets/list — list labels/categories only (no decryption)
-app.get("/secrets/list", (req, res) => {
-  const cat = String(req.query.category || "").trim();
-  const where = cat ? "WHERE category = ? AND id != ?" : "WHERE id != ?";
-  const params = cat ? [cat, SENTINEL_ID] : [SENTINEL_ID];
-  const stmt = db.prepare(
-    `SELECT id, category, label, created_at, updated_at FROM secrets ${where} ORDER BY category, label`
-  );
-  stmt.bind(params);
-  const rows = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
-  stmt.free();
-  res.json({ ok: true, count: rows.length, secrets: rows });
-});
+  // List entries (no search filter) — for UI browsing
+  app.get("/list", (req, res) => {
+    const type = ITEM_TYPES.includes(String(req.query.type)) ? String(req.query.type) : undefined;
+    res.json({ ok: true, results: searchItems({ terms: [], type, limit: clampInt(req.query.limit, 1, 500, 100) }) });
+  });
 
-// DELETE /secrets/delete — remove a secret
-app.delete("/secrets/delete/:id", (req, res) => {
-  const { password } = req.body || {};
-  if (!password) return res.status(400).json({ error: "password required" });
-  if (!verifyPassword(password)) return res.status(401).json({ ok: false, error: "Wrong password" });
+  app.get("/stats", (req, res) => res.json({ ok: true, ...getStats() }));
 
-  db.run("DELETE FROM secrets WHERE id = ? AND id != ?", [req.params.id, SENTINEL_ID]);
-  persistDb();
-  res.json({ ok: true });
-});
+  app.post("/upload", upload.single("file"), (req, res) => {
+    if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-// ═══════════════════════════════════════════════════════
-//  STORAGE / BACKUP  (local + Google Drive)
-// ═══════════════════════════════════════════════════════
+    const original = path.basename(req.file.originalname || "file");
+    const ext = path.extname(original).replace(/[^.a-zA-Z0-9]/g, "").slice(0, 16);
+    const dayDir = path.join(VAULT_ROOT, "files", isoDate());
+    ensureDir(dayDir);
 
-// POST /backup — back up the vault to every enabled backend
-app.post("/backup", async (req, res) => {
-  try {
-    const { backupVault, enabledBackends } = await import("./storage.mjs");
-    const results = await backupVault();
-    res.json({ ok: true, backends: enabledBackends(), results });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
+    const target = path.join(dayDir, `${Date.now()}_${safeSlug(path.basename(original, path.extname(original)))}${ext}`);
+    fs.renameSync(req.file.path, target);
 
-// GET /backups — list local timestamped backups
-app.get("/backups", async (req, res) => {
-  try {
-    const { listLocalBackups } = await import("./storage.mjs");
-    res.json({ ok: true, backups: listLocalBackups() });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
+    const { ids } = addItems([{ type: "file", source: "manual", title: original, file_path: target }]);
+    res.json({ ok: true, path: target, id: ids[0] });
+  });
 
-// ═══════════════════════════════════════════════════════
-//  MCP BRIDGES  (connections to other AI MCP servers)
-// ═══════════════════════════════════════════════════════
+  // ── Encrypted secrets ─────────────────────────────────────────────────────
+  // AES-256-GCM, PBKDF2 key from the master password (see secrets.mjs).
 
-// GET /bridges — list configured outbound MCP bridges
-app.get("/bridges", async (req, res) => {
-  try {
-    const { enabledBridges } = await import("./mcp-bridge.mjs");
-    const bridges = enabledBridges().map((b) => ({
-      name: b.name,
-      command: `${b.command} ${(b.args || []).join(" ")}`.trim(),
-      importTool: b.importTool || null,
-    }));
-    res.json({ ok: true, bridges });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
-  }
-});
+  const limiter = createAttemptLimiter();
 
-// POST /bridges/sync — pull data from one or all bridges into the vault
-app.post("/bridges/sync", async (req, res) => {
-  try {
-    const { enabledBridges, syncBridge } = await import("./mcp-bridge.mjs");
-    const { name } = req.body || {};
-    const targets = name ? enabledBridges().filter((b) => b.name === name) : enabledBridges();
-    const results = [];
-    for (const b of targets) {
-      try { results.push(await syncBridge(b)); }
-      catch (e) { results.push({ name: b.name, ingested: 0, errors: [e.message] }); }
+  /** Throttle + verify the master password. Sends the error response itself. */
+  function requirePassword(password, res) {
+    const wait = limiter.retryAfterMs();
+    if (wait > 0) {
+      const secs = Math.ceil(wait / 1000);
+      res.set("Retry-After", String(secs));
+      res.status(429).json({ ok: false, error: `Too many failed attempts. Try again in ${secs}s.` });
+      return false;
     }
-    res.json({ ok: true, results });
-  } catch (e) {
-    res.status(500).json({ ok: false, error: e.message });
+    const auth = authenticate(password);
+    if (!auth.ok) {
+      if (auth.status === 401) limiter.fail();
+      res.status(auth.status).json({ ok: false, error: auth.error });
+      return false;
+    }
+    limiter.succeed();
+    return true;
   }
-});
 
-// ═══════════════════════════════════════════════════════
+  app.post("/secrets/verify", (req, res) => {
+    const { password } = req.body || {};
+    if (!requirePassword(password, res)) return;
+    res.json({ ok: true });
+  });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Vault API running on http://0.0.0.0:${PORT} (WSL2: also try http://127.0.0.1:${PORT} from Windows)`);
-  console.log(`VAULT_ROOT=${VAULT_ROOT}`);
-});
+  app.post("/secrets/add", (req, res) => {
+    const parsed = SecretAddSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: parsed.error.flatten() });
+    const { password, category, label, fields } = parsed.data;
+    if (!requirePassword(password, res)) return;
 
+    const id = `secret_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+    const now = new Date().toISOString();
+    run(
+      "INSERT INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES (?,?,?,?,?,?)",
+      [id, category, label, encrypt(JSON.stringify(fields), password), now, now]
+    );
+    res.json({ ok: true, id });
+  });
 
+  app.post("/secrets/get", (req, res) => {
+    const { password, id } = req.body || {};
+    if (typeof id !== "string" || !id) return res.status(400).json({ ok: false, error: "password and id required" });
+    if (!requirePassword(password, res)) return;
 
+    const row = queryOne("SELECT * FROM secrets WHERE id = ? AND id != ?", [id, SENTINEL_ID]);
+    if (!row) return res.status(404).json({ ok: false, error: "Not found" });
+    try {
+      const fields = JSON.parse(decrypt(row.encrypted, password));
+      res.json({ ok: true, id: row.id, category: row.category, label: row.label, fields, created_at: row.created_at });
+    } catch {
+      res.status(500).json({ ok: false, error: "Could not decrypt this secret (corrupted data?)" });
+    }
+  });
+
+  // List labels/categories only (no decryption)
+  app.get("/secrets/list", (req, res) => {
+    const cat = String(req.query.category || "").trim();
+    const rows = cat
+      ? queryAll("SELECT id, category, label, created_at, updated_at FROM secrets WHERE category = ? AND id != ? ORDER BY category, label", [cat, SENTINEL_ID])
+      : queryAll("SELECT id, category, label, created_at, updated_at FROM secrets WHERE id != ? ORDER BY category, label", [SENTINEL_ID]);
+    res.json({ ok: true, count: rows.length, secrets: rows });
+  });
+
+  app.delete("/secrets/delete/:id", (req, res) => {
+    const { password } = req.body || {};
+    if (!requirePassword(password, res)) return;
+    run("DELETE FROM secrets WHERE id = ? AND id != ?", [req.params.id, SENTINEL_ID]);
+    res.json({ ok: true });
+  });
+
+  // ── Storage / backup (local + Google Drive) ───────────────────────────────
+
+  app.post("/backup", async (req, res) => {
+    try {
+      const { backupVault, enabledBackends } = await import("./storage.mjs");
+      const results = await backupVault();
+      res.json({ ok: true, backends: enabledBackends(), results });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.get("/backups", async (req, res) => {
+    try {
+      const { listLocalBackups } = await import("./storage.mjs");
+      res.json({ ok: true, backups: listLocalBackups() });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // ── MCP bridges (connections to other AI MCP servers) ─────────────────────
+
+  app.get("/bridges", async (req, res) => {
+    try {
+      const { enabledBridges } = await import("./mcp-bridge.mjs");
+      const bridges = enabledBridges().map((b) => ({
+        name: b.name,
+        command: `${b.command} ${(b.args || []).join(" ")}`.trim(),
+        importTool: b.importTool || null,
+      }));
+      res.json({ ok: true, bridges });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.post("/bridges/sync", async (req, res) => {
+    try {
+      const { enabledBridges, syncBridge } = await import("./mcp-bridge.mjs");
+      const { name } = req.body || {};
+      const targets = name ? enabledBridges().filter((b) => b.name === name) : enabledBridges();
+      const results = [];
+      for (const b of targets) {
+        try { results.push(await syncBridge(b)); }
+        catch (e) { results.push({ name: b.name, ingested: 0, errors: [e.message] }); }
+      }
+      res.json({ ok: true, results });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
+
+  // ── Errors ────────────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    const status = err.status || err.statusCode || 500;
+    if (status >= 500) console.error(`[MemVault] ${req.method} ${req.path}:`, err);
+    res.status(status).json({ ok: false, error: status >= 500 ? "Internal server error" : err.message });
+  });
+
+  return app;
+}
+
+export function startServer({ port = PORT, host = HOST } = {}) {
+  const app = createApp();
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, host, () => {
+      const shown = host === "0.0.0.0" || host === "::" ? "localhost" : host;
+      console.log(`MemVault running on http://${shown}:${server.address().port}`);
+      console.log(`VAULT_ROOT=${VAULT_ROOT}`);
+      if (!isLoopbackAddress(host)) {
+        console.warn(
+          `\n⚠️  Listening on ${host}: anyone who can reach this address can read and change your vault.\n` +
+          `   MemVault has no login. Keep it on 127.0.0.1 unless the network is fully trusted.\n`
+        );
+      }
+      resolve(server);
+    });
+    server.on("error", (e) => {
+      if (e.code === "EADDRINUSE") {
+        console.error(`❌ Port ${port} is already in use. Is MemVault already running? Set "port" in ~/.memvaultrc.json or VAULT_PORT to change it.`);
+      }
+      reject(e);
+    });
+  });
+}
+
+if (isMainModule(import.meta.url)) {
+  startServer().catch(() => process.exit(1));
+}

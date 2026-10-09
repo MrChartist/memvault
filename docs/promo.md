@@ -10,11 +10,11 @@ Every time you start a new AI conversation, it forgets everything you’ve ever 
 I got tired of repeating myself, so I built MemVault — a persistent memory layer for Claude, Cursor, and any MCP tool. And yes, it’s 100% local. 🧠👇
 
 **Tweet 2 (Demo):**
-[Insert the demo GIF showing `memvault import` and Claude accessing context]
+[Attach a demo GIF showing `memvault import` and Claude accessing context]
 MemVault acts as a local data capture engine. It silently syncs your Git commits, VS Code activity, clipboard history, and now... your entire past AI chats.
 
 **Tweet 3:**
-Have older chats in ChatGPT, Claude, Nexus, or Gemini? 
+Have older chats in ChatGPT, Claude, Perplexity, or Gemini? 
 I’ve built universal importers. Just point MemVault at your data export folder, and it automatically reads and indexes years of AI conversations in seconds.
 
 **Tweet 4 (How it works):**
@@ -46,7 +46,7 @@ One of the biggest pain points I have with AI is that every new session starts w
 - AI Intelligence Layer: Uses your own Gemini API key (optional) to auto-tag, summarize, and semantically re-rank search results before sending them to Claude/Cursor.
 
 **Tools it exposes to your AI:**
-It gives your AI 20 different tools, including `vault_smart_search`, `vault_capture_prompt` (auto-logs what you ask), and `vault_remember` (lets the AI save facts for the future).
+It gives your AI 24 different tools, including `vault_smart_search`, `vault_capture_prompt` (auto-logs what you ask), and `vault_remember` (lets the AI save facts for the future).
 
 **How to try it:**
 Requires Node.js 20+. Just run:

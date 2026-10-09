@@ -5,13 +5,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MemVault — Personal Knowledge Vault</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap"
-    rel="stylesheet" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Cpath d='M9 22V10l7 8 7-8v12' fill='none' stroke='white' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
   <style>
     /* ═══ DESIGN TOKENS ══════════════════════════════ */
     :root {
+      --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
       --accent: #6366f1;
       --accent-soft: rgba(99, 102, 241, 0.12);
       --gold: #f59e0b;
@@ -67,7 +66,7 @@
     }
 
     body {
-      font-family: 'DM Sans', 'Inter', sans-serif;
+      font-family: var(--font-sans);
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -205,7 +204,7 @@
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-sans);
     }
 
     .date-hero p {
@@ -248,7 +247,7 @@
       padding: 10px 16px 6px;
       font-size: 14.5px;
       color: var(--text);
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       line-height: 1.65;
       min-height: 90px;
       caret-color: var(--accent);
@@ -269,7 +268,7 @@
     .char-count {
       font-size: 11.5px;
       color: var(--text3);
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
     }
 
     .btn-save {
@@ -281,7 +280,7 @@
       color: #fff;
       font-size: 13px;
       font-weight: 600;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       display: flex;
       align-items: center;
       gap: 6px;
@@ -319,7 +318,7 @@
     .stat-num {
       font-size: 26px;
       font-weight: 800;
-      font-family: 'Inter', sans-serif;
+      font-family: var(--font-sans);
       letter-spacing: -0.03em;
     }
 
@@ -362,7 +361,7 @@
       font-weight: 500;
       cursor: pointer;
       transition: all var(--transition);
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
     }
 
     .tab:hover {
@@ -430,7 +429,7 @@
       background: transparent;
       font-size: 14px;
       color: var(--text);
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       padding: 10px 0;
     }
 
@@ -447,7 +446,7 @@
       font-size: 12.5px;
       font-weight: 500;
       cursor: pointer;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       transition: all var(--transition);
     }
 
@@ -523,7 +522,7 @@
       margin-left: auto;
       font-size: 11.5px;
       color: var(--text3);
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
     }
 
     .entry-title {
@@ -634,7 +633,7 @@
       background: var(--input-bg);
       color: var(--text);
       font-size: 14px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       width: 230px;
       outline: none;
       letter-spacing: 0.04em;
@@ -654,7 +653,7 @@
       font-weight: 700;
       font-size: 13.5px;
       cursor: pointer;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       transition: opacity var(--transition), transform 0.1s;
     }
 
@@ -706,7 +705,7 @@
       font-size: 12.5px;
       font-weight: 600;
       cursor: pointer;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       transition: all var(--transition);
     }
 
@@ -722,7 +721,7 @@
       color: var(--text2);
       font-size: 12.5px;
       cursor: pointer;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       transition: all var(--transition);
     }
 
@@ -782,7 +781,7 @@
       font-size: 11.5px;
       color: var(--text3);
       margin-top: 2px;
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
     }
 
     .secret-del {
@@ -873,7 +872,7 @@
       padding: 9px 13px;
       color: var(--text);
       font-size: 14px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       outline: none;
       transition: border-color var(--transition);
     }
@@ -883,7 +882,7 @@
     }
 
     .field-input[type="password"] {
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
       letter-spacing: 0.06em;
     }
 
@@ -908,7 +907,7 @@
       color: var(--text2);
       cursor: pointer;
       font-size: 13.5px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       transition: all var(--transition);
     }
 
@@ -925,7 +924,7 @@
       color: #1a1200;
       font-weight: 700;
       font-size: 13.5px;
-      font-family: 'DM Sans', sans-serif;
+      font-family: var(--font-sans);
       transition: opacity var(--transition);
     }
 
@@ -953,7 +952,7 @@
       border-radius: var(--radius-sm);
       padding: 9px 13px;
       font-size: 13.5px;
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
       word-break: break-all;
       cursor: pointer;
       color: var(--text);
@@ -1053,7 +1052,7 @@
     }
 
     .method {
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
       font-size: 10px;
       font-weight: 700;
       padding: 2px 6px;
@@ -1077,7 +1076,7 @@
     }
 
     .ep-path {
-      font-family: 'DM Mono', monospace;
+      font-family: var(--font-mono);
       font-size: 11.5px;
       color: var(--text2);
     }
@@ -1188,7 +1187,7 @@
           <button class="btn-unlock" onclick="unlockVault()">🔓 Unlock</button>
         </div>
         <p class="pw-error" id="pw-error">Wrong password. Try again.</p>
-        <p class="lock-hint">First use? Any password you enter becomes your master password permanently.</p>
+        <p class="lock-hint">First use? The password you enter (8+ characters) becomes your master password. It cannot be recovered if you forget it.</p>
       </div>
       <div id="vault-unlocked" style="display:none">
         <div class="secrets-header">
@@ -1206,8 +1205,8 @@
     <div id="access-panel">
       <div style="margin-bottom:16px">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.02em;margin-bottom:4px">📡 API Access Map</div>
-        <div style="font-size:13px;color:var(--text2)">All endpoints available in MemVault v2 • Server: <code
-            style="font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)">http://127.0.0.1:7799</code>
+        <div style="font-size:13px;color:var(--text2)">Endpoints of this local server • <code id="server-url"
+            style="font-family:var(--font-mono);font-size:12px;color:var(--accent)">…</code>
         </div>
       </div>
       <div class="access-grid">
@@ -1221,8 +1220,10 @@
               class="ep-desc">Full-text search</span></div>
           <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/list</span><span
               class="ep-desc">List all entries</span></div>
-          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/clear</span><span
-              class="ep-desc">Delete all entries</span></div>
+          <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/add/batch</span><span
+              class="ep-desc">Add up to 500 entries at once</span></div>
+          <div class="endpoint-row"><span class="method get">GET</span><span class="ep-path">/stats</span><span
+              class="ep-desc">Counts per entry type</span></div>
           <div class="endpoint-row"><span class="method post">POST</span><span class="ep-path">/upload</span><span
               class="ep-desc">Upload file attachment</span></div>
         </div>
@@ -1243,24 +1244,24 @@
           <h4>🔒 Encryption Details</h4>
           <div class="endpoint-row"><span class="ep-path">Algorithm</span><span class="ep-desc">AES-256-GCM</span></div>
           <div class="endpoint-row"><span class="ep-path">Key derivation</span><span class="ep-desc">PBKDF2 SHA-256
-              (100k iters)</span></div>
-          <div class="endpoint-row"><span class="ep-path">IV</span><span class="ep-desc">12-byte random per
+              (600k iters)</span></div>
+          <div class="endpoint-row"><span class="ep-path">Salt / IV</span><span class="ep-desc">random per
               secret</span></div>
-          <div class="endpoint-row"><span class="ep-path">Stored</span><span class="ep-desc">{ iv, authTag, ciphertext
+          <div class="endpoint-row"><span class="ep-path">Stored</span><span class="ep-desc">{ salt, iv, authTag, ciphertext
               }</span></div>
           <div class="endpoint-row"><span class="ep-path">Password</span><span class="ep-desc">Never stored
               anywhere</span></div>
         </div>
         <div class="access-card">
-          <h4>🔄 Sync Scripts</h4>
-          <div class="endpoint-row"><span class="ep-path">sync-antigravity.mjs</span><span class="ep-desc">AI
-              conversations</span></div>
-          <div class="endpoint-row"><span class="ep-path">sync-browser.mjs</span><span class="ep-desc">Chrome/Edge
-              history + bookmarks</span></div>
+          <h4>🔄 Sync Engines</h4>
+          <div class="endpoint-row"><span class="ep-path">memvault sync</span><span class="ep-desc">Git, VS Code, system,
+              files (+ browser / Antigravity if enabled)</span></div>
+          <div class="endpoint-row"><span class="ep-path">sync-browser.mjs</span><span class="ep-desc">Chrome / Edge /
+              Brave (opt-in)</span></div>
+          <div class="endpoint-row"><span class="ep-path">sync-clipboard.mjs</span><span class="ep-desc">Clipboard
+              daemon (opt-in)</span></div>
           <div class="endpoint-row"><span class="ep-path">--dry-run flag</span><span class="ep-desc">Preview without
-              posting</span></div>
-          <div class="endpoint-row"><span class="ep-path">--chrome / --edge</span><span class="ep-desc">Single browser
-              sync</span></div>
+              saving</span></div>
         </div>
         <div class="access-card">
           <h4>🗄️ Secret Categories</h4>
@@ -1279,7 +1280,7 @@
         </div>
         <div class="access-card">
           <h4>📁 Storage Paths</h4>
-          <div class="endpoint-row"><span class="ep-path">Vault root</span><span class="ep-desc">/mnt/d/AG/Vault</span>
+          <div class="endpoint-row"><span class="ep-path">Vault root</span><span class="ep-desc" id="vault-root-path">…</span>
           </div>
           <div class="endpoint-row"><span class="ep-path">SQLite DB</span><span class="ep-desc">db/index.sqlite</span>
           </div>
@@ -1348,7 +1349,7 @@
     applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
 
     /* ═══ CONFIG ══════════════════════════════════════ */
-    const API = 'http://127.0.0.1:7799';
+    const API = location.origin; // the page is served by the same server it talks to
     let currentFilter = 'all';
     let activePanel = 'entries'; // 'entries' | 'secure' | 'access'
 
@@ -1371,6 +1372,13 @@
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveDiary(); }
     });
 
+    /* ═══ SAFE HTML ══════════════════════════════════ */
+    // Everything that came from the database (titles, sources, labels, secret
+    // keys/values...) is untrusted and must pass through esc() before innerHTML.
+    function esc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
     /* ═══ TOAST ══════════════════════════════════════ */
     function toast(msg, type = 'success') {
       const t = document.getElementById('toast');
@@ -1384,8 +1392,11 @@
       try {
         const r = await fetch(`${API}/health`);
         if (r.ok) {
+          const h = await r.json();
           document.getElementById('status-dot').className = 'status-dot online';
           document.getElementById('status-label').textContent = 'Vault Online';
+          document.getElementById('server-url').textContent = API;
+          document.getElementById('vault-root-path').textContent = h.vault || '';
         }
       } catch {
         document.getElementById('status-label').textContent = 'Offline';
@@ -1474,7 +1485,7 @@
           renderEntries([]);
           // show "no results" with clear option
           document.getElementById('entries-list').innerHTML =
-            `<div class="empty-state"><div class="icon">🔍</div><p>No results for "${q.replace(/</g, '&lt;')}" — <a href="#" onclick="clearSearch()" style="color:var(--accent)">clear search</a></p></div>`;
+            `<div class="empty-state"><div class="icon">🔍</div><p>No results for "${esc(q)}" — <a href="#" onclick="clearSearch();return false" style="color:var(--accent)">clear search</a></p></div>`;
         } else {
           renderEntries(d.results);
         }
@@ -1504,15 +1515,13 @@
     }
 
     async function updateStats() {
-      for (const type of ['diary', 'conversation', 'worklog']) {
-        try {
-          const r = await fetch(`${API}/list?limit=500&type=${type}`);
-          const d = await r.json();
-          const id = type === 'conversation' ? 'stat-convo' : `stat-${type}`;
-          const el = document.getElementById(id);
-          if (el) el.textContent = d.results?.length ?? '—';
-        } catch { }
-      }
+      try {
+        const d = await (await fetch(`${API}/stats`)).json();
+        const counts = Object.fromEntries((d.byType || []).map(r => [r.type, r.count]));
+        document.getElementById('stat-diary').textContent = counts.diary ?? 0;
+        document.getElementById('stat-convo').textContent = counts.conversation ?? 0;
+        document.getElementById('stat-worklog').textContent = counts.worklog ?? 0;
+      } catch { }
     }
 
     function renderEntries(entries) {
@@ -1524,16 +1533,16 @@
         return;
       }
       list.innerHTML = entries.map(e => {
-        const source = e.source ? `· ${e.source}` : '';
-        const time = new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const snippet = e.snippet ? e.snippet.replace(/</g, '&lt;') : '';
+        const source = e.source ? `· ${esc(e.source)}` : '';
+        const time = esc(new Date(e.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+        const snippet = e.snippet ? esc(e.snippet) : '';
         return `<div class="entry-card">
         <div class="entry-header">
-          <span class="type-badge type-${e.type}">${e.type}</span>
+          <span class="type-badge type-${esc(e.type)}">${esc(e.type)}</span>
           <span class="entry-source">${source}</span>
           <span class="entry-time">${time}</span>
         </div>
-        <div class="entry-title">${(e.title || 'Untitled').replace(/</g, '&lt;')}</div>
+        <div class="entry-title">${esc(e.title || 'Untitled')}</div>
         ${snippet ? `<div class="entry-content">${snippet}</div>` : ''}
       </div>`;
       }).join('');
@@ -1568,7 +1577,9 @@
           document.getElementById('master-pw').value = '';
           showUnlocked();
         } else {
-          document.getElementById('pw-error').style.display = 'block';
+          const el = document.getElementById('pw-error');
+          el.textContent = d.error || 'Wrong password. Try again.';
+          el.style.display = 'block';
         }
       } catch { toast('Cannot reach vault server', 'error'); }
     }
@@ -1603,15 +1614,15 @@
       for (const s of secrets) { if (!groups[s.category]) groups[s.category] = []; groups[s.category].push(s); }
       el.innerHTML = Object.entries(groups).map(([cat, items]) => `
       <div class="category-group">
-        <div class="cat-label">${CAT_ICONS[cat] || '📝'} ${CAT_LABELS[cat] || cat}</div>
+        <div class="cat-label">${CAT_ICONS[cat] || '📝'} ${esc(CAT_LABELS[cat] || cat)}</div>
         ${items.map(s => `
-          <div class="secret-card" onclick="revealSecret('${s.id}')">
+          <div class="secret-card" data-id="${esc(s.id)}" onclick="revealSecret(this.dataset.id)">
             <div class="secret-icon">${CAT_ICONS[s.category] || '📝'}</div>
             <div class="secret-info">
-              <div class="secret-label">${s.label.replace(/</g, '&lt;')}</div>
+              <div class="secret-label">${esc(s.label)}</div>
               <div class="secret-meta">${new Date(s.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
             </div>
-            <button class="secret-del" onclick="event.stopPropagation();deleteSecret('${s.id}')" title="Delete">🗑</button>
+            <button class="secret-del" data-id="${esc(s.id)}" onclick="event.stopPropagation();deleteSecret(this.dataset.id)" title="Delete">🗑</button>
           </div>`).join('')}
       </div>`).join('');
     }
@@ -1628,15 +1639,15 @@
         document.getElementById('reveal-title').textContent = `${CAT_ICONS[d.category] || '🔓'} ${d.label}`;
         document.getElementById('reveal-fields').innerHTML = Object.entries(d.fields).map(([k, v]) => `
         <div class="reveal-field">
-          <div class="reveal-lbl">${k}</div>
-          <div class="reveal-val" onclick="copyVal(this,'${encodeURIComponent(v)}')">${v.replace(/</g, '&lt;')}</div>
+          <div class="reveal-lbl">${esc(k)}</div>
+          <div class="reveal-val" data-val="${esc(v)}" onclick="copyVal(this)">${esc(v)}</div>
         </div>`).join('');
         document.getElementById('reveal-modal').classList.add('open');
       } catch { toast('Error revealing secret', 'error'); }
     }
 
-    function copyVal(el, encoded) {
-      navigator.clipboard.writeText(decodeURIComponent(encoded)).then(() => {
+    function copyVal(el) {
+      navigator.clipboard.writeText(el.dataset.val).then(() => {
         const orig = el.style.borderColor;
         el.style.borderColor = 'var(--success)';
         setTimeout(() => el.style.borderColor = orig, 1000);
@@ -1651,10 +1662,11 @@
 
     async function deleteSecret(id) {
       if (!vaultSession || !confirm('Delete this secret? This cannot be undone.')) return;
-      await fetch(`${API}/secrets/delete/${id}`, {
+      const r = await fetch(`${API}/secrets/delete/${encodeURIComponent(id)}`, {
         method: 'DELETE', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ password: vaultSession }),
       });
+      if (!r.ok) toast('Delete failed', 'error');
       await loadSecrets();
     }
 

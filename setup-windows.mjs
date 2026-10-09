@@ -1,57 +1,76 @@
+#!/usr/bin/env node
+/**
+ * setup-windows.mjs — start MemVault silently at Windows login
+ * ─────────────────────────────────────────────────────────────────────────────
+ *   1. Adds a hidden launcher to your Startup folder that runs the web UI
+ *      (and the clipboard daemon, if you enabled it).
+ *   2. Creates a Scheduled Task that runs `sync` every 30 minutes.
+ *
+ * Works from any install location (global npm install, a git clone, ...):
+ * everything is resolved from this file's own location, not the current folder.
+ *
+ *   node setup-windows.mjs            # install
+ *   node setup-windows.mjs --remove   # uninstall both
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
+import { fileURLToPath } from "url";
+import { execFileSync } from "child_process";
+import { SYNC_CONFIG } from "./config.mjs";
 
-console.log("🚀 Setting up MemVault Ultimate Windows Autostart...\n");
+if (process.platform !== "win32") {
+  console.error("❌ setup-windows.mjs only works on Windows. See docs/autostart.md for macOS and Linux.");
+  process.exit(1);
+}
 
-const repoDir = process.cwd();
+const here = path.dirname(fileURLToPath(import.meta.url));
+const node = process.execPath;
+const script = (name) => path.join(here, name);
+
 const startupFolder = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
-const vbsPath = path.join(startupFolder, "MemVault-Autostart.vbs");
-
-// 1. Create the Startup VBScript to run Daemons silently
-const vbsContent = `' MemVault Auto-Start Daemons (Silently)
-Set objShell = CreateObject("WScript.Shell")
-' 1. Start Web/API Server
-objShell.Run "cmd.exe /c cd /d """ & "${repoDir}" & """ && npm start", 0, False
-
-' 2. Start Clipboard Polling Daemon
-objShell.Run "cmd.exe /c cd /d """ & "${repoDir}" & """ && npm run sync:clipboard", 0, False
-`;
-
-fs.writeFileSync(vbsPath, vbsContent);
-console.log(`✅ Created silent startup script in: ${vbsPath}`);
-
-// 2. Set up a Scheduled Task to run sync:all every 30 minutes
+const launcherPath = path.join(startupFolder, "MemVault-Autostart.vbs");
+const syncVbsPath = path.join(process.env.LOCALAPPDATA || here, "MemVault", "run-sync-silent.vbs");
 const taskName = "MemVault-Periodic-Sync";
 
-try {
-  // Try to delete if it already exists
-  execSync(`schtasks /Delete /TN "${taskName}" /F`, { stdio: "ignore" });
-} catch (e) {
-  // Ignore error if task doesn't exist
+// In VBScript a literal quote inside a string is written as two quotes.
+const vbsQuote = (s) => `""${s}""`;
+const vbsRun = (file, ...args) => `"${[node, file, ...args].map((p) => vbsQuote(p)).join(" ")}"`;
+
+if (process.argv.includes("--remove")) {
+  try { fs.rmSync(launcherPath, { force: true }); console.log(`🗑️  Removed ${launcherPath}`); } catch { /* ignore */ }
+  try { execFileSync("schtasks", ["/Delete", "/TN", taskName, "/F"], { stdio: "ignore" }); console.log(`🗑️  Removed task ${taskName}`); } catch { /* not installed */ }
+  try { fs.rmSync(syncVbsPath, { force: true }); } catch { /* ignore */ }
+  process.exit(0);
 }
 
+console.log("🚀 Setting up MemVault autostart for Windows...\n");
+
+// 1. Hidden launcher in the Startup folder
+let launcher = `' MemVault auto-start (runs hidden)\nSet sh = CreateObject("WScript.Shell")\n`;
+launcher += `sh.Run ${vbsRun(script("server.mjs"))}, 0, False\n`;
+if (SYNC_CONFIG.clipboardEnabled) launcher += `sh.Run ${vbsRun(script("sync-clipboard.mjs"))}, 0, False\n`;
+fs.mkdirSync(startupFolder, { recursive: true });
+fs.writeFileSync(launcherPath, launcher);
+console.log(`✅ Startup launcher: ${launcherPath}`);
+
+// 2. Scheduled task: sync every 30 minutes (through a tiny wrapper so no console window flashes)
+fs.mkdirSync(path.dirname(syncVbsPath), { recursive: true });
+fs.writeFileSync(syncVbsPath, `Set sh = CreateObject("WScript.Shell")\nsh.Run ${vbsRun(script("sync-all.mjs"))}, 0, True\n`);
+
 try {
-  // Create an scheduled task to run sync-all.mjs every 30 minutes
-  const nodePath = process.execPath;
-  const syncAllPath = path.join(repoDir, "sync-all.mjs");
-  
-  // We need to run it silently via a tiny one-liner vbs wrapper, or just cmd /c start /min
-  // Let's create a wrapper specifically for the task scheduler so it doesn't flash a cmd window
-  const taskVbsPath = path.join(repoDir, "run-sync-silent.vbs");
-  fs.writeFileSync(taskVbsPath, `Set objShell = CreateObject("WScript.Shell")\nobjShell.Run "cmd.exe /c cd /d """ & "${repoDir}" & """ && npm run sync:all", 0, False`);
-  
-  const cmd = `schtasks /Create /SC MINUTE /MO 30 /TN "${taskName}" /TR "wscript.exe \\"${taskVbsPath}\\"" /F`;
-  execSync(cmd, { stdio: "inherit" });
-  console.log(`✅ Created Windows Scheduled Task '${taskName}' — runs every 30 minutes!`);
-  
-  // Run it once right now to trigger the first sync
-  execSync(`schtasks /Run /TN "${taskName}"`, { stdio: "ignore" });
-  console.log(`▶️ Triggered the first background sync immediately.`);
-  
+  execFileSync("schtasks", ["/Delete", "/TN", taskName, "/F"], { stdio: "ignore" });
+} catch { /* did not exist */ }
+
+try {
+  execFileSync("schtasks", ["/Create", "/SC", "MINUTE", "/MO", "30", "/TN", taskName, "/TR", `wscript.exe "${syncVbsPath}"`, "/F"], { stdio: "inherit" });
+  console.log(`✅ Scheduled task '${taskName}' — runs every 30 minutes`);
+  execFileSync("schtasks", ["/Run", "/TN", taskName], { stdio: "ignore" });
+  console.log("▶️  Triggered the first sync.");
 } catch (error) {
-  console.error("⚠️ Failed to create Scheduled Task:", error.message);
+  console.error("⚠️  Failed to create the scheduled task:", error.message);
 }
 
-console.log("\n🎉 Ultimate Setup Complete!");
-console.log("MemVault will now start silently on every boot, and seamlessly sync your data in the background.");
+console.log("\n🎉 Done. The web UI starts at login (http://localhost:7799) and data syncs every 30 minutes.");
+console.log("   Undo with: node setup-windows.mjs --remove");

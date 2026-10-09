@@ -16,8 +16,9 @@
 import fs from "fs";
 import path from "path";
 import { VAULT_ROOT, STORAGE_CONFIG } from "./config.mjs";
+import { DB_PATH, replaceDatabaseFile } from "./db.mjs";
+import { isMainModule } from "./util.mjs";
 
-const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
 const BACKUP_DIR = path.join(VAULT_ROOT, "backups");
 
 const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
@@ -26,10 +27,13 @@ function stamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
 }
 
-/** Recursively copy a directory tree (Node 16+ has fs.cpSync). */
+/** Recursively copy a directory tree, leaving out lock/temp files of a running MemVault. */
 function copyTree(src, dest) {
   if (!fs.existsSync(src)) return;
-  fs.cpSync(src, dest, { recursive: true });
+  fs.cpSync(src, dest, {
+    recursive: true,
+    filter: (file) => !/\.(lock|tmp)$/.test(file),
+  });
 }
 
 // ─── Local backups ──────────────────────────────────────────────────────────
@@ -70,14 +74,18 @@ function backupLocal() {
 
 /** Restore the live DB from a named local backup (e.g. "index-...sqlite"). */
 export function restoreLocal(backupName) {
+  // Only plain file names inside the backup folder — never a path.
+  if (!/^(index|pre-restore)-[A-Za-z0-9._-]+\.sqlite$/.test(String(backupName))) {
+    throw new Error(`Invalid backup name: ${backupName}`);
+  }
   const src = path.join(BACKUP_DIR, backupName);
   if (!fs.existsSync(src)) throw new Error(`Backup not found: ${backupName}`);
-  ensureDir(path.dirname(DB_PATH));
   // Safety: snapshot the current DB before overwriting it.
   if (fs.existsSync(DB_PATH)) {
+    ensureDir(BACKUP_DIR);
     fs.copyFileSync(DB_PATH, path.join(BACKUP_DIR, `pre-restore-${stamp()}.sqlite`));
   }
-  fs.copyFileSync(src, DB_PATH);
+  replaceDatabaseFile(src); // validates the backup, then swaps it in atomically
   return { ok: true, restored: backupName, into: DB_PATH };
 }
 
@@ -214,8 +222,7 @@ export async function backupVault(config = STORAGE_CONFIG) {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   const cmd = process.argv[2] || "backup";
   if (cmd === "list") {
     const backups = listLocalBackups();
@@ -231,7 +238,7 @@ if (isMain) {
     for (const r of results) {
       console.log(r.ok ? `  ✅ ${r.backend}: ${r.location}` : `  ❌ ${r.backend}: ${r.error}`);
     }
-    const failed = results.filter((r) => !r.ok);
-    process.exit(failed.length && failed.every((f) => f.backend !== "local") ? 0 : failed.length ? 1 : 0);
+    // Any failed backend is a failed run: schedulers must be able to notice.
+    process.exit(results.some((r) => !r.ok) ? 1 : 0);
   }
 }

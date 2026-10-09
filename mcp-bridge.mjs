@@ -28,12 +28,11 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import fs from "fs";
-import path from "path";
-import initSqlJs from "sql.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { API_URL, MCP_BRIDGES, VAULT_ROOT, loadUserConfig, saveUserConfig } from "./config.mjs";
+import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
+import { addItems } from "./db.mjs";
+import { isMainModule, getVersion } from "./util.mjs";
 
 const CONNECT_TIMEOUT_MS = 20000;
 
@@ -83,22 +82,32 @@ export function addPreset(name) {
 export async function connectBridge(bridge) {
   if (!bridge?.command) throw new Error(`Bridge "${bridge?.name}" is missing a "command".`);
 
+  // Only a safe default environment (PATH, HOME, ...) plus the bridge's own "env"
+  // is passed on — never the whole of process.env, which may hold API keys that
+  // a third-party server has no business seeing.
   const transport = new StdioClientTransport({
     command: bridge.command,
     args: bridge.args || [],
-    env: { ...process.env, ...(bridge.env || {}) },
+    env: bridge.env || undefined,
   });
 
   const client = new Client(
-    { name: "memvault-bridge", version: "2.1.0" },
+    { name: "memvault-bridge", version: getVersion() },
     { capabilities: {} }
   );
 
-  const connect = client.connect(transport);
-  const timeout = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("connection timed out")), CONNECT_TIMEOUT_MS)
-  );
-  await Promise.race([connect, timeout]);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("connection timed out")), CONNECT_TIMEOUT_MS);
+  });
+  try {
+    await Promise.race([client.connect(transport), timeout]);
+  } catch (e) {
+    await client.close().catch(() => {});
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   return { client, transport };
 }
 
@@ -141,37 +150,9 @@ function extractText(result) {
 
 // ─── Ingestion into the vault ───────────────────────────────────────────────
 
-let _sqlDb = null;
-async function directDbInsert(entry) {
-  // Fallback path used when the web API isn't running.
-  const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  if (!_sqlDb) {
-    const Sql = await initSqlJs();
-    _sqlDb = fs.existsSync(DB_PATH) ? new Sql.Database(fs.readFileSync(DB_PATH)) : new Sql.Database();
-    _sqlDb.run(`CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY, type TEXT NOT NULL, source TEXT, title TEXT,
-      content TEXT, file_path TEXT, tags TEXT, created_at TEXT NOT NULL);`);
-  }
-  const id = `${entry.type}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  _sqlDb.run(
-    `INSERT INTO items (id,type,source,title,content,file_path,tags,created_at) VALUES (?,?,?,?,?,?,?,?)`,
-    [id, entry.type, entry.source, entry.title, entry.content, null, entry.tags, entry.created_at]
-  );
-  fs.writeFileSync(DB_PATH, Buffer.from(_sqlDb.export()));
-  return true;
-}
-
-async function ingest(entry) {
-  try {
-    const res = await fetch(`${API_URL}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    if (res.ok) return true;
-  } catch { /* API not running — fall back to direct DB write */ }
-  return directDbInsert(entry);
+/** Save one pulled item. The title is stable per bridge+tool/resource, so every sync replaces the previous copy. */
+function ingest(entry) {
+  addItems([{ ...entry, upsert: true }]);
 }
 
 /**
@@ -193,7 +174,7 @@ export async function syncBridge(bridge) {
       });
       const text = extractText(result);
       if (text.trim()) {
-        await ingest({
+        ingest({
           type: "conversation",
           source: `mcp:${bridge.name}`,
           title: `[${bridge.name}] ${bridge.importTool}`,
@@ -210,7 +191,7 @@ export async function syncBridge(bridge) {
           const read = await client.readResource({ uri: r.uri });
           const text = extractText(read);
           if (!text.trim()) continue;
-          await ingest({
+          ingest({
             type: "conversation",
             source: `mcp:${bridge.name}`,
             title: `[${bridge.name}] ${r.name || r.uri}`,
@@ -238,8 +219,7 @@ export function enabledBridges() {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+if (isMainModule(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
   const bridges = enabledBridges();
 
@@ -298,7 +278,7 @@ if (isMain) {
       const args = jsonArgs ? JSON.parse(jsonArgs) : {};
       console.log(await callBridgeTool(bridge, tool, args));
     } else {
-      console.error(`Unknown command: ${cmd}\nUsage: node mcp-bridge.mjs [list|sync|call]`);
+      console.error(`Unknown command: ${cmd}\nUsage: memvault bridge [list|presets|add <name>|sync [name]|call <name> <tool> '<json>']`);
       process.exit(1);
     }
   };

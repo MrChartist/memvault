@@ -12,6 +12,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import { USER_PROJECTS } from "./config.mjs";
+import { escapeRegExp } from "./util.mjs";
+
 // ─── Auto-Tagging ───────────────────────────────────────────────────────────
 
 const TECH_PATTERNS = [
@@ -27,7 +30,7 @@ const TECH_PATTERNS = [
   { pattern: /\b(python|django|flask|fastapi)\b/i, tag: "python" },
   { pattern: /\b(java|spring|maven|gradle)\b/i, tag: "java" },
   { pattern: /\b(rust|cargo|tokio)\b/i, tag: "rust" },
-  { pattern: /\b(go|golang|gin|fiber)\b/i, tag: "golang" },
+  { pattern: /\b(golang|goroutines?|go\s+(mod|build|test|run|get|install))\b/i, tag: "golang" },
   // Database
   { pattern: /\b(sql|sqlite|postgres|mysql|supabase)\b/i, tag: "database" },
   { pattern: /\b(mongodb|mongoose|redis)\b/i, tag: "nosql" },
@@ -42,10 +45,9 @@ const TECH_PATTERNS = [
   { pattern: /\b(git|github|gitlab)\b/i, tag: "git" },
   { pattern: /\b(vscode|vs\s?code|cursor|copilot)\b/i, tag: "ide" },
   { pattern: /\b(npm|yarn|pnpm|bun)\b/i, tag: "packagemgr" },
-  // Trading/Finance (for this user's domain)
+  // Trading / finance
   { pattern: /\b(trading|candlestick|nifty|sensex|nse|bse)\b/i, tag: "trading" },
   { pattern: /\b(fii|dii|sebi|portfolio)\b/i, tag: "finance" },
-  { pattern: /\b(investology|mrchartist|chartist)\b/i, tag: "investology" },
 ];
 
 const TOPIC_PATTERNS = [
@@ -124,7 +126,7 @@ export function scoreRelevance(entry, query) {
   for (const kw of keywords) {
     if (content.includes(kw)) score += 10;
     // Count occurrences (capped at 5)
-    const count = Math.min((content.match(new RegExp(kw, "gi")) || []).length, 5);
+    const count = Math.min((content.match(new RegExp(escapeRegExp(kw), "g")) || []).length, 5);
     score += count * 2;
   }
 
@@ -160,23 +162,35 @@ export function rankByRelevance(entries, query) {
 
 // ─── Project Detection ──────────────────────────────────────────────────────
 
-const KNOWN_PROJECTS = [
-  { patterns: [/investology/i, /mrchartist/i, /sebi/i], name: "Investology", tags: "investology,trading" },
-  { patterns: [/memvault/i, /vault/i, /mcp.*server/i], name: "MemVault", tags: "memvault,mcp" },
-  { patterns: [/tradebook/i, /trade.*book/i, /journal.*trade/i], name: "TradeBook", tags: "tradebook,trading" },
-  { patterns: [/fii.*dii/i, /dii.*fii/i, /flows.*dashboard/i], name: "FII-DII Dashboard", tags: "fii-dii,finance" },
-  { patterns: [/twitter.*bot/i, /tweet/i, /promotion.*plan/i], name: "Twitter Bot", tags: "twitter,marketing" },
-  { patterns: [/ollama/i, /local.*llm/i], name: "Ollama MCP", tags: "ollama,ai,mcp" },
-];
+/**
+ * Projects come from the "projects" array in ~/.memvaultrc.json:
+ *   { "name": "My App", "patterns": ["my-?app", "myapp\\.com"], "tags": "myapp,web" }
+ * `patterns` are case-insensitive regular expressions (strings).
+ */
+export function compileProjects(projects = []) {
+  const compiled = [];
+  for (const p of projects) {
+    if (!p || typeof p.name !== "string" || !Array.isArray(p.patterns)) continue;
+    const patterns = [];
+    for (const src of p.patterns) {
+      try { patterns.push(new RegExp(src, "i")); } catch { /* skip an invalid pattern */ }
+    }
+    if (patterns.length) compiled.push({ name: p.name, tags: p.tags || "", patterns });
+  }
+  return compiled;
+}
+
+const DEFAULT_PROJECTS = compileProjects(USER_PROJECTS);
 
 /**
- * Detect project from text content
+ * Detect a configured project from text
  * @param {string} text - Text to analyze
+ * @param {Array} [projects] - compiled projects (defaults to the user's config)
  * @returns {{name: string, tags: string} | null}
  */
-export function detectProject(text) {
+export function detectProject(text, projects = DEFAULT_PROJECTS) {
   if (!text) return null;
-  for (const project of KNOWN_PROJECTS) {
+  for (const project of projects) {
     for (const pattern of project.patterns) {
       if (pattern.test(text)) return { name: project.name, tags: project.tags };
     }
@@ -188,12 +202,13 @@ export function detectProject(text) {
 
 /**
  * Generate a daily digest summary from entries
- * @param {Object[]} entries - Today's vault entries
+ * @param {Object[]} entries - The day's vault entries
+ * @param {Date} [day] - The day being summarised (default: today)
  * @returns {string} Formatted digest markdown
  */
-export function generateDigest(entries) {
+export function generateDigest(entries, day = new Date()) {
   if (!entries || entries.length === 0) {
-    return "No activity recorded today yet.";
+    return "No activity recorded for that day.";
   }
 
   // Group by type
@@ -208,7 +223,7 @@ export function generateDigest(entries) {
     diary: "📔", conversation: "💬", worklog: "🛠️", file: "📎",
   };
 
-  let digest = `## 📋 Daily Digest — ${new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}\n\n`;
+  let digest = `## 📋 Daily Digest — ${day.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}\n\n`;
   digest += `**Total activity**: ${entries.length} entries\n\n`;
 
   for (const [type, items] of Object.entries(grouped)) {
@@ -246,7 +261,7 @@ export function generateDigest(entries) {
   const allText = entries.map(e => `${e.title || ""} ${e.content || ""} ${e.tags || ""}`).join(" ");
   const techTags = autoTag(allText);
   if (techTags.length > 0) {
-    digest += `### 🏷️ Tech Stack Today\n${techTags.map(t => `\`${t}\``).join(", ")}\n`;
+    digest += `### 🏷️ Tech Stack\n${techTags.map(t => `\`${t}\``).join(", ")}\n`;
   }
 
   return digest;

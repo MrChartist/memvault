@@ -14,7 +14,8 @@
 
 import fs from "fs";
 import path from "path";
-import { API_URL } from "./config.mjs";
+import { importConversations } from "./import-lib.mjs";
+import { isMainModule } from "./util.mjs";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -121,53 +122,16 @@ export async function importGemini(inputPath, options = {}) {
 
   console.log(`📊 Found ${geminiActivities.length} Gemini activities (out of ${activities.length} total)`);
 
-  let imported = 0, skipped = 0, errors = 0;
-  const dryRun = options.dryRun || false;
-
-  for (const activity of geminiActivities) {
-    const formatted = formatGeminiActivity(activity);
-    if (!formatted) { skipped++; continue; }
-
-    if (dryRun) {
-      console.log(`  📝 [DRY RUN] "${formatted.title.slice(0, 60)}..."`);
-      imported++;
-      continue;
-    }
-
-    try {
-      const res = await fetch(`${API_URL}/add`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          type: "conversation",
-          source: "gemini-import",
-          title: formatted.title,
-          content: formatted.content,
-          tags: formatted.tags,
-        }),
-      });
-      const result = await res.json();
-      if (result.ok) {
-        imported++;
-        if (imported % 20 === 0) console.log(`  ✅ Imported ${imported}...`);
-      } else { errors++; }
-    } catch (e) {
-      errors++;
-      if (errors <= 3) console.error(`  ⚠️ Error: ${e.message}`);
-    }
-  }
-
-  console.log(`\n🎉 Gemini Import Complete!`);
-  console.log(`   ✅ Imported: ${imported}`);
-  console.log(`   ⏭️  Skipped:  ${skipped}`);
-  if (errors) console.log(`   ❌ Errors:   ${errors}`);
-
-  return { imported, skipped, errors };
+  return importConversations(geminiActivities.map(formatGeminiActivity), {
+    label: "Gemini",
+    source: "gemini-import",
+    dryRun: options.dryRun || false,
+  });
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (process.argv[1] && process.argv[1].endsWith("import-gemini.mjs")) {
+if (isMainModule(import.meta.url)) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`

@@ -7,7 +7,7 @@ methods. Local timestamped backups are always kept in `VAULT_ROOT/backups`.
 Run a backup any time:
 
 ```bash
-npx memvault backup        # or: npm run backup
+npx -y @mrchartist/memvault backup        # or: npm run backup
 npm run backup:list        # list local backups
 ```
 
@@ -81,7 +81,7 @@ on servers/headless machines.
 
 ## Auto-backup after sync
 
-When either Drive method is enabled, `npx memvault sync` automatically runs a
+When either Drive method is enabled, `npx -y @mrchartist/memvault sync` automatically runs a
 backup after capturing data, so your cloud copy stays current.
 
 ## Restore

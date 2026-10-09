@@ -3,119 +3,85 @@
  * sync-git.mjs — MemVault Git Commit Sync
  * ─────────────────────────────────────────────────────────────────────────────
  * Scans Git repositories and imports commit history into the vault.
+ * Re-running is safe: commits already in the vault are skipped.
  *
  * Usage:
- *   node sync-git.mjs                    (sync all configured repos)
- *   node sync-git.mjs --dry-run          (preview, no posts)
- *   node sync-git.mjs --path "D:\AG"     (scan specific directory)
+ *   node sync-git.mjs                    (scan the "sync.gitDirs" from your config)
+ *   node sync-git.mjs --dry-run          (preview, nothing is saved)
+ *   node sync-git.mjs --path ~/code      (scan a specific directory)
  *   node sync-git.mjs --days 30          (last 30 days, default: 14)
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import fs from "fs";
 import path from "path";
-import { execSync } from "child_process";
-import { API_URL as API, SYNC_CONFIG } from "./config.mjs";
+import { execFileSync } from "child_process";
+import { SYNC_CONFIG } from "./config.mjs";
+import { flagValue, flagNumber, saveEntries, describeResult } from "./sync-lib.mjs";
+import { isMainModule } from "./util.mjs";
 
-const args = process.argv.slice(2);
-const DRY_RUN = args.includes("--dry-run");
-
-// Parse --days N
-const daysIdx = args.indexOf("--days");
-const DAYS = daysIdx !== -1 ? Number(args[daysIdx + 1]) || 14 : 14;
-
-// Parse --path "..."
-const pathIdx = args.indexOf("--path");
-const SCAN_ROOT = pathIdx !== -1 ? args[pathIdx + 1] : (process.env.GIT_SCAN_ROOT || (SYNC_CONFIG.gitDirs && SYNC_CONFIG.gitDirs[0]) || "D:\\AG");
-
-// Max depth to search for .git directories
-const MAX_DEPTH = 3;
+const MAX_DEPTH = 3; // how deep to look for .git directories
+const SKIP_DIRS = new Set([
+  "node_modules", "dist", "build", "target", "venv", "__pycache__", "vendor",
+  "Library", "AppData", "Applications", "Pictures", "Movies", "Music", "Downloads",
+]);
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-async function postToVault(entry) {
-  if (DRY_RUN) {
-    console.log(`  [DRY] ${entry.title}`);
-    return true;
-  }
-  try {
-    const res = await fetch(`${API}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    return (await res.json()).ok;
-  } catch { return false; }
-}
-
-function findGitRepos(rootDir, depth = 0) {
+/** Find repositories under `rootDir` (a directory containing `.git`). */
+export function findGitRepos(rootDir, depth = 0) {
   const repos = [];
   if (depth > MAX_DEPTH) return repos;
 
+  let entries;
   try {
-    const entries = fs.readdirSync(rootDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      const full = path.join(rootDir, entry.name);
+    entries = fs.readdirSync(rootDir, { withFileTypes: true });
+  } catch {
+    return repos; // permission denied, vanished, ...
+  }
 
-      if (entry.name === ".git") {
-        repos.push(rootDir);
-        return repos; // Don't recurse into .git
-      }
+  // `.git` is a directory in normal clones and a file in worktrees/submodules.
+  if (entries.some((e) => e.name === ".git")) return [rootDir];
 
-      if (entry.name === "node_modules" || entry.name === ".next" || entry.name === "dist") continue;
-
-      repos.push(...findGitRepos(full, depth + 1));
-    }
-  } catch { /* permission denied or similar */ }
-
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) continue;
+    repos.push(...findGitRepos(path.join(rootDir, entry.name), depth + 1));
+  }
   return repos;
+}
+
+const git = (repoPath, args, timeout = 10_000) =>
+  execFileSync("git", args, { cwd: repoPath, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+
+// ASCII unit/record separators cannot appear in commit text, unlike quotes or newlines.
+const FIELD = "\x1f";
+const RECORD = "\x1e";
+const LOG_FORMAT = ["%H", "%h", "%an", "%aI", "%s", "%b"].join("%x1f") + "%x1e";
+
+/** Parse the output of `git log --format=<LOG_FORMAT>`. */
+export function parseGitLog(output) {
+  const commits = [];
+  for (const record of String(output).split(RECORD)) {
+    if (!record.trim()) continue;
+    const [hash, short, author, date, subject, body = ""] = record.replace(/^\s+/, "").split(FIELD);
+    if (!hash || !subject) continue;
+    commits.push({ hash, short, author, date, subject: subject.trim(), body: body.trim() });
+  }
+  return commits;
 }
 
 function getGitCommits(repoPath, days) {
   try {
-    const since = `--since="${days} days ago"`;
-    const format = '--format={"hash":"%H","short":"%h","author":"%an","email":"%ae","date":"%aI","subject":"%s","body":"%b"}---COMMIT_END---';
-    const cmd = `git log ${since} ${format} --no-merges`;
-
-    const output = execSync(cmd, {
-      cwd: repoPath,
-      encoding: "utf8",
-      timeout: 10000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    const commits = [];
-    const chunks = output.split("---COMMIT_END---").filter(c => c.trim());
-
-    for (const chunk of chunks) {
-      try {
-        // Clean the JSON — git body can have newlines
-        const cleaned = chunk.trim()
-          .replace(/\n/g, " ")
-          .replace(/\r/g, "")
-          .replace(/\t/g, " ");
-        const parsed = JSON.parse(cleaned);
-        commits.push(parsed);
-      } catch { /* skip malformed */ }
-    }
-
-    return commits;
+    return parseGitLog(git(repoPath, ["log", `--since=${days} days ago`, `--format=${LOG_FORMAT}`, "--no-merges"]));
   } catch {
-    return [];
+    return []; // empty repo, git missing, timeout...
   }
 }
 
 function getRepoName(repoPath) {
   try {
-    const remote = execSync("git remote get-url origin", {
-      cwd: repoPath,
-      encoding: "utf8",
-      timeout: 5000,
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-
-    // Extract repo name from URL
+    const remote = git(repoPath, ["remote", "get-url", "origin"], 5000).trim();
     const match = remote.match(/\/([^/]+?)(?:\.git)?$/);
     return match ? match[1] : path.basename(repoPath);
   } catch {
@@ -125,93 +91,73 @@ function getRepoName(repoPath) {
 
 function getRepoBranch(repoPath) {
   try {
-    return execSync("git branch --show-current", {
-      cwd: repoPath,
-      encoding: "utf8",
-      timeout: 5000,
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim() || "unknown";
+    return git(repoPath, ["branch", "--show-current"], 5000).trim() || "detached";
   } catch {
     return "unknown";
   }
 }
 
-// ─── Main ───────────────────────────────────────────────────────────────────
-
-async function main() {
-  console.log("╔══════════════════════════════════════╗");
-  console.log("║  Git → MemVault Sync                 ║");
-  console.log(`║  Scanning: ${SCAN_ROOT.slice(0, 24).padEnd(24)}║`);
-  console.log(`║  Past ${String(DAYS).padEnd(3)} days | ${DRY_RUN ? "DRY RUN" : "LIVE   "}              ║`);
-  console.log("╚══════════════════════════════════════╝\n");
-
-  // Health check
-  if (!DRY_RUN) {
-    try {
-      const h = await fetch(`${API}/health`);
-      if (!h.ok) throw new Error();
-      console.log("✅ Vault API reachable\n");
-    } catch {
-      console.error("❌ Vault API not reachable at", API);
-      console.error("   Run: node server.mjs");
-      process.exit(1);
-    }
-  }
-
-  // Find repos
-  console.log(`🔍 Scanning for Git repos in: ${SCAN_ROOT}`);
-  const repos = findGitRepos(SCAN_ROOT);
-  console.log(`📁 Found ${repos.length} repositories\n`);
-
-  let totalSynced = 0;
-  let totalCommits = 0;
-
-  for (const repoPath of repos) {
-    const repoName = getRepoName(repoPath);
-    const branch = getRepoBranch(repoPath);
-    const commits = getGitCommits(repoPath, DAYS);
-
-    if (commits.length === 0) continue;
-
-    totalCommits += commits.length;
-    console.log(`\n── ${repoName} (${branch}) — ${commits.length} commits ──`);
-
-    for (const commit of commits) {
-      const content = [
-        `**Commit**: \`${commit.short}\``,
-        `**Author**: ${commit.author} <${commit.email}>`,
-        `**Branch**: ${branch}`,
-        `**Repo**: ${repoName}`,
-        `**Path**: ${repoPath}`,
-        ``,
-        `### Message`,
-        commit.subject,
-        commit.body ? `\n${commit.body.trim()}` : "",
-      ].join("\n");
-
-      const synced = await postToVault({
-        type: "worklog",
-        source: "git",
-        title: `[${repoName}] ${commit.subject.slice(0, 100)}`,
-        content,
-        tags: `git,commit,${repoName},${branch}`,
-        created_at: commit.date,
-      });
-
-      if (synced) {
-        totalSynced++;
-        process.stdout.write(".");
-      } else {
-        process.stdout.write("✗");
-      }
-    }
-  }
-
-  console.log(`\n\n═══════════════════════════════════════`);
-  console.log(`📦 Repos scanned    : ${repos.length}`);
-  console.log(`📝 Commits found    : ${totalCommits}`);
-  console.log(`✅ Synced to vault  : ${totalSynced}`);
-  console.log(`═══════════════════════════════════════\n`);
+/** Build a vault entry from a commit. Branch is a tag only, so switching branches never re-imports a commit. */
+export function commitToEntry(commit, { repoName, repoPath, branch }) {
+  return {
+    type: "worklog",
+    source: "git",
+    title: `[${repoName}] ${commit.subject.slice(0, 100)}`,
+    content: [
+      `**Commit**: \`${commit.short}\``,
+      `**Author**: ${commit.author}`,
+      `**Repo**: ${repoName}`,
+      `**Path**: ${repoPath}`,
+      ``,
+      `### Message`,
+      commit.subject,
+      commit.body ? `\n${commit.body}` : "",
+    ].join("\n"),
+    tags: `git,commit,${repoName},${branch}`,
+    created_at: commit.date,
+  };
 }
 
-main().catch(console.error);
+// ─── Main ───────────────────────────────────────────────────────────────────
+
+export async function main(args = process.argv.slice(2)) {
+  const dryRun = args.includes("--dry-run");
+  const days = flagNumber(args, "--days", 14);
+  const explicitRoot = flagValue(args, "--path") || process.env.GIT_SCAN_ROOT;
+  const roots = explicitRoot ? [explicitRoot] : SYNC_CONFIG.gitDirs;
+
+  console.log(`🔍 Git sync — last ${days} days${dryRun ? " (dry run)" : ""}`);
+
+  const repos = [];
+  for (const root of roots) {
+    if (!fs.existsSync(root)) {
+      console.log(`  ⚠️  Not found: ${root}`);
+      continue;
+    }
+    console.log(`  Scanning: ${root}`);
+    repos.push(...findGitRepos(root));
+  }
+  console.log(`📁 Found ${repos.length} repositories\n`);
+
+  const entries = [];
+  for (const repoPath of [...new Set(repos)]) {
+    const commits = getGitCommits(repoPath, days);
+    if (commits.length === 0) continue;
+
+    const repoName = getRepoName(repoPath);
+    const branch = getRepoBranch(repoPath);
+    console.log(`  ${repoName} (${branch}) — ${commits.length} commits`);
+    for (const c of commits) entries.push(commitToEntry(c, { repoName, repoPath, branch }));
+  }
+
+  const result = saveEntries(entries, { dryRun });
+  console.log(`\n✅ ${entries.length} commits found — ${describeResult(result)}\n`);
+  return result;
+}
+
+if (isMainModule(import.meta.url)) {
+  main().catch((e) => {
+    console.error(`❌ ${e.message}`);
+    process.exit(1);
+  });
+}

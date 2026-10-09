@@ -16,6 +16,7 @@ import { importChatGPT } from "./import-chatgpt.mjs";
 import { importClaude } from "./import-claude.mjs";
 import { importGemini } from "./import-gemini.mjs";
 import { importPerplexity } from "./import-perplexity.mjs";
+import { isMainModule } from "./util.mjs";
 
 // ─── Platform Detection ────────────────────────────────────────────────────
 
@@ -159,7 +160,8 @@ export async function importAll(inputPath, options = {}) {
   let totalImported = 0;
   for (const [platform, result] of Object.entries(results)) {
     const icon = result.imported > 0 ? "✅" : "⏭️";
-    console.log(`  ${icon} ${platform}: ${result.imported} imported, ${result.skipped} skipped`);
+    const dup = result.duplicates ? `, ${result.duplicates} already in vault` : "";
+    console.log(`  ${icon} ${platform}: ${result.imported} imported, ${result.skipped} skipped${dup}`);
     totalImported += result.imported;
   }
   console.log(`\n  📊 Total: ${totalImported} conversations imported into MemVault\n`);
@@ -169,7 +171,7 @@ export async function importAll(inputPath, options = {}) {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-if (process.argv[1] && process.argv[1].endsWith("import-all.mjs")) {
+if (isMainModule(import.meta.url)) {
   const inputPath = process.argv[2];
   if (!inputPath) {
     console.log(`
