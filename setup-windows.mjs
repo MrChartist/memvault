@@ -1,10 +1,12 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { fileURLToPath } from "url";
 
 console.log("🚀 Setting up MemVault Ultimate Windows Autostart...\n");
 
-const repoDir = process.cwd();
+// The folder this script lives in — works no matter where you run it from.
+const repoDir = path.dirname(fileURLToPath(import.meta.url));
 const startupFolder = path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs", "Startup");
 const vbsPath = path.join(startupFolder, "MemVault-Autostart.vbs");
 
@@ -38,7 +40,10 @@ try {
   
   // We need to run it silently via a tiny one-liner vbs wrapper, or just cmd /c start /min
   // Let's create a wrapper specifically for the task scheduler so it doesn't flash a cmd window
-  const taskVbsPath = path.join(repoDir, "run-sync-silent.vbs");
+  // Generated per machine and kept OUT of the repo (it contains your local paths).
+  const taskDir = path.join(process.env.LOCALAPPDATA || repoDir, "MemVault");
+  fs.mkdirSync(taskDir, { recursive: true });
+  const taskVbsPath = path.join(taskDir, "run-sync-silent.vbs");
   fs.writeFileSync(taskVbsPath, `Set objShell = CreateObject("WScript.Shell")\nobjShell.Run "cmd.exe /c cd /d """ & "${repoDir}" & """ && npm run sync:all", 0, False`);
   
   const cmd = `schtasks /Create /SC MINUTE /MO 30 /TN "${taskName}" /TR "wscript.exe \\"${taskVbsPath}\\"" /F`;

@@ -13,7 +13,22 @@ import path from "path";
 import os from "os";
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-const ask = (q) => new Promise((resolve) => rl.question(q, resolve));
+// Typed live, readline's own prompt works. When input is piped or scripted, lines can arrive before a
+// question is asked and would be lost, so queue them instead (and treat end-of-input as "use the default").
+const queued = [];
+let waiting = null;
+let inputEnded = false;
+if (!process.stdin.isTTY) {
+  rl.on("line", (l) => { if (waiting) { const w = waiting; waiting = null; w(l); } else queued.push(l); });
+  rl.on("close", () => { inputEnded = true; if (waiting) { const w = waiting; waiting = null; w(""); } });
+}
+const ask = (q) => new Promise((resolve) => {
+  if (process.stdin.isTTY) return rl.question(q, resolve);
+  process.stdout.write(q);
+  if (queued.length) { const a = queued.shift(); process.stdout.write(`${a}\n`); return resolve(a); }
+  if (inputEnded) { process.stdout.write("\n"); return resolve(""); }
+  waiting = resolve;
+});
 const yes = (answer, dflt = true) => {
   const a = (answer || "").trim().toLowerCase();
   if (!a) return dflt;
@@ -34,13 +49,14 @@ async function main() {
     (await ask(`1. Where to store your vault data?\n   [default: ${defaultVaultData}]: `)).trim() || defaultVaultData;
 
   // ── 2. Capture engines ─────────────────────────────────────────────────────
-  console.log("\n2. Which auto-capture engines do you want to enable?");
-  const gitOn = yes(await ask("   - Git commits?        (y/n) [y]: "));
-  const vscodeOn = yes(await ask("   - VS Code activity?   (y/n) [y]: "));
-  const sysOn = yes(await ask("   - System environment? (y/n) [y]: "));
-  const filesOn = yes(await ask("   - Recent file changes?(y/n) [y]: "));
-  const browserOn = yes(await ask("   - Browser history?    (y/n) [n]: "), false);
-  const clipOn = yes(await ask("   - Clipboard (daemon)? (y/n) [n]: "), false);
+  console.log("\n2. Optional automatic capture. Everything here is OFF unless you say yes, and you can change it any time.");
+  console.log("   (Your AI assistants can always save memories themselves; this is only about MemVault noting things for you.)\n");
+  const gitOn = yes(await ask("   - Git commits (messages and dates from folders you pick)?           (y/n) [y]: "));
+  const vscodeOn = yes(await ask("   - VS Code: recent projects and installed extensions?                (y/n) [y]: "));
+  const sysOn = yes(await ask("   - Computer info: OS, memory, which developer tools are installed?  (y/n) [n]: "), false);
+  const filesOn = yes(await ask("   - Names of files you changed recently (file contents are NOT read)? (y/n) [n]: "), false);
+  const browserOn = yes(await ask("   - Browser history and bookmarks (Chrome, Edge, Brave, Chromium)?    (y/n) [n]: "), false);
+  const clipOn = yes(await ask("   - Clipboard history (passwords you copy are masked)?                (y/n) [n]: "), false);
 
   let gitDirs = existing.sync?.gitDirs || [HOME];
   if (gitOn) {
@@ -96,6 +112,7 @@ async function main() {
     vaultRoot,
     port: existing.port || 7799,
     sync: {
+      gitEnabled: gitOn,
       gitDirs,
       vscodeEnabled: vscodeOn,
       systemEnabled: sysOn,
@@ -119,7 +136,9 @@ async function main() {
   };
 
   try {
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+    // This file can hold your Gemini key and Drive credentials: keep it private to your account.
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
+    try { fs.chmodSync(configPath, 0o600); } catch { /* non-POSIX */ }
     console.log(`\n✅ Settings saved to ${configPath}`);
 
     for (const sub of ["db", "entries", "conversations", "worklogs", "backups"]) {
@@ -129,20 +148,10 @@ async function main() {
 
     console.log(`\n🎉 MemVault is ready!\n`);
     console.log(`Next steps:`);
-    console.log(`  1. Start the UI:       npx memvault serve   → http://localhost:${config.port}`);
-    console.log(`  2. Capture your data:  npx memvault sync`);
-    console.log(`  3. Back up:            npx memvault backup`);
-    console.log(`  4. Bridge other AIs:   npx memvault bridge list`);
-    console.log(`\n  Add this to your Claude/Cursor MCP config:`);
-    console.log(`\n{
-  "mcpServers": {
-    "memvault": {
-      "command": "npx",
-      "args": ["memvault", "mcp"],
-      "env": { "VAULT_ROOT": ${JSON.stringify(vaultRoot)} }
-    }
-  }
-}\n`);
+    console.log(`  1. Connect an AI app:  memvault mcp-config      (prints what to paste, with the right file paths)`);
+    console.log(`  2. Open the dashboard: memvault open`);
+    console.log(`  3. Check your setup:   memvault doctor`);
+    console.log(`  4. Capture your data:  memvault sync            (only the engines you turned on)`);
   } catch (err) {
     console.error(`❌ Failed to save config: ${err.message}`);
   }

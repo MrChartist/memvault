@@ -102,6 +102,18 @@ the tag `mcp-bridge`, so they show up in normal vault search.
 - Otherwise → MemVault lists every resource the server exposes and saves each
   one's contents.
 
-If the MemVault web server (`npx memvault serve`) is running, ingested data goes
-through its API; if not, MemVault writes to the vault database directly — so
-bridging works whether or not the server is up.
+Bridging writes straight to your vault, so it works whether or not the dashboard
+server is running. Everything it brings in goes through the same step as every
+other write: secrets are masked, the write is recorded in the access log, and the
+item is tagged with where it came from (`mcp:<bridge name>`).
+
+## Trust
+
+- **A bridge runs a program on your computer**, as you, using the `command` in
+  your config (the presets use `npx -y <package>`, which downloads and runs that
+  package). Enable only bridges you trust.
+- **What a bridge returns is treated as untrusted text.** It is stored like any
+  other note, and agents are told to treat memory as information, never as
+  instructions. Still, review what you pull in.
+- Bridges are an owner feature: an agent bound to a profile is never offered
+  `vault_bridge_list` or `vault_bridge_sync`.

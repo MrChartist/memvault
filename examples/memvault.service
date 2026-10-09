@@ -1,0 +1,21 @@
+# systemd user service for MemVault (Linux).
+#   1. Replace __MEMVAULT_DIR__ with the folder that contains server.mjs
+#      (for an npm global install: $(npm root -g)/@mrchartist/memvault)
+#   2. cp this file to ~/.config/systemd/user/memvault.service
+#   3. systemctl --user daemon-reload && systemctl --user enable --now memvault
+# The server binds to 127.0.0.1 only. Logs: journalctl --user -u memvault
+[Unit]
+Description=MemVault — one local memory for every AI
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__MEMVAULT_DIR__
+ExecStart=/usr/bin/env node __MEMVAULT_DIR__/server.mjs
+Restart=on-failure
+RestartSec=5
+# Optional: keep the vault somewhere else
+# Environment=VAULT_ROOT=%h/.memvault/data
+
+[Install]
+WantedBy=default.target

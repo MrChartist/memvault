@@ -1,4 +1,6 @@
-# Promotion Strategy — MemVault v2.1
+# Promotion Strategy — MemVault
+
+> **Draft copy written for v2.1.** Before posting, update the numbers and claims for 3.0 (see [CHANGELOG.md](../CHANGELOG.md)) and keep the wording honest: notes are stored locally, but what an AI reads from them goes to that AI's provider.
 
 Here are templates and strategies for launching MemVault on various platforms.
 
@@ -7,7 +9,7 @@ Here are templates and strategies for launching MemVault on various platforms.
 **Tweet 1:**
 Every time you start a new AI conversation, it forgets everything you’ve ever told it. 
 
-I got tired of repeating myself, so I built MemVault — a persistent memory layer for Claude, Cursor, and any MCP tool. And yes, it’s 100% local. 🧠👇
+I got tired of repeating myself, so I built MemVault — a persistent memory layer for Claude, Cursor, and any MCP tool. Your notes stay on your own computer. 🧠👇
 
 **Tweet 2 (Demo):**
 [Insert the demo GIF showing `memvault import` and Claude accessing context]
@@ -19,7 +21,7 @@ I’ve built universal importers. Just point MemVault at your data export folder
 
 **Tweet 4 (How it works):**
 It serves this data directly into your AI assistant using the new Model Context Protocol (MCP). 
-You just ask Claude: "What did we decide about the database schema last week?" and MemVault instantly pulls the right context from your vault. No cloud, no tracking.
+You just ask Claude: "What did we decide about the database schema last week?" and MemVault instantly pulls the right context from your vault. Stored on your computer, no tracking.
 
 **Tweet 5 (Call to action):**
 It's completely free and open-source. Try it locally:
@@ -37,16 +39,16 @@ Star the repo if you hate repeating yourself to AI! ⭐
 **Body:**
 Hey everyone,
 
-One of the biggest pain points I have with AI is that every new session starts with a blank slate. I built **MemVault** to solve this. It's a universal, offline memory layer that serves context to your AI tools via the Model Context Protocol (MCP).
+One of the biggest pain points I have with AI is that every new session starts with a blank slate. I built **MemVault** to solve this. It's a universal, local-first memory layer that serves context to your AI tools via the Model Context Protocol (MCP).
 
 **What it does:**
-- Runs completely locally as an MCP stdio server
+- Runs locally as an MCP stdio server
 - Captures context: Git commits, VS Code workspaces, Clipboard, System info
 - **New in v2.1:** Native importers for your ChatGPT, Claude, Perplexity, and Google Takeout (Gemini) data exports. You can dump your ZIPs into a folder, run `memvault import`, and your new AI assistant instantly knows your entire history.
 - AI Intelligence Layer: Uses your own Gemini API key (optional) to auto-tag, summarize, and semantically re-rank search results before sending them to Claude/Cursor.
 
 **Tools it exposes to your AI:**
-It gives your AI 20 different tools, including `vault_smart_search`, `vault_capture_prompt` (auto-logs what you ask), and `vault_remember` (lets the AI save facts for the future).
+It gives your AI 29 tools, including `vault_smart_search`, `vault_capture_prompt` (auto-logs what you ask), and `vault_remember` (lets the AI save facts for the future).
 
 **How to try it:**
 Requires Node.js 20+. Just run:
@@ -67,6 +69,6 @@ I built MemVault because I was tired of copy-pasting the same context into new A
 
 It runs background sync engines to capture your Git commits, VS Code activity, and clipboard. The new v2.1 release adds universal importers that parse your data exports from ChatGPT, Claude, Gemini, and Perplexity, converting them into searchable context.
 
-When you ask Claude a question, MemVault uses a custom context engine (with optional semantic re-ranking via the Gemini API) to inject highly relevant past decisions, code snippets, and conversational history. Data never leaves your machine unless you explicitly enable the semantic AI features with your own API key.
+When you ask Claude a question, MemVault uses a custom context engine (with optional semantic re-ranking via the Gemini API) to inject highly relevant past decisions, code snippets, and conversational history. Your notes are stored on your machine. What an AI reads from them goes to that AI's provider, as with anything you type; masking of secrets and per-agent limits reduce what it sees. The optional semantic features send text to Gemini only if you add your own key.
 
 Source code and setup instructions are on GitHub: https://github.com/MrChartist/memvault

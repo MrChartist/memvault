@@ -28,12 +28,10 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
-import fs from "fs";
-import path from "path";
-import initSqlJs from "sql.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { API_URL, MCP_BRIDGES, VAULT_ROOT, loadUserConfig, saveUserConfig } from "./config.mjs";
+import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
+import { ingest } from "./ingest.mjs";
 
 const CONNECT_TIMEOUT_MS = 20000;
 
@@ -141,37 +139,11 @@ function extractText(result) {
 
 // ─── Ingestion into the vault ───────────────────────────────────────────────
 
-let _sqlDb = null;
-async function directDbInsert(entry) {
-  // Fallback path used when the web API isn't running.
-  const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-  if (!_sqlDb) {
-    const Sql = await initSqlJs();
-    _sqlDb = fs.existsSync(DB_PATH) ? new Sql.Database(fs.readFileSync(DB_PATH)) : new Sql.Database();
-    _sqlDb.run(`CREATE TABLE IF NOT EXISTS items (
-      id TEXT PRIMARY KEY, type TEXT NOT NULL, source TEXT, title TEXT,
-      content TEXT, file_path TEXT, tags TEXT, created_at TEXT NOT NULL);`);
-  }
-  const id = `${entry.type}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  _sqlDb.run(
-    `INSERT INTO items (id,type,source,title,content,file_path,tags,created_at) VALUES (?,?,?,?,?,?,?,?)`,
-    [id, entry.type, entry.source, entry.title, entry.content, null, entry.tags, entry.created_at]
-  );
-  fs.writeFileSync(DB_PATH, Buffer.from(_sqlDb.export()));
+// Bridged content comes from OTHER tools' servers, so it is untrusted: ingest() masks
+// secrets and writes it as ordinary shared memory tagged with its source.
+async function ingestEntry(entry) {
+  ingest(entry, { actor: `bridge:${entry.source || "mcp"}` });
   return true;
-}
-
-async function ingest(entry) {
-  try {
-    const res = await fetch(`${API_URL}/add`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(entry),
-    });
-    if (res.ok) return true;
-  } catch { /* API not running — fall back to direct DB write */ }
-  return directDbInsert(entry);
 }
 
 /**
@@ -193,7 +165,7 @@ export async function syncBridge(bridge) {
       });
       const text = extractText(result);
       if (text.trim()) {
-        await ingest({
+        await ingestEntry({
           type: "conversation",
           source: `mcp:${bridge.name}`,
           title: `[${bridge.name}] ${bridge.importTool}`,
@@ -210,7 +182,7 @@ export async function syncBridge(bridge) {
           const read = await client.readResource({ uri: r.uri });
           const text = extractText(read);
           if (!text.trim()) continue;
-          await ingest({
+          await ingestEntry({
             type: "conversation",
             source: `mcp:${bridge.name}`,
             title: `[${bridge.name}] ${r.name || r.uri}`,

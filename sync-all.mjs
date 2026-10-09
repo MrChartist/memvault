@@ -20,10 +20,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Map config flags → engine scripts (one-shot only; clipboard excluded).
 const engines = [
-  { script: "sync-git.mjs", enabled: true }, // gitDirs always scanned
-  { script: "sync-vscode.mjs", enabled: SYNC_CONFIG.vscodeEnabled !== false },
-  { script: "sync-system.mjs", enabled: SYNC_CONFIG.systemEnabled !== false },
-  { script: "sync-files.mjs", enabled: SYNC_CONFIG.filesEnabled !== false },
+  { script: "sync-git.mjs", enabled: SYNC_CONFIG.gitEnabled === true },
+  { script: "sync-vscode.mjs", enabled: SYNC_CONFIG.vscodeEnabled === true },
+  { script: "sync-system.mjs", enabled: SYNC_CONFIG.systemEnabled === true },
+  { script: "sync-files.mjs", enabled: SYNC_CONFIG.filesEnabled === true },
   { script: "sync-browser.mjs", enabled: SYNC_CONFIG.browserEnabled === true },
   { script: "sync-antigravity.mjs", enabled: SYNC_CONFIG.antigravityEnabled === true },
 ].filter((e) => e.enabled);
@@ -37,12 +37,18 @@ function runEngine(script) {
 }
 
 async function main() {
-  console.log(`🔄 Running ${engines.length} enabled sync engine(s)...\n`);
+  if (engines.length === 0) {
+    console.log("Nothing is switched on for automatic capture yet — that is the safe default.");
+    console.log("Run `memvault init` to choose what MemVault may note down (git, VS Code, files, browser…).");
+    console.log("Your AI assistants can still save memories themselves without this.\n");
+  } else {
+    console.log(`🔄 Running ${engines.length} enabled sync engine(s)...\n`);
+  }
   for (const { script } of engines) {
     console.log(`\n▶️ Starting ${script}...`);
     await runEngine(script);
   }
-  console.log(`\n✅ All sync engines complete!`);
+  if (engines.length) console.log(`\n✅ All sync engines complete!`);
 
   // Auto-backup if Google Drive is enabled, otherwise just keep local.
   const driveOn = STORAGE_CONFIG.gdriveFolder?.enabled || STORAGE_CONFIG.gdriveApi?.enabled;

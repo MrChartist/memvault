@@ -1,23 +1,14 @@
-// /mnt/d/AG/Vault/apps/vault/vault.mjs
+// vault.mjs — add entries to your MemVault from the command line (no server needed)
 import fs from "fs";
 import path from "path";
-import { VAULT_ROOT, API_URL as API } from "./config.mjs";
+import { VAULT_ROOT } from "./config.mjs";
+import { ingest } from "./ingest.mjs";
 function isoDate() {
     const d = new Date();
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
-}
-
-async function postJson(url, body) {
-    const res = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
 }
 
 function usage() {
@@ -28,8 +19,7 @@ Usage:
   node vault.mjs worklog "<title>" "<content...>" "<tags(optional)>"
 
 Env:
-  VAULT_ROOT=/mnt/d/AG/Vault
-  VAULT_API=http://127.0.0.1:7799
+  VAULT_ROOT=/path/to/vault/data    (default: ~/.memvault/data)
 `);
     process.exit(1);
 }
@@ -44,19 +34,19 @@ if (cmd === "diary") {
     const day = isoDate();
     const dir = path.join(VAULT_ROOT, "entries", day.slice(0, 4), day.slice(5, 7));
     fs.mkdirSync(dir, { recursive: true });
-
     const file = path.join(dir, `${day}.md`);
-    const stamp = new Date().toISOString();
-    fs.appendFileSync(file, `\n## ${stamp}\n${text}\n`);
 
-    await postJson(`${API}/add`, {
+    const { items } = ingest({
         type: "diary",
         source: "manual",
         title: `Diary ${day}`,
         content: text,
         file_path: file,
         tags: "diary",
-    });
+    }, { actor: "cli" });
+
+    // Mirror what was STORED (secrets masked), never the raw input.
+    fs.appendFileSync(file, `\n## ${new Date().toISOString()}\n${items[0].content}\n`, { mode: 0o600 });
 
     console.log(`OK: wrote diary -> ${file}`);
     process.exit(0);
@@ -67,13 +57,13 @@ if (cmd === "convo") {
     const content = rest.join(" ").trim();
     if (!source || !title || !content) usage();
 
-    await postJson(`${API}/add`, {
+    ingest({
         type: "conversation",
         source,
         title,
         content,
         tags: `conversation,${source}`,
-    });
+    }, { actor: "cli" });
 
     console.log("OK: conversation saved");
     process.exit(0);
@@ -83,13 +73,13 @@ if (cmd === "worklog") {
     const [title, content, tags] = args;
     if (!title || !content) usage();
 
-    await postJson(`${API}/add`, {
+    ingest({
         type: "worklog",
         source: "antigravity",
         title,
         content,
         tags: tags || "worklog",
-    });
+    }, { actor: "cli" });
 
     console.log("OK: worklog saved");
     process.exit(0);

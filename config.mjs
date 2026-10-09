@@ -34,7 +34,9 @@ export function loadUserConfig() {
 
 /** Persist a config object back to ~/.memvaultrc.json (pretty-printed). */
 export function saveUserConfig(config) {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), "utf8");
+  // May hold API keys and Drive credentials, so keep it private to this account.
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
+  try { fs.chmodSync(CONFIG_FILE, 0o600); } catch { /* non-POSIX */ }
 }
 
 const userConfig = loadUserConfig();
@@ -49,15 +51,46 @@ const port = process.env.PORT || process.env.VAULT_PORT || userConfig.port || 77
 export const API_URL = process.env.VAULT_API || userConfig.apiUrl || `http://127.0.0.1:${port}`;
 export const PORT = Number(port);
 
+// ─── Security Configuration ─────────────────────────────────────────────────
+// Secure by default: loopback only, token required, secrets redacted on ingest.
+export const SECURITY_CONFIG = {
+  // Interface the API/web UI binds to. Anything other than loopback also needs
+  // allowRemote: true — MemVault refuses to start otherwise.
+  host: "127.0.0.1",
+  allowRemote: false,
+  // Extra Host headers / browser Origins to accept (e.g. a reverse proxy name).
+  allowedHosts: [],
+  allowedOrigins: [],
+  // Strip API keys, tokens, PAN/Aadhaar, card numbers before storing (see redact.mjs).
+  redact: true,
+  redactDisable: [],
+  // Record every MCP tool call / API write in the tamper-evident audit log.
+  audit: true,
+  ...(userConfig.security || {}),
+};
+
+// Where the API token lives. Deliberately OUTSIDE the vault data folder so that
+// backups and Google Drive mirrors of the vault never contain it.
+export const TOKEN_FILE =
+  process.env.MEMVAULT_TOKEN_FILE || path.join(HOME, ".memvault", "api-token");
+
 // ─── Sync Configuration ─────────────────────────────────────────────────────
-export const SYNC_CONFIG = userConfig.sync || {
+// Privacy first: nothing is captured automatically until YOU turn it on
+// (run `memvault init`, or add a "sync" block to ~/.memvaultrc.json). Your AI assistants can
+// still save memories through MCP without any of this.
+export const SYNC_CONFIG = userConfig.sync ? {
+  // Older config files have no gitEnabled flag: they scanned git when folders were listed.
+  gitEnabled: userConfig.sync.gitEnabled ?? (userConfig.sync.gitDirs?.length > 0),
+  ...userConfig.sync,
+} : {
+  gitEnabled: false,
   gitDirs: [HOME],
-  vscodeEnabled: true,
+  vscodeEnabled: false,
   clipboardEnabled: false,
-  filesEnabled: true,
-  systemEnabled: true,
-  browserEnabled: true,
-  antigravityEnabled: true,
+  filesEnabled: false,
+  systemEnabled: false,
+  browserEnabled: false,
+  antigravityEnabled: false,
 };
 
 // ─── AI Configuration ───────────────────────────────────────────────────────
@@ -86,7 +119,19 @@ export const STORAGE_CONFIG = {
   },
   // Keep at most N local timestamped backups (0 = unlimited)
   keepLocalBackups: userConfig.storage?.keepLocalBackups ?? 20,
+  // Anything leaving this machine (Drive folder / Drive API) is encrypted with a
+  // passphrase first. The passphrase is read from the MEMVAULT_BACKUP_PASSPHRASE
+  // env var, or from the first line of the file named by `passphraseFile` — never
+  // from the JSON config itself. Set allowPlaintextCloud only if you accept
+  // uploading an unencrypted copy of your vault.
+  encryptCloud: userConfig.storage?.encryptCloud ?? true,
+  allowPlaintextCloud: userConfig.storage?.allowPlaintextCloud ?? false,
+  passphraseFile: userConfig.storage?.passphraseFile || "",
 };
+
+// ─── Projects — YOUR named projects, used to auto-tag notes (none by default) ──
+//   [{ "name": "Garden Shed", "match": ["shed", "garden build"], "tags": "garden,diy" }]
+export const PROJECTS = Array.isArray(userConfig.projects) ? userConfig.projects : [];
 
 // ─── MCP Bridges — connect OUT to other AI tools' MCP servers ────────────────
 // Each entry describes an external MCP server that MemVault can connect to as a

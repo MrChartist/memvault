@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.mrchartist/memvault",
-  "description": "Universal AI Context Layer — Auto-sync your entire digital life (Git, VS Code, Browser, Clipboard) to Claude, Cursor, and any MCP client.",
+  "description": "One private memory on your own computer, shared by every AI assistant you use. Agents, secret masking, encrypted backups.",
   "repository": {
     "url": "https://github.com/MrChartist/memvault",
     "source": "github"
   },
-  "version": "2.0.0",
+  "version": "3.0.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@mrchartist/memvault",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "transport": {
         "type": "stdio"
       },

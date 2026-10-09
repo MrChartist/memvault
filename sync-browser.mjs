@@ -17,39 +17,60 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-import { API_URL as API } from "./config.mjs";
+import { createIngestQueue } from "./ingest.mjs";
+
+const queue = createIngestQueue({ actor: "browser" });
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONLY_CHROME = args.includes("--chrome");
 const ONLY_EDGE = args.includes("--edge");
 
-// Windows username (from WSL /mnt/c/Users/<name>)
-const WIN_USER = process.env.WIN_USER || (() => {
-    try {
-        const dirs = fs.readdirSync("/mnt/c/Users").filter(d =>
-            !["Public", "Default", "Default User", "All Users"].includes(d) &&
-            fs.statSync(`/mnt/c/Users/${d}`).isDirectory()
-        );
-        return dirs[0] || "rohit";
-    } catch { return "rohit"; }
-})();
+// Where each browser keeps its profile, per operating system. Only folders that exist are used.
+// WIN_USER lets WSL users point at the Windows side (/mnt/c/Users/<name>).
+const IS_WSL = process.platform === "linux" && /microsoft/i.test(os.release());
 
-const BROWSER_PROFILES = [];
+function browserProfiles() {
+    const home = os.homedir();
+    const found = [];
+    const add = (name, userDataDir) => {
+        const dir = path.join(userDataDir, "Default");
+        found.push({ name, historyPath: path.join(dir, "History"), bookmarksPath: path.join(dir, "Bookmarks") });
+    };
+    if (process.platform === "win32") {
+        const local = process.env.LOCALAPPDATA || path.join(home, "AppData", "Local");
+        add("Chrome", path.join(local, "Google", "Chrome", "User Data"));
+        add("Edge", path.join(local, "Microsoft", "Edge", "User Data"));
+        add("Brave", path.join(local, "BraveSoftware", "Brave-Browser", "User Data"));
+    } else if (process.platform === "darwin") {
+        const app = path.join(home, "Library", "Application Support");
+        add("Chrome", path.join(app, "Google", "Chrome"));
+        add("Edge", path.join(app, "Microsoft Edge"));
+        add("Brave", path.join(app, "BraveSoftware", "Brave-Browser"));
+    } else {
+        const cfg = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+        add("Chrome", path.join(cfg, "google-chrome"));
+        add("Edge", path.join(cfg, "microsoft-edge"));
+        add("Brave", path.join(cfg, "BraveSoftware", "Brave-Browser"));
+        add("Chromium", path.join(cfg, "chromium"));
+        if (IS_WSL) {
+            let users = [];
+            try {
+                users = process.env.WIN_USER
+                    ? [process.env.WIN_USER]
+                    : fs.readdirSync("/mnt/c/Users").filter((d) => !["Public", "Default", "Default User", "All Users"].includes(d));
+            } catch { /* no Windows drive mounted */ }
+            for (const u of users) {
+                const local = `/mnt/c/Users/${u}/AppData/Local`;
+                add(`Chrome (Windows ${u})`, path.join(local, "Google", "Chrome", "User Data"));
+                add(`Edge (Windows ${u})`, path.join(local, "Microsoft", "Edge", "User Data"));
+            }
+        }
+    }
+    return found.filter((p) => fs.existsSync(p.historyPath) || fs.existsSync(p.bookmarksPath));
+}
 
-if (!ONLY_EDGE) {
-    BROWSER_PROFILES.push({
-        name: "Chrome",
-        historyPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Google/Chrome/User Data/Default/History`,
-        bookmarksPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Google/Chrome/User Data/Default/Bookmarks`,
-    });
-}
-if (!ONLY_CHROME) {
-    BROWSER_PROFILES.push({
-        name: "Edge",
-        historyPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Microsoft/Edge/User Data/Default/History`,
-        bookmarksPath: `/mnt/c/Users/${WIN_USER}/AppData/Local/Microsoft/Edge/User Data/Default/Bookmarks`,
-    });
-}
+const BROWSER_PROFILES = browserProfiles().filter((p) =>
+    (!ONLY_CHROME || /^chrome/i.test(p.name)) && (!ONLY_EDGE || /^edge/i.test(p.name)));
 
 // Skip these URL patterns
 const SKIP_URLS = [
@@ -67,14 +88,8 @@ async function postToVault(entry) {
         console.log(`  [DRY] ${entry.title || entry.content?.slice(0, 60)}`);
         return true;
     }
-    try {
-        const res = await fetch(`${API}/add`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(entry),
-        });
-        return (await res.json()).ok;
-    } catch { return false; }
+    queue.add(entry);
+    return true;
 }
 
 // ─── Chrome/Edge History (SQLite via sql.js) ─────────────────────────────────
@@ -92,14 +107,20 @@ async function syncHistory(profile) {
         return 0;
     }
 
-    // Copy to /tmp (Chrome locks the file while running)
-    const tmp = `/tmp/memvault_${profile.name.toLowerCase()}_history_${Date.now()}`;
+    // The browser locks its history file while running, so read a private, short-lived copy.
+    const safeName = profile.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const tmp = path.join(os.tmpdir(), `memvault_${safeName}_history_${process.pid}_${Date.now()}`);
     fs.copyFileSync(src, tmp);
+    try { fs.chmodSync(tmp, 0o600); } catch { /* non-POSIX */ }
 
-    // Use sql.js to read the SQLite file
-    const { default: initSqlJs } = await import("sql.js");
-    const SQL = await initSqlJs();
-    const db = new SQL.Database(fs.readFileSync(tmp));
+    let db;
+    try {
+        const { default: initSqlJs } = await import("sql.js");
+        const SQL = await initSqlJs();
+        db = new SQL.Database(fs.readFileSync(tmp));
+    } finally {
+        fs.rmSync(tmp, { force: true }); // never leave a copy of someone's browsing history behind
+    }
 
     const stmt = db.prepare(`
     SELECT u.url, u.title, u.visit_count, v.visit_time
@@ -124,7 +145,6 @@ async function syncHistory(profile) {
     }
     stmt.free();
     db.close();
-    fs.unlinkSync(tmp);
 
     console.log(`  📖 ${profile.name} history: ${toSync.length} entries to sync`);
 
@@ -201,17 +221,10 @@ async function main() {
     console.log(`║  ${DRY_RUN ? "DRY RUN                             " : "LIVE MODE                           "}║`);
     console.log("╚════════════════════════════════════════╝\n");
 
-    // Health check
-    try {
-        const h = await fetch(`${API}/health`);
-        if (!h.ok) throw new Error();
-        console.log("✅ Vault API reachable\n");
-    } catch {
-        console.error("❌ Vault API not reachable at", API);
-        console.error("   Run: node server.mjs");
-        process.exit(1);
+    if (!BROWSER_PROFILES.length) {
+        console.log("No Chrome, Edge, Brave or Chromium profile was found on this computer, so there is nothing to sync.");
+        return;
     }
-
     let totalOk = 0;
 
     for (const profile of BROWSER_PROFILES) {
@@ -222,6 +235,7 @@ async function main() {
         totalOk += await syncBookmarks(profile);
     }
 
+    queue.done();
     console.log(`\n═══════════════════════════════════════`);
     console.log(`✅ Total synced: ${totalOk} entries`);
     console.log(`🌐 Open http://127.0.0.1:7799 to browse`);
