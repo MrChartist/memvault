@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync, spawnSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-cli-'));
@@ -63,7 +63,8 @@ describe('cli', () => {
 
 describe('isMainModule — works where `import.meta.url === file://${argv[1]}` does not', () => {
   const run = (script) => execFileSync(process.execPath, [script], { encoding: 'utf8' }).trim();
-  const body = `import { isMainModule } from ${JSON.stringify(path.join(ROOT, 'util.mjs'))};\nconsole.log(isMainModule(import.meta.url));`;
+  // file:// URLs: bare absolute paths are not valid ESM specifiers on Windows
+  const body = `import { isMainModule } from ${JSON.stringify(pathToFileURL(path.join(ROOT, 'util.mjs')).href)};\nconsole.log(isMainModule(import.meta.url));`;
 
   it('true for a script in a directory whose path contains spaces', () => {
     const dir = path.join(TMP, 'dir with spaces');
@@ -82,8 +83,11 @@ describe('isMainModule — works where `import.meta.url === file://${argv[1]}` d
   });
 
   it('false when the module is only imported', () => {
+    const target = path.join(TMP, 'imported-target.mjs');
+    fs.writeFileSync(target, body);
     const importer = path.join(TMP, 'importer.mjs');
-    fs.writeFileSync(importer, `import ${JSON.stringify(path.join(TMP, 'real.mjs'))};`);
+    fs.writeFileSync(importer, `import ${JSON.stringify(pathToFileURL(target).href)};`);
     expect(run(importer)).toBe('false');
   });
+
 });

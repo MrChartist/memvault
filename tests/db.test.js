@@ -4,10 +4,12 @@ import os from 'os';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const execFileAsync = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Child scripts import by file:// URL: bare absolute paths (D:\...) are not valid ESM specifiers on Windows.
+const DB_URL = JSON.stringify(pathToFileURL(path.join(ROOT, 'db.mjs')).href);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-db-'));
 process.env.VAULT_ROOT = TMP;
 process.env.HOME = process.env.USERPROFILE = path.join(TMP, 'home');
@@ -122,7 +124,7 @@ describe('db — several processes sharing one vault (the lost-update bug)', () 
     const before = count();
     const child = path.join(TMP, 'child.mjs');
     fs.writeFileSync(child, `
-      import { addItems } from ${JSON.stringify(path.join(ROOT, 'db.mjs'))};
+      import { addItems } from ${DB_URL};
       addItems([{ type: 'diary', title: 'written by a child process' }]);
     `);
     await execFileAsync(process.execPath, [child], { env: { ...process.env, VAULT_ROOT: TMP } });
@@ -137,7 +139,7 @@ describe('db — several processes sharing one vault (the lost-update bug)', () 
     const PER_WORKER = 15;
     const script = path.join(TMP, 'writer.mjs');
     fs.writeFileSync(script, `
-      import { addItems } from ${JSON.stringify(path.join(ROOT, 'db.mjs'))};
+      import { addItems } from ${DB_URL};
       const id = process.argv[2];
       for (let i = 0; i < ${PER_WORKER}; i++) addItems([{ type: 'worklog', source: 'stress', title: id + '-' + i }]);
     `);

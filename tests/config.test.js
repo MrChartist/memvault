@@ -3,9 +3,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Child scripts import by file:// URL: bare absolute paths (D:\...) are not valid ESM specifiers on Windows.
+const CONFIG_URL = JSON.stringify(pathToFileURL(path.join(ROOT, 'config.mjs')).href);
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-config-'));
 
 /** Load config.mjs in a fresh process so env + ~/.memvaultrc.json are read from scratch. */
@@ -13,7 +15,7 @@ function loadConfig(rc, env = {}) {
   const home = fs.mkdtempSync(path.join(TMP, 'h-'));
   if (rc !== undefined) fs.writeFileSync(path.join(home, '.memvaultrc.json'), typeof rc === 'string' ? rc : JSON.stringify(rc));
   const script = `
-    const c = await import(${JSON.stringify(path.join(ROOT, 'config.mjs'))});
+    const c = await import(${CONFIG_URL});
     console.log(JSON.stringify({ HOST: c.HOST, PORT: c.PORT, VAULT_ROOT: c.VAULT_ROOT, SYNC: c.SYNC_CONFIG, SERVER: c.SERVER_CONFIG, PROJECTS: c.USER_PROJECTS, HOME: ${JSON.stringify(home)} }));
   `;
   const f = path.join(home, 'probe.mjs');
@@ -85,7 +87,7 @@ describe('config file permissions', () => {
     if (process.platform === 'win32') return;
     const home = fs.mkdtempSync(path.join(TMP, 'perm-'));
     const f = path.join(home, 'save.mjs');
-    fs.writeFileSync(f, `const { saveUserConfig, CONFIG_FILE } = await import(${JSON.stringify(path.join(ROOT, 'config.mjs'))}); saveUserConfig({ ai: { apiKey: 'k' } }); console.log(CONFIG_FILE);`);
+    fs.writeFileSync(f, `const { saveUserConfig, CONFIG_FILE } = await import(${CONFIG_URL}); saveUserConfig({ ai: { apiKey: 'k' } }); console.log(CONFIG_FILE);`);
     const file = execFileSync(process.execPath, [f], { env: { ...process.env, HOME: home, USERPROFILE: home }, encoding: 'utf8' }).trim();
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
   });
