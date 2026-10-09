@@ -119,8 +119,8 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 |---|---|---|
 | 1 | All unit and integration tests pass | **Done** — 363/363 (Linux, Node 22) |
 | 2 | Browser tests pass | **Done** — 108/108 |
-| 3 | Node 20 and 24 pass | **Not done** — CI will show; local run was Node 22 only |
-| 4 | Windows and macOS tests pass | **Not done** — never run |
+| 3 | Node 20 and 24 pass | **Not done** — the first CI run failed on one test (see §10); fixed, awaiting re-run |
+| 4 | Windows and macOS tests pass | **Not done** — the first CI run found test and CI-script problems (see §10); fixed, awaiting re-run |
 | 5 | `npm audit --omit=dev` clean | **Done** (locally) |
 | 6 | Package contents checked (`npm pack`, 82 files) | **Done** |
 | 7 | Secret scan of the repo and history | **Done** for pushed commits (GitHub push protection) |
@@ -160,6 +160,16 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 6. Is the plain-text passphrase file in Settings acceptable, or should scheduled encrypted backups be removed?
 7. Keep the 2.7 MB of screenshots in the repo, or move them to the release page?
 8. Roadmap order: is native SQLite (X1) before or after Windows/macOS (N1)?
+
+## 10. First CI run (found after the review was written)
+
+The first CI run on the PR failed, although everything passed locally. Cause, all in tests or CI scripts, not product code as far as is known:
+
+- Linux and macOS: the browser-capture test assumed a Linux folder and the local `XDG_CONFIG_HOME`. Fixed: the test now sets both and uses the right folder per system.
+- Windows: tests used Unix quoting for git, a raw `D:\…` path as an import, and `/` paths for the `~` check; the install smoke test lost backslashes in the temp path. Fixed in the tests and CI script.
+- Windows: two test files that import a script starting with `#!` failed with a syntax error. Probable cause is Windows line endings; `.gitattributes` now forces LF. **Needs verification** on the next run.
+
+The Windows results are the first real signal for that system and may show more.
 
 ## Appendix: list licences of installed packages
 

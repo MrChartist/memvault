@@ -593,10 +593,12 @@ describe('server — stats, status and client config', () => {
 describe('diagnostics', () => {
   it('shows paths as ~/… so the account name is not revealed', async () => {
     const { tildify } = await import('../diagnostics.mjs');
-    expect(tildify('/home/alice/.memvault/data', '/home/alice')).toBe('~/.memvault/data');
-    expect(tildify('/home/alice', '/home/alice')).toBe('~');
-    expect(tildify('/home/alicia/x', '/home/alice')).toBe('/home/alicia/x'); // not a prefix match on a longer name
-    expect(tildify('/srv/vault', '/home/alice')).toBe('/srv/vault');
+    const j = (...a) => path.join(path.sep, ...a); // a root-based path in this system's own style
+    const home = j('home', 'alice');
+    expect(tildify(j('home', 'alice', '.memvault', 'data'), home)).toBe(`~${path.sep}.memvault${path.sep}data`);
+    expect(tildify(home, home)).toBe('~');
+    expect(tildify(j('home', 'alicia', 'x'), home)).toBe(j('home', 'alicia', 'x')); // not a prefix match on a longer name
+    expect(tildify(j('srv', 'vault'), home)).toBe(j('srv', 'vault'));
   });
 });
 

@@ -76,11 +76,13 @@ jobs:
         shell: bash
         run: |
           npm pack --silent
-          PREFIX="$RUNNER_TEMP/prefix रोहित e2e"
+          TMP="$RUNNER_TEMP"
+          if command -v cygpath >/dev/null; then TMP="$(cygpath -m "$RUNNER_TEMP")"; fi   # Windows: D:/a/_temp, not D:\a\_temp
+          PREFIX="$TMP/prefix रोहित e2e"
           mkdir -p "$PREFIX"
           npm install -g --prefix "$PREFIX" ./mrchartist-memvault-*.tgz
           export PATH="$PREFIX:$PREFIX/bin:$PATH"
-          export HOME="$RUNNER_TEMP/home रोहित e2e" USERPROFILE="$RUNNER_TEMP/home रोहित e2e"
+          export HOME="$TMP/home रोहित e2e" USERPROFILE="$TMP/home रोहित e2e"
           mkdir -p "$HOME"
           memvault setup
           memvault doctor

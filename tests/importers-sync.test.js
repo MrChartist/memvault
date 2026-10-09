@@ -1,13 +1,14 @@
 // Proposed regression tests for importers + capture engines (each failing test = a finding in REPORT.md). Copy to tests/.
 import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'fs'; import os from 'os'; import path from 'path';
-import { spawnSync, execSync } from 'child_process';
+import { spawnSync, execSync, execFileSync } from 'child_process';
+import { pathToFileURL } from 'url';
 import { fileURLToPath } from 'url';
 const here = path.dirname(fileURLToPath(import.meta.url)); const REPO = path.join(here, '..');
 const KEY = 'sk-ant-api03-' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8S9t0U1v2W3x4Y5z6';
 let HOME, ROOT, W;
 beforeEach(() => { HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-imp-')); ROOT = path.join(HOME, 'v'); W = path.join(HOME, 'in'); fs.mkdirSync(W); });
-const env = () => ({ ...process.env, HOME, USERPROFILE: HOME, VAULT_ROOT: ROOT, MEMVAULT_TOKEN_FILE: path.join(HOME, 'tok') });
+const env = () => ({ ...process.env, HOME, USERPROFILE: HOME, XDG_CONFIG_HOME: path.join(HOME, '.config'), LOCALAPPDATA: path.join(HOME, 'AppData', 'Local'), VAULT_ROOT: ROOT, MEMVAULT_TOKEN_FILE: path.join(HOME, 'tok') });
 const node = (script, ...args) => spawnSync(process.execPath, [path.join(REPO, script), ...args], { env: env(), encoding: 'utf8', cwd: REPO, timeout: 60000 });
 async function items() {
   const { openVaultDb } = await import(path.join(REPO, 'db.mjs'));
@@ -77,7 +78,9 @@ describe('import-all', () => {
 });
 describe('capture engines', () => {
   it('TST-11 sync-browser runs, keeps no query strings or local pages, and does not repeat itself', async () => {
-    const d = path.join(HOME, '.config', 'chromium', 'Default'); fs.mkdirSync(d, { recursive: true });
+    const d = process.platform === 'win32' ? path.join(HOME, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default')
+      : process.platform === 'darwin' ? path.join(HOME, 'Library', 'Application Support', 'Google', 'Chrome', 'Default')
+      : path.join(HOME, '.config', 'chromium', 'Default'); fs.mkdirSync(d, { recursive: true });
     const bm = (name, url) => ({ type: 'url', name, url, date_added: '13300000000000000' });
     fs.writeFileSync(path.join(d, 'Bookmarks'), JSON.stringify({ roots: { b: { name: 'B', type: 'folder', children: [
       bm('Reset', 'https://example.com/a/reset?token=abc&email=bob@example.com&q=my+secret+search#frag'),
@@ -92,9 +95,10 @@ describe('capture engines', () => {
   });
   it('TST-18 sync-git captures commits (incl. ones with double quotes)', async () => {
     const repo = path.join(HOME, 'proj'); fs.mkdirSync(repo);
-    const g = (c) => execSync(c, { cwd: repo, stdio: 'pipe', env: { ...process.env, HOME } });
-    g('git init -q && git config user.email a@b.c && git config user.name T && echo a>a && git add a');
-    g('git commit -q -m "plain commit"'); g('echo b>b && git add b && git commit -q -m \'fix the "login" page\'');
+    const git = (...a) => execFileSync('git', a, { cwd: repo, stdio: 'pipe', env: { ...process.env, HOME } });
+    git('init', '-q'); git('config', 'user.email', 'a@b.c'); git('config', 'user.name', 'T');
+    fs.writeFileSync(path.join(repo, 'a'), 'a'); git('add', 'a'); git('commit', '-q', '-m', 'plain commit');
+    fs.writeFileSync(path.join(repo, 'b'), 'b'); git('add', 'b'); git('commit', '-q', '-m', 'fix the "login" page');
     node('sync-git.mjs', '--force', '--path', repo); const r = await items();
     expect(r.length).toBeGreaterThanOrEqual(2);
   });
@@ -114,7 +118,7 @@ describe('capture engines', () => {
   it('TST-17 sync-antigravity does not delete earlier items when the brain dir is missing', async () => {
     const { ingest } = await import(path.join(REPO, 'ingest.mjs'));
     // seed through a child process so the module-level VAULT_ROOT is the isolated one
-    spawnSync(process.execPath, ['--input-type=module', '-e', `import {ingest} from ${JSON.stringify(path.join(REPO, 'ingest.mjs'))}; ingest({type:'worklog',source:'antigravity',title:'old',content:'c',tags:'antigravity,conv:abcd1234'});`], { env: env() });
+    spawnSync(process.execPath, ['--input-type=module', '-e', `import {ingest} from ${JSON.stringify(pathToFileURL(path.join(REPO, 'ingest.mjs')).href)}; ingest({type:'worklog',source:'antigravity',title:'old',content:'c',tags:'antigravity,conv:abcd1234'});`], { env: env() });
     node('sync-antigravity.mjs'); expect((await items()).length).toBe(1);
   });
 });
