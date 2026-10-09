@@ -238,6 +238,47 @@ describe('mcp — bound to an agent', () => {
   });
 });
 
+describe('mcp — resources and prompts follow the same rules as tools', () => {
+  it('records resource reads and prompt uses in the audit log (names only)', async () => {
+    const { tailAudit } = await import('../audit.mjs');
+    await owner.readResource({ uri: 'memvault://stats' });
+    await owner.getPrompt({ name: 'daily_brief', arguments: {} });
+    await owner.getPrompt({ name: 'user_context', arguments: { topic: 'SECRET-TOPIC-WORDS' } });
+    const recs = tailAudit(500, {}, ROOT);
+    expect(recs.some((r) => r.action === 'resource' && r.detail.resource === 'vault-stats')).toBe(true);
+    expect(recs.some((r) => r.action === 'prompt' && r.detail.prompt === 'daily_brief')).toBe(true);
+    const ctx = recs.filter((r) => r.action === 'prompt' && r.detail.prompt === 'user_context').pop();
+    expect(ctx.detail.args).toEqual(['topic']);
+    expect(JSON.stringify(recs)).not.toContain('SECRET-TOPIC-WORDS');
+  });
+
+  it('an agent limited to some tools does not get the memory-reading resources or prompts either', async () => {
+    const { openVaultDb } = await import('../db.mjs');
+    const { saveAgent, getAgent } = await import('../agents.mjs');
+    const db = openVaultDb({ root: ROOT });
+    saveAgent(db, { ...getAgent(db, 'planner'), tools: { allow: ['agent_list'] } });
+    const c = await connect('planner');
+    // with nothing registered the server does not even offer the method
+    expect(await c.listResources().then((r) => r.resources, () => [])).toHaveLength(0);
+    expect((await c.listPrompts()).prompts.map((p) => p.name)).toEqual(['activate_agent']);
+  });
+
+  it('an unrestricted agent still has them, and they stay inside its own view', async () => {
+    const c = await connect('telegram-editor');
+    expect((await c.listResources()).resources.length).toBeGreaterThan(0);
+    const r = await c.readResource({ uri: 'memvault://entries/worklogs' });
+    expect(JSON.stringify(r)).not.toContain('PRIVATE-LEVELS-XYZ');
+  });
+});
+
+describe('mcp — tool descriptions', () => {
+  it('does not tell every AI to log every prompt (capture is opt-in)', async () => {
+    const t = (await owner.listTools()).tools.find((x) => x.name === 'vault_capture_prompt');
+    expect(t.description).not.toMatch(/at the START of every conversation|AI clients should call this/i);
+    expect(t.description).toMatch(/only when the user asks/i);
+  });
+});
+
 describe('mcp — audit', () => {
   it('records tool calls by agent and tool name, with argument names only', async () => {
     const { tailAudit, verifyAudit } = await import('../audit.mjs');

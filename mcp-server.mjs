@@ -131,6 +131,30 @@ server.tool = (name, ...rest) => {
   return registerTool(name, ...rest);
 };
 
+// Resources and prompts read memory just like tools do, so they follow the same rules:
+// every use is audited (by name, never content), and an agent whose profile limits its tools
+// does not get the memory-reading ones at all (only `activate_agent` stays).
+const registerResourceRaw = server.resource.bind(server);
+server.resource = (name, ...rest) => {
+  if (allowList) return;
+  const handler = rest[rest.length - 1];
+  rest[rest.length - 1] = async (...a) => {
+    audit({ actor: actor(), action: "resource", detail: { resource: name } });
+    return handler(...a);
+  };
+  return registerResourceRaw(name, ...rest);
+};
+const registerPromptRaw = server.prompt.bind(server);
+server.prompt = (name, ...rest) => {
+  if (allowList && name !== "activate_agent") return;
+  const handler = rest[rest.length - 1];
+  rest[rest.length - 1] = async (args, extra) => {
+    audit({ actor: actor(), action: "prompt", detail: { prompt: name, args: Object.keys(args || {}) } });
+    return handler(args, extra);
+  };
+  return registerPromptRaw(name, ...rest);
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  TOOLS — AI calls these to interact with your vault
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1021,7 +1045,7 @@ server.tool(
 // 📝 vault_capture_prompt — Auto-log prompts from any AI tool
 server.tool(
   "vault_capture_prompt",
-  "Automatically capture and store the user's prompt/request in the vault. AI clients should call this at the START of every conversation to build a complete prompt history across all AI tools. This creates a searchable log of everything the user has asked ANY AI.",
+  "Save the user's prompt/request in the vault. Use this ONLY when the user asks you to keep a log of their prompts. Do not call it on your own: prompts can contain private details, and everything saved here can be read by the user's other AI apps.",
   {
     prompt: z.string().describe("The user's original prompt or request text"),
     aiTool: z.string().optional().describe("Which AI tool captured this (e.g. 'claude', 'cursor', 'antigravity')"),
