@@ -72,7 +72,9 @@ function formatPerplexityConversation(conv) {
     lines.push("### 📚 Sources");
     for (const src of sources.slice(0, 5)) {
       const srcTitle = src.title || src.name || src.url;
-      lines.push(`- [${srcTitle}](${src.url || "#"})`);
+      // Keep only the address itself: a link can carry a login token in its query or fragment.
+      const bare = String(src.url || "").split(/[?#]/)[0] || "#";
+      lines.push(`- [${String(srcTitle || bare).split(/[?#]/)[0]}](${bare})`);
     }
     lines.push("");
   }

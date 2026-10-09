@@ -79,15 +79,15 @@ Severity: P0 harms data or security now; P1 serious; P2 should fix; P3 minor. Co
 
 | ID | Sev | Area | Evidence | Impact | Status |
 |---|---|---|---|---|---|
-| INT-8 | P2 | Data | `scrub --apply` has no backup of the Markdown copies | A scrub cannot be undone for `.md` files | Open; roadmap |
+| INT-8 | P2 | Data | `scrub --apply` had no backup of the Markdown copies | A scrub could not be undone for `.md` files | Fixed: originals are copied to `backups/scrub-files-<time>/` first |
 | INT-9 | P2 | Performance | 100k notes: 0.65–1.9 s per write, ~1 GB peak; lock timeouts possible | Slow, not wrong | Documented; roadmap X1 (native SQLite) |
 | SEC-7 | P3 | Security | Hostile backup blob can force scrypt work | Bounded delay only | Open |
 | SEC-10 | P2 | Security | Audit chain detects edits but not removal of the end | Truncation not detected | Documented; roadmap X4 |
-| SEC-11 | P3 | Data | `created_at` is not validated | Odd sort order | Open |
+| SEC-11 | P3 | Data | `created_at` was not validated | Odd sort order | Fixed: bad, future or pre-1990 dates become "now" |
 | SEC-13 | P2 | Security | Bridge presets use unpinned `npx -y`; no size cap | Supply-chain risk on first run | Open; roadmap X9 |
 | PLAT-17 | P3 | Platform | VS Code `servers` key vs Cline/Roo label | Config may not load | Needs verification |
 | PLAT-x | P3 | Platform | `setup-windows.mjs` added hidden start-up items without asking; clipboard used `xclip` only on Linux; `wmic` removed from newer Windows; no `windowsHide` | Windows/Linux polish | Fixed: the script now asks (`--yes`/`--remove`); clipboard tries xclip, xsel, wl-paste; disk size uses a built-in call; PowerShell window hidden |
-| TST-10 | P3 | Privacy | Perplexity source URLs not masked | Rare secret in a URL | Open |
+| TST-10 | P3 | Privacy | Perplexity source URLs kept their query and fragment | Rare secret in a URL | Fixed: only the bare address is kept |
 | TST-13 | P3 | Function | Files and system snapshots duplicate by design | Clutter | By design |
 | UX-9 | P3 | UX | Loading states are partial | Blank moment on slow load | Open |
 | REL-1 | P2 | Size | `docs/review/screenshots` is 2.7 MB | Larger clone | Owner decides |

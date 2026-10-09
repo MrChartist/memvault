@@ -255,9 +255,19 @@ export async function cmdScrub(argv) {
   db.transaction((tx) => {
     for (const c of changes) tx.run("UPDATE items SET title = ?, content = ?, tags = ?, source = ? WHERE id = ?", [c.title, c.content, c.tags, c.source, c.id]);
   });
+  // Keep the original Markdown files too, so a scrub can be undone (the database backup does not hold them).
+  const filesBackup = path.join(cfg.VAULT_ROOT, "backups", `scrub-files-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+  if (files.length) {
+    for (const f of files) {
+      const dest = path.join(filesBackup, path.relative(cfg.VAULT_ROOT, f.file));
+      fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
+      fs.copyFileSync(f.file, dest);
+    }
+  }
   for (const f of files) fs.writeFileSync(f.file, f.text);
   audit({ actor: "owner", action: "scrub", detail: { items: changes.length, files: files.length, backup: path.basename(backup.location) } });
   console.log(`\n${OK} Masked ${changes.length} item(s) and ${files.length} file(s). Backup kept: ${path.basename(backup.location)}`);
+  if (files.length) console.log(`The original Markdown files were copied to: ${path.relative(cfg.VAULT_ROOT, filesBackup)}`);
   console.log("Note: older backups and any cloud copies made before this still contain the original text.");
 }
 
