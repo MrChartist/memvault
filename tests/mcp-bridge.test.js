@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { fileURLToPath } from 'url';
 import { connectBridge, enabledBridges, PRESET_BRIDGES } from '../mcp-bridge.mjs';
 
 describe('mcp-bridge — config', () => {
@@ -40,7 +41,7 @@ describe('bridge command line', () => {
     const os = await import('os');
     const path = await import('path');
     const { spawnSync } = await import('child_process');
-    const here = path.dirname(new URL(import.meta.url).pathname);
+    const here = path.dirname(fileURLToPath(import.meta.url));
     const src = path.join(here, '..');
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault bridge-'));
     const dir = path.join(base, 'Rohit Singh', 'मेमवॉल्ट');
@@ -62,7 +63,7 @@ describe('bridge environment', () => {
   it('does not hand the backup passphrase, access key or API keys to a third-party bridge', async () => {
     const path = await import('path');
     const { callBridgeTool } = await import('../mcp-bridge.mjs');
-    const fixture = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'env-bridge.mjs');
+    const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'env-bridge.mjs');
     const saved = { ...process.env };
     Object.assign(process.env, {
       MEMVAULT_BACKUP_PASSPHRASE: 'correct horse battery staple', MEMVAULT_TOKEN: 'tok', OPENAI_API_KEY: 'sk-test', GITHUB_TOKEN: 'ghp_x',
