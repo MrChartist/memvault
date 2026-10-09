@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath, pathToFileURL } from "url";
+import { isMain } from "./is-main.mjs";
 import express from "express";
 import multer from "multer";
 import { z } from "zod";
@@ -833,5 +834,4 @@ export function start({ app = createApp(), port = PORT, host = SECURITY_CONFIG.h
   });
 }
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (isMain) start();
+if (isMain(import.meta.url)) start();

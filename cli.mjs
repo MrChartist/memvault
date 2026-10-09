@@ -35,6 +35,7 @@ const commands = {
   backup:  { script: "storage.mjs",    desc: "Back up the vault to local + Google Drive" },
   bridge:  { script: "mcp-bridge.mjs", desc: "Connect other AI MCP servers (list|presets|add|sync|call)" },
   vault:   { script: "vault.mjs",      desc: "CLI tool to add/search items" },
+  clipboard: { script: "sync-clipboard.mjs", desc: "Watch what you copy and save it (off until switched on; passwords are hidden)" },
 };
 
 function showHelp(exitCode = 0) {
@@ -63,6 +64,7 @@ More:
   memvault backup                        # Back up to local + Google Drive
   memvault bridge list                   # Inspect connected AI MCP servers
   memvault bridge sync                   # Pull other AI memories into the vault
+  memvault clipboard                     # Save what you copy (switch it on in Settings first)
 `);
   process.exit(exitCode);
 }

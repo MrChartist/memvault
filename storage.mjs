@@ -23,6 +23,7 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
+import { isMain } from "./is-main.mjs";
 import { VAULT_ROOT, STORAGE_CONFIG } from "./config.mjs";
 import { FileLock } from "./filelock.mjs";
 import { encryptBuffer, decryptBuffer, isEncryptedBackup, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
@@ -357,8 +358,7 @@ export async function backupVault(config = STORAGE_CONFIG) {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (isMain) {
+if (isMain(import.meta.url)) {
   const cmd = process.argv[2] || "backup";
   if (cmd === "list") {
     const backups = listLocalBackups();
