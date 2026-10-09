@@ -608,7 +608,8 @@
     if (where) block += `<p class="label">Where</p><div class="code" tabindex="0" role="region" aria-label="File location">${esc(where)}</div>`;
     if (app.command) {
       const env = Object.entries(entry.env || {}).map(([k, v]) => `--env ${k}=${q(v)}`).join(' ');
-      const cmd = `claude mcp add --transport stdio ${env} memvault -- ${q(entry.command)} ${entry.args.map(q).join(' ')}`.replace(/\s+/g, ' ');
+      // --env takes several values, so something must sit between it and the name: the name would be read as one more value.
+      const cmd = `claude mcp add ${env} --transport stdio memvault -- ${q(entry.command)} ${entry.args.map(q).join(' ')}`.replace(/\s+/g, ' ');
       block += `<div class="code" tabindex="0" role="region" aria-label="Command to run">${esc(cmd)}</div><button type="button" class="btn primary" data-action="copy-value" data-value="${esc(cmd)}">Copy the command</button>`;
     } else {
       block += `<p class="label">Paste this</p><div class="code" tabindex="0" role="region" aria-label="Settings to paste">${esc(json)}</div><button type="button" class="btn primary" data-action="copy-value" data-value="${esc(json)}">Copy</button>`;
