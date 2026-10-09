@@ -42,19 +42,44 @@ function clean(detail) {
   return out;
 }
 
+/** Hash of the last record that can be read. A half-written last line (power cut) is skipped, not fatal. */
 function lastHash(file) {
   if (!fs.existsSync(file)) return GENESIS;
   const { size } = fs.statSync(file);
   if (size === 0) return GENESIS;
   const fd = fs.openSync(file, "r");
   try {
-    const len = Math.min(size, 8192);
+    const len = Math.min(size, 65536);
     const buf = Buffer.alloc(len);
     fs.readSync(fd, buf, 0, len, size - len);
     const lines = buf.toString("utf8").split("\n").filter(Boolean);
-    return JSON.parse(lines[lines.length - 1]).hash;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const h = JSON.parse(lines[i]).hash;
+        if (typeof h === "string") return h;
+      } catch { /* damaged line: look at the one before */ }
+    }
+    return GENESIS;
   } finally {
     fs.closeSync(fd);
+  }
+}
+
+/** True if the file does not end with a new line (an interrupted write). */
+function endsMidLine(file) {
+  try {
+    const { size } = fs.statSync(file);
+    if (!size) return false;
+    const fd = fs.openSync(file, "r");
+    try {
+      const b = Buffer.alloc(1);
+      fs.readSync(fd, b, 0, 1, size - 1);
+      return b[0] !== 10;
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return false;
   }
 }
 
@@ -72,7 +97,7 @@ export function audit({ actor = "owner", action, detail = {} }, root = VAULT_ROO
       const prev = lastHash(file);
       const rec = { ts: new Date().toISOString(), actor, action, detail: clean(detail), prev };
       rec.hash = sha(prev + JSON.stringify({ ts: rec.ts, actor, action, detail: rec.detail }));
-      fs.appendFileSync(file, JSON.stringify(rec) + "\n", { mode: 0o600 });
+      fs.appendFileSync(file, (endsMidLine(file) ? "\n" : "") + JSON.stringify(rec) + "\n", { mode: 0o600 });
     } finally {
       lock.release();
     }

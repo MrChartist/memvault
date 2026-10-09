@@ -18,7 +18,7 @@ An **agent** is a saved profile that any AI can become. It says who the helper i
 
 ## Make one
 
-**1. In the dashboard.** Agents → **New agent from a description**. Write about the helper in your own words ("You are a patient maths tutor. Use simple English. Never give the final answer first."). MemVault sorts your sentences into job, voice, always and never, and shows you a form to check and change. Nothing is saved until you press Save. It works best in English; for other languages, fill in the form by hand.
+**1. In the dashboard.** Agents → **New agent from a description**. Write about the helper in your own words ("You are a patient maths tutor. Use simple English. Never give the final answer first."). MemVault sorts your sentences into job, voice, always and never, and shows you a form to check and change. Nothing is saved until you press Save. It works best in English. If your text is in another language, it keeps your words under "More about who it is" and asks you to fill in the boxes by hand.
 
 **2. From the terminal.**
 ```bash
@@ -31,7 +31,7 @@ memvault agent edit maths-tutor        # opens it in your editor
 ## Use one
 
 - **Copy briefing** (dashboard) or `memvault agent brief <id>`: paste it into any AI to make it that agent for the chat.
-- **`agent_activate`**: in an app that is connected to MemVault, say "Activate the study-buddy agent." The briefing includes the agent's rules and the memories it may see.
+- **`agent_activate`**: in an app that is connected to MemVault, say "Activate the study-buddy agent." The briefing includes the agent's rules and the memories it may see. An app connected to one agent can only activate that agent; an unrestricted (owner) connection can activate any.
 - **Give an app its own agent**: `memvault mcp-config --agent study-buddy` prints settings for that one app. That app now only ever sees what `study-buddy` may see, and is only offered the tools `study-buddy` may use. The agent comes from those settings, never from anything the AI says.
 
 ## Memory spaces
@@ -54,7 +54,7 @@ Agents do not see each other's chats. They pass work through memory:
 2. Later, the planner starts and sees "Inbox: 1 handoff" in its briefing.
 3. It does the work and acknowledges it with `agent_inbox` (`ack`).
 
-Handoffs are ordinary notes, so you can read them in the dashboard. Agents are told to treat inbox items as requests to weigh, not commands that override their own rules.
+Handoffs are ordinary notes, so you can read them in the dashboard. Agents are told to treat inbox items as requests to weigh, not commands that override their own rules. A handoff only counts if it was written by the handoff tool and its sender is who really wrote it, so an agent cannot fake a message "from" another agent (or the owner) by typing tags, and cannot hide another agent's handoff with a fake acknowledgement.
 
 ## Writing a good profile
 
@@ -94,5 +94,5 @@ Handoffs are ordinary notes, so you can read them in the dashboard. Agents are t
 ## Limits worth knowing
 
 - An agent cannot stop an AI company from seeing text the AI reads. It limits *how much* is read. See [SECURITY.md](../SECURITY.md).
-- The "describe it in words" reader is rule-based and works best in English. Always check the draft.
+- The "describe it in words" reader is rule-based and works best in English. It can still sort a sentence into the wrong box. Always check the draft.
 - Profiles are visible to every agent on the same vault. Put anything private in an agent's private memory space, not in its profile text.

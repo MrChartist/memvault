@@ -17,6 +17,8 @@ import { execSync } from "child_process";
 import crypto from "crypto";
 
 import { ingest } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("clipboardEnabled", "Saving what you copy");
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
 const ONCE = args.includes("--once");
@@ -38,7 +40,8 @@ let captureCount = 0;
 function getClipboard() {
   try {
     if (process.platform === "win32") {
-      return execSync("powershell -command Get-Clipboard", {
+      return execSync("powershell -NoProfile -command Get-Clipboard", {
+        windowsHide: true,
         encoding: "utf8",
         timeout: 5000,
         stdio: ["pipe", "pipe", "pipe"],
@@ -46,7 +49,11 @@ function getClipboard() {
     } else if (process.platform === "darwin") {
       return execSync("pbpaste", { encoding: "utf8", timeout: 5000 }).trim();
     } else {
-      return execSync("xclip -selection clipboard -o", { encoding: "utf8", timeout: 5000 }).trim();
+      // Linux: try the common tools in turn (X11: xclip, xsel; Wayland: wl-paste).
+      for (const cmd of ["xclip -selection clipboard -o", "xsel --clipboard --output", "wl-paste --no-newline"]) {
+        try { return execSync(cmd, { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { /* try the next one */ }
+      }
+      return "";
     }
   } catch {
     return "";

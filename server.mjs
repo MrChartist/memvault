@@ -7,20 +7,24 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { fileURLToPath, pathToFileURL } from "url";
+import { isMain } from "./is-main.mjs";
 import express from "express";
 import multer from "multer";
 import { z } from "zod";
-import { VAULT_ROOT, PORT, SECURITY_CONFIG } from "./config.mjs";
+import { VAULT_ROOT, PORT, SECURITY_CONFIG, TOKEN_FILE, loadUserConfig, saveUserConfig, buildStorageConfig } from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
 import { ensureToken, createGuards, createLimiter, isLoopbackHost } from "./auth.mjs";
 import { encryptString, decryptString, isLegacyBlob, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
 import { ingest } from "./ingest.mjs";
+import { redact, redactItem } from "./redact.mjs";
+import { removeMirrors, removeAllMirrors, updateMirror } from "./mirror.mjs";
 import { audit, verifyAudit, tailAudit } from "./audit.mjs";
 import {
   AGENT_ID_RE, listAgents, getAgent, saveAgent, deleteAgent, installStarterPack,
   draftProfileFromPrompt, buildBriefing, normalizeProfile, scopesFor, listPacks,
 } from "./agents.mjs";
-import { listLocalBackups, backupLocal } from "./storage.mjs";
+import { listLocalBackups, backupLocal, backupVault, enabledBackends, resolvePassphrase } from "./storage.mjs";
+import { spawn } from "child_process";
 import { collectDiagnostics } from "./diagnostics.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 
@@ -39,6 +43,44 @@ const AddSchema = z.object({
   agent_id: z.string().regex(AGENT_ID_RE).optional(),
   scope: z.string().regex(SCOPE_RE).optional(),
 });
+
+// What the owner may change on an existing memory. Scope, agent and type stay as they were.
+const EditSchema = z.object({
+  title: z.string().max(500).optional(),
+  content: z.string().max(1_000_000).optional(),
+  tags: z.string().max(1000).optional(),
+  pinned: z.boolean().optional(),
+}).strict();
+
+// Capture kinds the dashboard may switch, and the config flag each one controls.
+const CAPTURE = {
+  git:       { flag: "gitEnabled",       sources: ["git"] },
+  vscode:    { flag: "vscodeEnabled",    sources: ["vscode"] },
+  files:     { flag: "filesEnabled",     sources: ["filesystem"] },
+  system:    { flag: "systemEnabled",    sources: ["system"] },
+  browser:   { flag: "browserEnabled",   sources: ["chrome", "edge", "brave", "chromium"] },
+  clipboard: { flag: "clipboardEnabled", sources: ["clipboard"] },
+};
+const SettingsSchema = z.object({
+  capture: z.object(Object.fromEntries(Object.keys(CAPTURE).map((k) => [k, z.boolean().optional()]))).strict().optional(),
+  projects: z.array(z.object({
+    name: z.string().trim().min(1).max(60),
+    match: z.array(z.string().trim().min(1).max(60)).max(20).default([]),
+    tags: z.string().trim().max(200).default(""),
+  }).strict()).max(50).optional(),
+}).strict();
+const PassphraseSchema = z.object({ passphrase: z.string().min(MIN_PASSPHRASE_LENGTH).max(500), confirm: z.string() }).strict();
+
+const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
+const PINNED_FIRST = "(CASE WHEN (',' || REPLACE(IFNULL(tags,''),' ','') || ',') LIKE '%,pinned,%' THEN 0 ELSE 1 END)";
+const TRASH_MAX = 500;
+const TRASH_MS = 60 * 60 * 1000;
+
+function withPinned(tags, pinned) {
+  const list = String(tags || "").split(",").map((t) => t.trim()).filter((t) => t && t !== "pinned");
+  if (pinned) list.push("pinned");
+  return list.join(",");
+}
 
 const SecretAddSchema = z.object({
   password: z.string().min(1),
@@ -91,6 +133,8 @@ export function createApp({
   port = PORT,
   root = VAULT_ROOT,
   security = SECURITY_CONFIG,
+  // Where the dashboard reads and writes ~/.memvaultrc.json (replaceable in tests).
+  config = { load: loadUserConfig, save: saveUserConfig, passphraseFile: path.join(path.dirname(TOKEN_FILE), "backup-passphrase") },
 } = {}) {
   const ensureDir = (p) => fs.mkdirSync(p, { recursive: true });
   for (const d of ["entries", "conversations", "worklogs", "files"]) ensureDir(path.join(root, d));
@@ -203,7 +247,7 @@ export function createApp({
     const f = itemQuery(req, { search: q });
     if (f.error) return res.status(404).json({ ok: false, error: f.error });
     const results = vdb.query(
-      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY created_at DESC LIMIT 50`, f.params
+      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY ${PINNED_FIRST}, created_at DESC LIMIT 50`, f.params
     );
     res.json({ ok: true, results });
   });
@@ -213,9 +257,115 @@ export function createApp({
     const f = itemQuery(req, {});
     if (f.error) return res.status(404).json({ ok: false, error: f.error });
     const results = vdb.query(
-      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY created_at DESC LIMIT ${limit}`, f.params
+      `SELECT ${ITEM_COLS} FROM items ${f.where} ORDER BY ${PINNED_FIRST}, created_at DESC LIMIT ${limit}`, f.params
     );
     res.json({ ok: true, results });
+  });
+
+  // ── one memory at a time: read, edit, pin, delete (with undo), export ─────
+
+  // Deleted items wait here (this process only) so a mistake can be undone for an hour.
+  // They are not written anywhere, so "delete" really removes them from the vault file.
+  const trash = new Map();
+  const trashPut = (row) => {
+    const now = Date.now();
+    for (const [k, v] of trash) if (now - v.at > TRASH_MS) trash.delete(k);
+    trash.set(row.id, { row, at: now });
+    while (trash.size > TRASH_MAX) trash.delete(trash.keys().next().value);
+  };
+  const getItem = (id) => (ID_RE.test(id) ? vdb.query("SELECT * FROM items WHERE id = ?", [id])[0] : undefined);
+  const COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "agent_id", "scope"];
+  const reinsert = (row) => vdb.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => row[c] ?? null));
+
+  app.get("/items/:id", (req, res) => {
+    const item = getItem(req.params.id);
+    if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
+    res.json({ ok: true, item });
+  });
+
+  app.patch("/items/:id", (req, res) => {
+    const parsed = EditSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Only the title, text, tags and pin can be changed." });
+    const item = getItem(req.params.id);
+    if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
+    const { pinned, ...fields } = parsed.data;
+    const next = { title: item.title, content: item.content, tags: item.tags, ...fields };
+    if (pinned !== undefined) next.tags = withPinned(next.tags, pinned);
+    const r = security.redact === false ? { item: next, findings: [] } : redactItem(next, { disable: security.redactDisable });
+    try {
+      vdb.run("UPDATE items SET title = ?, content = ?, tags = ? WHERE id = ?", [r.item.title, r.item.content, r.item.tags, item.id]);
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: e.message });
+    }
+    updateMirror(root, { ...item, ...r.item });
+    log("edit", { id: item.id, fields: Object.keys(fields).concat(pinned === undefined ? [] : ["pinned"]), redacted: r.findings.map((f) => `${f.count}x ${f.type}`) });
+    res.json({ ok: true, redacted: r.findings, item: { ...item, ...r.item } });
+  });
+
+  app.delete("/items/:id", (req, res) => {
+    const item = getItem(req.params.id);
+    if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
+    trashPut(item);
+    vdb.run("DELETE FROM items WHERE id = ?", [item.id]);
+    removeMirrors(root, [item]);
+    log("delete", { id: item.id, count: 1 });
+    res.json({ ok: true, undoable: true });
+  });
+
+  // What can still be put back (titles only, newest first).
+  app.get("/trash", (_req, res) => {
+    const now = Date.now();
+    const items = [...trash.values()]
+      .filter((v) => now - v.at <= TRASH_MS)
+      .sort((a, b) => b.at - a.at)
+      .map((v) => ({ id: v.row.id, type: v.row.type, title: v.row.title, deleted_at: new Date(v.at).toISOString() }));
+    res.json({ ok: true, items });
+  });
+
+  app.post("/items/:id/restore", (req, res) => {
+    const held = trash.get(req.params.id);
+    if (!held) return res.status(404).json({ ok: false, error: "Nothing to restore. Undo is only kept for an hour, and only until the dashboard server restarts." });
+    reinsert(held.row);
+    trash.delete(req.params.id);
+    log("restore", { id: req.params.id, count: 1 });
+    res.json({ ok: true });
+  });
+
+  // Several at once: needs the phrase "DELETE <n>" and takes a backup first.
+  app.post("/items/delete-many", (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String).filter((x) => ID_RE.test(x)))].slice(0, 5000) : [];
+    if (!ids.length) return res.status(400).json({ ok: false, error: "Choose at least one memory." });
+    const phrase = `DELETE ${ids.length}`;
+    if (req.body.confirm !== phrase) {
+      return res.status(400).json({ ok: false, error: `Refusing to delete without confirmation. Send {"confirm":"${phrase}"}.`, wouldDelete: ids.length });
+    }
+    const rows = ids.map(getItem).filter(Boolean);
+    const backup = backupLocal();
+    if (!backup.ok && rows.length) return res.status(500).json({ ok: false, error: `Backup failed, nothing deleted: ${backup.error}` });
+    rows.forEach(trashPut);
+    vdb.transaction((tx) => { for (const r of rows) tx.run("DELETE FROM items WHERE id = ?", [r.id]); });
+    removeMirrors(root, rows);
+    log("delete", { count: rows.length, backup: backup.location ? path.basename(backup.location) : null });
+    res.json({ ok: true, deleted: rows.length, backup: backup.location ? path.basename(backup.location) : null });
+  });
+
+  app.post("/items/restore-many", (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    const held = ids.map((id) => trash.get(id)).filter(Boolean);
+    vdb.transaction((tx) => {
+      for (const h of held) tx.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => h.row[c] ?? null));
+    });
+    for (const h of held) trash.delete(h.row.id);
+    log("restore", { count: held.length });
+    res.json({ ok: true, restored: held.length });
+  });
+
+  // Everything you wrote, as one JSON file you own. The Secure Vault's encrypted items are not included.
+  app.get("/export", (_req, res) => {
+    const items = vdb.query("SELECT * FROM items ORDER BY created_at");
+    log("export", { count: items.length });
+    res.set("Content-Disposition", `attachment; filename="memvault-export-${isoDate()}.json"`);
+    res.json({ memvault: PKG_VERSION, exportedAt: new Date().toISOString(), count: items.length, items });
   });
 
   app.post("/upload", upload.single("file"), (req, res) => {
@@ -223,11 +373,19 @@ export function createApp({
     const original = req.file.originalname || "file";
     const dayDir = path.join(root, "files", isoDate());
     ensureDir(dayDir);
-    const target = path.join(dayDir, `${Date.now()}_${safeSlug(original)}${path.extname(original)}`);
+    // The stored copy is named from the MASKED name, so a secret in a file name never reaches the disk path.
+    const name = security.redact === false ? original : redact(original, { disable: security.redactDisable }).text;
+    const ext = path.extname(name).toLowerCase().replace(/[^a-z0-9.]/g, "").slice(0, 12);
+    const target = path.join(dayDir, `${Date.now()}_${safeSlug(path.basename(name, path.extname(name)))}${ext}`);
     fs.renameSync(req.file.path, target);
-    const id = vdb.addItem({ type: "file", source: "manual", title: original, file_path: target });
-    log("upload", { id });
-    res.json({ ok: true, path: target, id });
+    try {
+      // The same door as every other write: mask, one atomic write, audit.
+      const { ids } = ingest({ type: "file", source: "manual", title: original, file_path: target }, { vdb, security, root, actor: "owner" });
+      res.json({ ok: true, path: target, id: ids[0] });
+    } catch (e) {
+      fs.rmSync(target, { force: true });
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   /**
@@ -261,7 +419,9 @@ export function createApp({
       if (!backup.ok && n > 0) {
         return res.status(500).json({ ok: false, error: `Backup failed, nothing deleted: ${backup.error}` });
       }
+      const doomed = scoped ? vdb.query(`SELECT id, title, created_at FROM items ${clause}`, params) : null;
       vdb.run(`DELETE FROM items ${clause}`, params);
+      if (scoped) removeMirrors(root, doomed); else removeAllMirrors(root); // the readable copies go too
       log("clear", { scoped, source, tagPrefix, deleted: n, backup: backup.location ? path.basename(backup.location) : null });
       res.json({ ok: true, deleted: n, backup: backup.location ? path.basename(backup.location) : null });
     } catch (e) {
@@ -286,10 +446,23 @@ export function createApp({
     );
   };
 
-  /** true / false. First use (no sentinel yet) accepts any password and sets it. */
+  const firstSecret = () => vdb.query("SELECT id, encrypted FROM secrets WHERE id != ? LIMIT 1", [SENTINEL_ID])[0] || null;
+
+  /** true / false. A brand-new vault (no sentinel, no secrets) accepts the first password and sets it. */
   const verifyPassword = (password) => {
     const row = sentinelRow();
-    if (!row) return true;
+    if (!row) {
+      // Secrets exist but there is no check row (a vault from an older version): prove the password on a real secret.
+      const s = firstSecret();
+      if (!s) return true;
+      try {
+        decryptString(s.encrypted, password, s.id);
+        createSentinel(password);
+        return true;
+      } catch {
+        return false;
+      }
+    }
     try {
       const ok = decryptString(row.encrypted, password, SENTINEL_ID) === SENTINEL_VALUE;
       if (ok && isLegacyBlob(row.encrypted)) createSentinel(password); // upgrade to v2
@@ -307,7 +480,7 @@ export function createApp({
       res.status(429).json({ ok: false, error: `Too many wrong passwords. Try again in ${lock.retryAfterSec}s.` });
       return false;
     }
-    if (!hasSentinel()) {
+    if (!hasSentinel() && !firstSecret()) {
       if (creating && String(password).length < MIN_PASSPHRASE_LENGTH) {
         res.status(400).json({ ok: false, error: `Choose a master password of at least ${MIN_PASSPHRASE_LENGTH} characters.` });
         return false;
@@ -324,10 +497,13 @@ export function createApp({
     return true;
   }
 
+  // Has a master password been chosen yet? (lets the page ask for it twice the first time)
+  app.get("/secrets/status", (_req, res) => res.json({ ok: true, initialised: hasSentinel() || !!firstSecret() }));
+
   app.post("/secrets/verify", (req, res) => {
     const { password } = req.body || {};
     if (!password) return res.status(400).json({ ok: false, error: "password required" });
-    const first = !hasSentinel();
+    const first = !hasSentinel() && !firstSecret();
     if (!gate(req, res, { password, creating: true })) return;
     if (first) createSentinel(password);
     res.json({ ok: true });
@@ -338,7 +514,7 @@ export function createApp({
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const { password, category, label, fields } = parsed.data;
     if (!gate(req, res, { password, creating: true })) return;
-    if (!hasSentinel()) createSentinel(password);
+    if (!hasSentinel()) createSentinel(password); // reached only for a brand-new vault, or after the password was proven above
 
     const id = `secret_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
     const now = new Date().toISOString();
@@ -475,6 +651,88 @@ export function createApp({
     }
   });
 
+  // ── settings (what used to need the terminal or a JSON file) ──────────────
+
+  // Lets the dashboard check a typed key without reading any data.
+  app.get("/whoami", (_req, res) => res.json({ ok: true }));
+
+  const passphraseState = (uc) => {
+    if (process.env.MEMVAULT_BACKUP_PASSPHRASE) return { set: true, via: "env" };
+    const f = uc.storage?.passphraseFile;
+    if (f) { try { if (fs.readFileSync(f, "utf8").split(/\r?\n/)[0].trim()) return { set: true, via: "file" }; } catch { /* missing file */ } }
+    return { set: false, via: null };
+  };
+
+  app.get("/settings", (_req, res) => {
+    const uc = config.load();
+    const st = buildStorageConfig(uc);
+    const seen = Object.fromEntries(vdb.query("SELECT source, COUNT(*) AS n, MAX(created_at) AS last FROM items GROUP BY source").map((r) => [r.source, r]));
+    const capture = Object.fromEntries(Object.entries(CAPTURE).map(([k, c]) => {
+      const rows = c.sources.map((x) => seen[x]).filter(Boolean);
+      return [k, { on: uc.sync?.[c.flag] === true, saved: rows.reduce((a, r) => a + r.n, 0), last: rows.map((r) => r.last).sort().pop() || null }];
+    }));
+    res.json({
+      ok: true,
+      capture,
+      projects: Array.isArray(uc.projects) ? uc.projects : [],
+      backup: {
+        passphrase: passphraseState(uc),
+        cloud: { folder: !!st.gdriveFolder.enabled, api: !!st.gdriveApi.enabled },
+        keep: st.keepLocalBackups,
+      },
+    });
+  });
+
+  app.put("/settings", (req, res) => {
+    const parsed = SettingsSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Those settings are not allowed. Only automatic saving and projects can be changed here." });
+    const uc = config.load();
+    const changed = [];
+    if (parsed.data.capture) {
+      uc.sync = { ...(uc.sync || {}) };
+      for (const [k, on] of Object.entries(parsed.data.capture)) {
+        if (on === undefined) continue;
+        uc.sync[CAPTURE[k].flag] = on;
+        changed.push(`${k}:${on ? "on" : "off"}`);
+      }
+    }
+    if (parsed.data.projects) { uc.projects = parsed.data.projects; changed.push("projects"); }
+    config.save(uc);
+    log("settings", { changed });
+    res.json({ ok: true, note: "Saved. Projects apply to new notes the next time MemVault restarts." });
+  });
+
+  // The passphrase goes to a private file OUTSIDE the vault (so backups never contain it); it is never returned or logged.
+  app.put("/settings/passphrase", (req, res) => {
+    const parsed = PassphraseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
+    if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
+    const file = config.passphraseFile;
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, parsed.data.passphrase + "\n", { mode: 0o600 });
+    try { fs.chmodSync(file, 0o600); } catch { /* not POSIX */ }
+    const uc = config.load();
+    uc.storage = { ...(uc.storage || {}), passphraseFile: file };
+    config.save(uc);
+    log("settings", { changed: ["backup-passphrase"] });
+    res.json({ ok: true });
+  });
+
+  // One round of every switched-on capture engine (the clipboard watcher runs separately, by design).
+  app.post("/sync/run", async (_req, res) => {
+    const uc = config.load();
+    const ran = Object.entries(CAPTURE).filter(([k, c]) => k !== "clipboard" && uc.sync?.[c.flag] === true).map(([k]) => k);
+    if (!ran.length) return res.json({ ok: true, ran: [], note: "Nothing is switched on yet." });
+    const code = await new Promise((resolve) => {
+      const cp = spawn(process.execPath, [path.join(__dirname, "sync-all.mjs")], { stdio: "ignore", env: process.env });
+      const timer = setTimeout(() => { cp.kill(); resolve("timeout"); }, 120_000);
+      cp.on("exit", (c) => { clearTimeout(timer); resolve(c); });
+      cp.on("error", () => { clearTimeout(timer); resolve("error"); });
+    });
+    log("sync", { ran, exit: String(code) });
+    res.json({ ok: code === 0, ran, note: code === 0 ? "Done." : "It did not finish. Run `memvault sync` in a terminal to see why." });
+  });
+
   // ── audit ────────────────────────────────────────────────────────────────
 
   app.get("/audit", (req, res) => {
@@ -486,10 +744,10 @@ export function createApp({
 
   app.post("/backup", async (_req, res) => {
     try {
-      const { backupVault, enabledBackends } = await import("./storage.mjs");
-      const results = await backupVault();
-      log("backup", { backends: enabledBackends(), ok: results.every((r) => r.ok) });
-      res.json({ ok: true, backends: enabledBackends(), results });
+      const fresh = buildStorageConfig(config.load()); // so a passphrase set a minute ago already counts
+      const results = await backupVault(fresh);
+      log("backup", { backends: enabledBackends(fresh), ok: results.every((r) => r.ok) });
+      res.json({ ok: true, backends: enabledBackends(fresh), results });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message });
     }
@@ -576,5 +834,4 @@ export function start({ app = createApp(), port = PORT, host = SECURITY_CONFIG.h
   });
 }
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (isMain) start();
+if (isMain(import.meta.url)) start();

@@ -18,8 +18,19 @@ import os from "os";
 import { execSync } from "child_process";
 import { SYNC_CONFIG } from "./config.mjs";
 import { createIngestQueue } from "./ingest.mjs";
+import { getVaultDb } from "./db.mjs";
+import { readCommits } from "./git-log.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("gitEnabled", "Saving git commits");
 
 const queue = createIngestQueue({ actor: "git" });
+
+const titleOf = (repoName, c) => `[${repoName}] ${c.subject.slice(0, 100)}`;
+// Commits already in the vault are skipped, so running this again does not add them twice.
+const alreadyStored = new Set();
+if (!process.argv.includes("--dry-run")) {
+  for (const r of getVaultDb().query("SELECT title, created_at FROM items WHERE source = 'git'")) alreadyStored.add(`${r.created_at}|${r.title}`);
+}
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
@@ -68,40 +79,6 @@ function findGitRepos(rootDir, depth = 0) {
   } catch { /* permission denied or similar */ }
 
   return repos;
-}
-
-function getGitCommits(repoPath, days) {
-  try {
-    const since = `--since="${days} days ago"`;
-    const format = '--format={"hash":"%H","short":"%h","author":"%an","email":"%ae","date":"%aI","subject":"%s","body":"%b"}---COMMIT_END---';
-    const cmd = `git log ${since} ${format} --no-merges`;
-
-    const output = execSync(cmd, {
-      cwd: repoPath,
-      encoding: "utf8",
-      timeout: 10000,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    const commits = [];
-    const chunks = output.split("---COMMIT_END---").filter(c => c.trim());
-
-    for (const chunk of chunks) {
-      try {
-        // Clean the JSON — git body can have newlines
-        const cleaned = chunk.trim()
-          .replace(/\n/g, " ")
-          .replace(/\r/g, "")
-          .replace(/\t/g, " ");
-        const parsed = JSON.parse(cleaned);
-        commits.push(parsed);
-      } catch { /* skip malformed */ }
-    }
-
-    return commits;
-  } catch {
-    return [];
-  }
 }
 
 function getRepoName(repoPath) {
@@ -154,7 +131,7 @@ async function main() {
   for (const repoPath of repos) {
     const repoName = getRepoName(repoPath);
     const branch = getRepoBranch(repoPath);
-    const commits = getGitCommits(repoPath, DAYS);
+    const commits = readCommits(repoPath, DAYS).filter((c) => !alreadyStored.has(`${c.date}|${titleOf(repoName, c)}`));
 
     if (commits.length === 0) continue;
 
@@ -177,7 +154,7 @@ async function main() {
       const synced = await postToVault({
         type: "worklog",
         source: "git",
-        title: `[${repoName}] ${commit.subject.slice(0, 100)}`,
+        title: titleOf(repoName, commit),
         content,
         tags: `git,commit,${repoName},${branch}`,
         created_at: commit.date,

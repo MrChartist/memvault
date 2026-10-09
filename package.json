@@ -76,6 +76,8 @@
     "SECURITY.md",
     "CHANGELOG.md",
     "LICENSE",
+    "TRADEMARKS.md",
+    "THIRD_PARTY_LICENSES.md",
     "server.json"
   ]
 }

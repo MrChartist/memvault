@@ -28,8 +28,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import { isMain } from "./is-main.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
 import { ingest } from "./ingest.mjs";
 
@@ -77,6 +78,18 @@ export function addPreset(name) {
 
 // ─── Bridge connection ──────────────────────────────────────────────────────
 
+// A bridge is somebody else's program. It gets a small safe environment (PATH, HOME and the like),
+// the proxy and certificate settings that npx needs, and whatever the user lists for it under "env".
+// It does NOT get the rest of this process's environment, which can hold the backup passphrase,
+// the dashboard key or API keys for other services.
+const NETWORK_ENV = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "npm_config_registry", "NPM_CONFIG_REGISTRY"];
+
+export function bridgeEnv(bridge) {
+  const env = getDefaultEnvironment();
+  for (const k of NETWORK_ENV) if (process.env[k] !== undefined) env[k] = process.env[k];
+  return { ...env, ...(bridge.env || {}) };
+}
+
 /** Open an MCP client connection to a bridge. Caller must close() it. */
 export async function connectBridge(bridge) {
   if (!bridge?.command) throw new Error(`Bridge "${bridge?.name}" is missing a "command".`);
@@ -84,7 +97,7 @@ export async function connectBridge(bridge) {
   const transport = new StdioClientTransport({
     command: bridge.command,
     args: bridge.args || [],
-    env: { ...process.env, ...(bridge.env || {}) },
+    env: bridgeEnv(bridge),
   });
 
   const client = new Client(
@@ -210,8 +223,7 @@ export function enabledBridges() {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+if (isMain(import.meta.url)) {
   const [cmd, ...rest] = process.argv.slice(2);
   const bridges = enabledBridges();
 

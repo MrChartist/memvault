@@ -3,7 +3,30 @@ import path from "path";
 import { execSync } from "child_process";
 import { fileURLToPath } from "url";
 
-console.log("🚀 Setting up MemVault Ultimate Windows Autostart...\n");
+// This script changes how your computer starts, so it does nothing until you say yes.
+//   node setup-windows.mjs --yes      add the start-up items
+//   node setup-windows.mjs --remove   take them away again
+const YES = process.argv.includes("--yes");
+const REMOVE = process.argv.includes("--remove");
+if (process.platform !== "win32") { console.log("This script is for Windows only."); process.exit(0); }
+if (!YES && !REMOVE) {
+  console.log(`This would, on this computer:
+  1. add a hidden start-up item that starts the MemVault dashboard server each time you sign in,
+  2. add a hidden start-up item for the clipboard watcher (it still saves nothing unless you switch clipboard capture on in Settings),
+  3. add a Scheduled Task "MemVault-Periodic-Sync" that runs "npm run sync:all" every 30 minutes (each capture source is still off until you switch it on).
+
+Nothing has been changed. To go ahead:   node setup-windows.mjs --yes
+To remove it all later:                 node setup-windows.mjs --remove`);
+  process.exit(0);
+}
+if (REMOVE) {
+  const startup = path.join(process.env.APPDATA || "", "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "MemVault-Autostart.vbs");
+  try { fs.rmSync(startup, { force: true }); console.log("Removed the start-up item."); } catch (e) { console.log("Could not remove the start-up item:", e.message); }
+  try { execSync('schtasks /Delete /TN "MemVault-Periodic-Sync" /F', { stdio: "ignore" }); console.log("Removed the Scheduled Task."); } catch { console.log("No Scheduled Task to remove."); }
+  try { fs.rmSync(path.join(process.env.LOCALAPPDATA || "", "MemVault", "run-sync-silent.vbs"), { force: true }); } catch { /* nothing to remove */ }
+  process.exit(0);
+}
+console.log("Setting up MemVault start-up items...\n");
 
 // The folder this script lives in — works no matter where you run it from.
 const repoDir = path.dirname(fileURLToPath(import.meta.url));

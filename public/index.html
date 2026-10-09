@@ -27,7 +27,7 @@
           <button class="icon-btn" data-action="text-smaller" aria-label="A−, smaller text" title="Smaller text">A−</button>
           <button class="icon-btn" data-action="text-larger" aria-label="A+, larger text" title="Larger text">A+</button>
         </span>
-        <button class="icon-btn" data-action="help" aria-label="Help: how MemVault works" title="Help">?</button>
+        <button class="icon-btn" data-action="help" aria-label="Help: how MemVault works" title="Help"><span aria-hidden="true">?</span></button>
         <button class="icon-btn" data-action="theme" aria-label="Switch between light and dark" title="Light / dark"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg></button>
       </div>
     </div>
@@ -36,6 +36,7 @@
       <button class="tab" data-action="view" data-view="agents">Agents</button>
       <button class="tab" data-action="view" data-view="vault">Secure Vault</button>
       <button class="tab" data-action="view" data-view="security">Security</button>
+      <button class="tab" data-action="view" data-view="settings">Settings</button>
     </nav>
   </header>
 
@@ -43,35 +44,36 @@
 
     <!-- ═════════ MEMORY ═════════ -->
     <section id="view-memory" class="view">
+      <h2 id="h-memory" class="sr-only" tabindex="-1">Memory</h2>
 
       <div class="card guide" id="guide" hidden>
         <div class="row between wrap gap">
-          <h2>Welcome. Here is how MemVault works</h2>
+          <h3 class="guide-title">Welcome. Here is how MemVault works</h3>
           <button class="btn sm ghost" data-action="dismiss-guide">Hide this</button>
         </div>
         <p class="muted">MemVault is a notebook on <strong>your own computer</strong> that all your AI assistants can share. Tell one AI something once, and the others can find it too.</p>
         <ol class="steps">
           <li><div><b>Connect your AI app</b>
-            <span class="muted">Works with Claude, Cursor, Antigravity, VS Code and any app that supports MCP.</span>
+            <span class="muted">Works with Claude, Cursor, Antigravity, VS Code and other AI apps that can connect to tools.</span>
             <div class="row"><button class="btn primary" data-action="connect-apps">Show me how</button></div></div></li>
           <li><div><b>Choose helpers (optional)</b>
-            <span class="muted">An agent is a helper with its own job, voice and rules, such as a study helper or a writing helper.</span>
+            <span class="muted">An agent is a helper with its own job, way of talking and rules, such as a study helper or a writing helper.</span>
             <div class="row"><button class="btn" data-action="view" data-view="agents">See the helpers</button></div></div></li>
           <li><div><b>Try it</b>
             <span class="muted">In your AI app, say:</span>
             <div><span class="sample" dir="auto">Remember that I prefer short answers.</span></div>
             <div class="row"><button class="btn" data-action="copy-sample">Copy this sentence</button></div></div></li>
         </ol>
-        <p class="privacy-note"><strong>Your privacy, in plain words.</strong> Your notes are stored only on this computer, and MemVault sends nothing anywhere by itself. When you ask an AI to look something up here, the part it reads goes to that AI's company, like anything else you type to it. Passwords and ID numbers are masked before they are saved.</p>
+        <p class="privacy-note"><strong>Your privacy, in plain words.</strong> Your notes are stored only on this computer, and MemVault sends nothing anywhere by itself. When you ask an AI to look something up here, the part it reads goes to that AI's company, like anything else you type to it. Passwords and ID numbers are hidden before they are saved.</p>
       </div>
 
-      <div class="stats" id="stats" aria-live="polite"></div>
+      <div class="stats" id="stats"></div>
 
       <form class="card composer" id="composer">
         <label for="diary-input" class="label">Write a note</label>
-        <textarea id="diary-input" dir="auto" rows="4" maxlength="5000" placeholder="Write anything you want to keep. Passwords, card numbers, ID numbers and one-time codes are masked before saving."></textarea>
+        <textarea id="diary-input" dir="auto" rows="4" aria-describedby="char-count" placeholder="Write anything you want to keep. Passwords, card numbers, ID numbers and one-time codes are hidden before saving."></textarea>
         <div class="row between wrap gap">
-          <span class="muted small" id="char-count">0 / 5000</span>
+          <span class="muted small" id="char-count">0 characters</span>
           <button class="btn primary" type="submit" id="save-btn">Save note</button>
         </div>
       </form>
@@ -85,8 +87,19 @@
         </div>
         <label class="viewas">
           <span class="muted small">See what this agent can see</span>
-          <select id="viewas" aria-label="See memory as an agent sees it"><option value="">Everything (you)</option></select>
+          <select id="viewas"><option value="">Everything (you)</option></select>
         </label>
+      </div>
+
+      <div class="row between wrap gap">
+        <button type="button" class="btn sm" id="select-toggle" data-action="select-mode" aria-pressed="false">Select several</button>
+        <span id="results-status" class="muted small" role="status" aria-live="polite"></span>
+      </div>
+      <div id="selbar" class="selbar" role="region" aria-label="Selected memories" hidden>
+        <span id="sel-count">0 selected</span>
+        <button type="button" class="btn sm" data-action="select-all">Select all shown</button>
+        <button type="button" class="btn sm danger" data-action="delete-selected" id="delete-selected" disabled>Delete selected</button>
+        <button type="button" class="btn sm ghost" data-action="select-mode">Done</button>
       </div>
 
       <form class="search" id="search-form" role="search">
@@ -95,15 +108,15 @@
         <button class="btn ghost" type="button" data-action="clear-search">Clear</button>
       </form>
 
-      <div id="entries" class="entries" aria-live="polite"></div>
+      <div id="entries" class="entries"></div>
     </section>
 
     <!-- ═════════ AGENTS ═════════ -->
     <section id="view-agents" class="view" hidden>
       <div class="section-head">
         <div>
-          <h2>Agents</h2>
-          <p class="muted">An agent is a helper with its own job, voice and rules, and a clear limit on which memories it can see. Any AI becomes that helper when it calls <code>agent_activate</code>, or when you paste the briefing into it.</p>
+          <h2 id="h-agents" tabindex="-1">Agents</h2>
+          <p class="muted">An agent is a helper with its own job, way of talking and rules, and a clear limit on which memories it can see. An AI becomes that helper when you connect it to the helper, or when you paste the helper's instructions into it.</p>
         </div>
         <div class="row gap wrap">
           <label class="viewas"><span class="sr-only">Starter set</span>
@@ -114,25 +127,30 @@
       </div>
       <p class="muted small" id="pack-desc"></p>
       <div id="agents" class="grid"></div>
-      <p class="muted small note">To give an AI app its own agent, choose <strong>Copy MCP config</strong> and paste it into that app. The agent is set by that setting, never by anything the AI says, so an AI cannot give itself more access.</p>
+      <p class="muted small note">To give an AI app its own helper, choose <strong>Copy connection settings</strong> and paste them into that app. The helper is fixed by those settings, never by anything the AI says, so an AI cannot give itself more access.</p>
     </section>
 
     <!-- ═════════ SECURE VAULT ═════════ -->
     <section id="view-vault" class="view" hidden>
       <div id="lock" class="card lock">
-        <h2>Secure Vault</h2>
-        <p class="muted">A locked box for passwords, API keys, IDs and payment details. Each item is locked on its own with strong encryption (AES-256), using a key made from your master password. The password itself is never saved.</p>
-        <form class="row gap wrap" id="unlock-form">
-          <label for="master-pw" class="sr-only">Master password</label>
-          <input id="master-pw" type="password" autocomplete="current-password" placeholder="Master password" />
-          <button class="btn primary" type="submit">Unlock</button>
+        <h2 id="h-vault" tabindex="-1">Secure Vault</h2>
+        <p class="muted">A locked box for passwords, keys, ID numbers and payment details. Each item is locked on its own, using a key made from your master password. The password itself is never saved.</p>
+        <form class="stack" id="unlock-form" novalidate>
+          <label for="master-pw" class="label">Master password</label>
+          <input id="master-pw" type="password" autocomplete="current-password" aria-describedby="pw-error pw-help" />
+          <div id="setup-extra" hidden>
+            <label for="master-pw2" class="label">Type it again</label>
+            <input id="master-pw2" type="password" autocomplete="new-password" aria-describedby="pw-error" />
+          </div>
+          <label class="check"><input type="checkbox" id="show-pw" /> Show the password</label>
+          <p class="error" id="pw-error" role="alert" hidden></p>
+          <p class="muted small" id="pw-help"></p>
+          <button class="btn primary" type="submit" id="unlock-btn">Unlock</button>
         </form>
-        <p class="error" id="pw-error" role="alert" hidden></p>
-        <p class="muted small">First time? The password you type now becomes your master password. Use at least 10 characters. <strong>If you forget it, there is no way to recover what is inside.</strong></p>
       </div>
       <div id="unlocked" hidden>
         <div class="section-head">
-          <h2>Secure Vault</h2>
+          <h2 id="h-secrets" tabindex="-1">Secure Vault</h2>
           <div class="row gap">
             <button class="btn primary" data-action="add-secret">Add a secret</button>
             <button class="btn" data-action="lock">Lock</button>
@@ -146,8 +164,8 @@
     <section id="view-security" class="view" hidden>
       <div class="section-head">
         <div>
-          <h2>Security</h2>
-          <p class="muted">These are live checks of how this vault is really set up, not promises. No software is perfectly safe; <code>SECURITY.md</code> explains exactly what is and is not protected.</p>
+          <h2 id="h-security" tabindex="-1">Security</h2>
+          <p class="muted">These are live checks of how this vault is really set up, not promises. No software is perfectly safe; the file <code>SECURITY.md</code> explains exactly what is and is not protected.</p>
         </div>
         <button class="btn" data-action="reload-security">Check again</button>
       </div>
@@ -158,13 +176,88 @@
         <h3>Who used your memory</h3>
         <span id="chain-pill" class="pill"></span>
       </div>
-      <div id="audit" class="card table-wrap"></div>
+      <div id="audit" class="card table-wrap" tabindex="0" role="region" aria-label="Recent activity"></div>
 
       <div class="section-head">
         <h3>Backups</h3>
         <button class="btn" data-action="backup-now">Back up now</button>
       </div>
       <div id="backups" class="card"></div>
+    </section>
+
+    <!-- ═════════ SETTINGS ═════════ -->
+    <section id="view-settings" class="view" hidden>
+      <div class="section-head">
+        <div>
+          <h2 id="h-settings" tabindex="-1">Settings</h2>
+          <p class="muted">Everything here can be changed without the terminal. Changes are saved as soon as you make them.</p>
+        </div>
+      </div>
+
+      <div class="card" aria-labelledby="s-look">
+        <h3 id="s-look">How it looks</h3>
+        <fieldset class="opts"><legend class="label">Text size</legend>
+          <label class="opt"><input type="radio" name="textsize" value="0"> Normal</label>
+          <label class="opt"><input type="radio" name="textsize" value="1"> Larger</label>
+          <label class="opt"><input type="radio" name="textsize" value="2"> Large</label>
+          <label class="opt"><input type="radio" name="textsize" value="3"> Largest</label>
+        </fieldset>
+        <fieldset class="opts"><legend class="label">Colours</legend>
+          <label class="opt"><input type="radio" name="theme" value="auto"> Match my computer</label>
+          <label class="opt"><input type="radio" name="theme" value="light"> Light</label>
+          <label class="opt"><input type="radio" name="theme" value="dark"> Dark</label>
+        </fieldset>
+      </div>
+
+      <div class="card" aria-labelledby="s-capture">
+        <h3 id="s-capture">What MemVault saves for you</h3>
+        <p class="muted">All of these are off until you switch them on. Passwords and card numbers are hidden before anything is saved. Your AI apps can still save notes themselves even if all of these are off.</p>
+        <div id="capture-list"></div>
+        <div class="row gap wrap">
+          <button class="btn" data-action="sync-now" id="sync-now">Save now</button>
+          <span id="sync-status" class="muted small" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div class="card" aria-labelledby="s-backup">
+        <h3 id="s-backup">Backups</h3>
+        <div id="backup-info"></div>
+        <div class="row gap wrap"><button class="btn" data-action="backup-now">Back up now</button></div>
+        <form id="pass-form" class="stack" novalidate>
+          <h4>Lock your backups with a passphrase</h4>
+          <p class="muted small">A passphrase locks a backup before it leaves this computer (for example, to Google Drive). <strong>If you lose it, those backups cannot be opened, and nobody can recover it for you.</strong> It is kept in a private file on this computer, outside your vault.</p>
+          <label for="bp-1" class="label">Passphrase (at least 10 characters)</label>
+          <input id="bp-1" type="password" autocomplete="new-password" aria-describedby="bp-error" />
+          <label for="bp-2" class="label">Type it again</label>
+          <input id="bp-2" type="password" autocomplete="new-password" aria-describedby="bp-error" />
+          <label class="check"><input type="checkbox" id="bp-show" /> Show the passphrase</label>
+          <p class="error" id="bp-error" role="alert" hidden></p>
+          <div><button class="btn primary" type="submit">Save passphrase</button></div>
+        </form>
+      </div>
+
+      <div class="card" aria-labelledby="s-projects">
+        <h3 id="s-projects">Your projects</h3>
+        <p class="muted">Tell MemVault about the things you work on. Notes that mention these words are labelled with the project automatically. This applies to new notes after your AI apps are restarted.</p>
+        <div id="project-list"></div>
+        <form id="project-form" class="form-grid" novalidate>
+          <div><label for="pj-name" class="label">Project name</label><input id="pj-name" type="text" dir="auto" placeholder="For example: Garden Shed" aria-describedby="pj-error" /></div>
+          <div><label for="pj-words" class="label">Words that mean this project</label><input id="pj-words" type="text" dir="auto" placeholder="For example: shed, garden build" /></div>
+          <div class="full"><p class="error" id="pj-error" role="alert" hidden></p><button class="btn" type="submit">Add project</button></div>
+        </form>
+      </div>
+
+      <div class="card" aria-labelledby="s-data">
+        <h3 id="s-data">Your data</h3>
+        <div class="row gap wrap">
+          <button class="btn" data-action="export-all">Download everything</button>
+          <button class="btn danger" data-action="wipe-all">Delete everything</button>
+        </div>
+        <p class="muted small">Download gives you one file with all your notes. Passwords in the Secure Vault are not included. Delete everything makes a backup first.</p>
+        <h4>Recently deleted</h4>
+        <p class="muted small">You can put these back for one hour, as long as MemVault is still running.</p>
+        <div id="trash-list"></div>
+      </div>
     </section>
   </main>
 
@@ -174,17 +267,18 @@
   </footer>
 
   <!-- ═════════ DIALOGS ═════════ -->
-  <dialog id="dlg-connect" aria-labelledby="connect-title">
+  <dialog id="dlg-connect" aria-labelledby="connect-title" data-keep>
     <form method="dialog" class="dlg" id="connect-form">
       <h3 id="connect-title">Connect the dashboard to your vault</h3>
-      <p class="muted">Open the dashboard with the command <code>memvault open</code> and it connects by itself. Or paste your access key here. Get it by running <code>memvault token</code>.</p>
-      <label class="label" for="token-input">Access key</label>
-      <input id="token-input" type="password" autocomplete="off" />
+      <p class="muted">Open the dashboard with the command <code>memvault open</code> and it connects by itself. Or paste your dashboard key here. Get it by running <code>memvault token</code> in a terminal.</p>
+      <label class="label" for="token-input">Dashboard key</label>
+      <input id="token-input" type="password" autocomplete="off" aria-describedby="token-error" />
+      <p class="error" id="token-error" role="alert" hidden></p>
       <div class="row end gap"><button class="btn primary" type="submit">Connect</button></div>
     </form>
   </dialog>
 
-  <dialog id="dlg-apps" aria-labelledby="apps-title">
+  <dialog id="dlg-apps" aria-labelledby="apps-title" class="closable">
     <form method="dialog" class="dlg wide">
       <h3 id="apps-title">Connect an AI app</h3>
       <p class="muted">Choose your app. MemVault gives you the exact text to paste.</p>
@@ -195,7 +289,7 @@
     </form>
   </dialog>
 
-  <dialog id="dlg-agent" aria-labelledby="agent-title">
+  <dialog id="dlg-agent" aria-labelledby="agent-title" data-guard>
     <form method="dialog" class="dlg wide" id="agent-form">
       <h3 id="agent-title">Agent</h3>
 
@@ -204,7 +298,7 @@
         <input id="agent-name" dir="auto" type="text" placeholder="For example: Study Buddy" />
         <label class="label" for="agent-prompt">Describe the helper in your own words</label>
         <textarea id="agent-prompt" dir="auto" rows="8" placeholder="Who is it? How should it talk? What must it always do? What must it never do?"></textarea>
-        <p class="hint">MemVault reads your text and sorts it into job, voice, and "always" and "never" rules. It works best in English; in other languages, fill in the form by hand. You can review and change everything before saving.</p>
+        <p class="hint">MemVault reads your text and sorts it into a job, a way of talking, and "must do" and "must not do" rules. It works best in English; in other languages, fill in the form by hand. You can check and change everything before saving.</p>
         <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn primary" type="button" data-action="draft">Create a draft</button></div>
       </div>
 
@@ -212,12 +306,12 @@
         <ul class="notes small muted" id="agent-notes"></ul>
         <div class="form-grid">
           <div><label class="label" for="f-name">Name</label><input id="f-name" dir="auto" type="text" /></div>
-          <div><label class="label" for="f-id">Short id</label><input id="f-id" type="text" autocapitalize="none" spellcheck="false" /><p class="hint">Lowercase letters, numbers and dashes.</p></div>
+          <div><label class="label" for="f-id">Short name for computers</label><input id="f-id" type="text" autocapitalize="none" spellcheck="false" aria-describedby="f-id-hint agent-error" /><p class="hint" id="f-id-hint">Lowercase letters, numbers and dashes. It cannot be changed later.</p></div>
           <div class="full"><label class="label" for="f-role">What does it do?</label><input id="f-role" dir="auto" type="text" /></div>
           <div><label class="label" for="f-lang">Language</label><input id="f-lang" dir="auto" type="text" placeholder="For example: Plain English" /></div>
           <div><label class="label" for="f-tone">Tone</label><input id="f-tone" dir="auto" type="text" placeholder="For example: kind, short, clear" /></div>
-          <div class="full"><label class="label" for="f-always">Always (one rule per line)</label><textarea id="f-always" dir="auto" rows="4"></textarea></div>
-          <div class="full"><label class="label" for="f-never">Never (one rule per line)</label><textarea id="f-never" dir="auto" rows="3"></textarea></div>
+          <div class="full"><label class="label" for="f-always">Must always do (one rule per line)</label><textarea id="f-always" dir="auto" rows="4"></textarea></div>
+          <div class="full"><label class="label" for="f-never">Must never do (one rule per line)</label><textarea id="f-never" dir="auto" rows="3"></textarea></div>
           <div class="full"><label class="label" for="f-persona">More about who it is (optional)</label><textarea id="f-persona" dir="auto" rows="3"></textarea></div>
         </div>
         <details class="more" id="agent-more">
@@ -227,14 +321,14 @@
             <div><label class="label" for="f-site">Website</label><input id="f-site" type="text" /></div>
             <div class="full"><label class="label" for="f-style">Output style (one per line)</label><textarea id="f-style" dir="auto" rows="2"></textarea></div>
             <div class="full"><label class="label" for="f-domains">Topics it works on (comma separated)</label><input id="f-domains" dir="auto" type="text" /></div>
-            <div class="full"><label class="label" for="f-read">Extra memory spaces it may read (comma separated)</label><input id="f-read" type="text" placeholder="For example: project:garden" /><p class="hint">Every agent can always read shared memory and its own private notes. Leave this empty unless you know you need more.</p></div>
-            <div class="full"><label class="check"><input type="checkbox" id="f-secrets" /> Let this agent list the names in the Secure Vault</label><p class="hint">Off is safer. Secret values are never given to agents either way.</p></div>
+            <div class="full"><label class="label" for="f-read">Other notebooks it may read (comma separated)</label><input id="f-read" type="text" placeholder="For example: project:garden" /><p class="hint">Every agent can always read shared notes and its own private notes. Leave this empty unless you know you need more.</p></div>
+            <div class="full"><label class="check"><input type="checkbox" id="f-secrets" /> Let this agent see the names (never the contents) of items in the Secure Vault</label><p class="hint">Off is safer. Secret values are never given to agents either way.</p></div>
           </div>
-          <label class="label" for="agent-json">Advanced: the whole profile as JSON</label>
+          <label class="label" for="agent-json">Advanced: the whole profile as text (JSON)</label>
           <textarea id="agent-json" class="mono" rows="10" spellcheck="false"></textarea>
           <p class="hint">If you change the JSON, it replaces the form above.</p>
         </details>
-        <p class="error" id="agent-error" role="alert" hidden></p>
+        <p class="error" id="agent-error" role="alert" tabindex="-1" hidden></p>
         <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn primary" type="button" data-action="save-agent">Save agent</button></div>
       </div>
     </form>
@@ -249,7 +343,7 @@
     </form>
   </dialog>
 
-  <dialog id="dlg-secret" aria-labelledby="secret-title">
+  <dialog id="dlg-secret" aria-labelledby="secret-title" data-guard>
     <form method="dialog" class="dlg" id="secret-form">
       <h3 id="secret-title">Add a secret</h3>
       <label class="label" for="s-category">Kind</label>
@@ -261,16 +355,16 @@
     </form>
   </dialog>
 
-  <dialog id="dlg-reveal" aria-labelledby="reveal-title">
+  <dialog id="dlg-reveal" aria-labelledby="reveal-title" class="closable">
     <form method="dialog" class="dlg">
       <h3 id="reveal-title">Secret</h3>
       <div id="reveal-fields"></div>
-      <p class="muted small">Select a value to copy it.</p>
+      <p class="muted small">This window closes by itself after one minute.</p>
       <div class="row end"><button class="btn" type="button" data-action="close-dialog">Close</button></div>
     </form>
   </dialog>
 
-  <dialog id="dlg-text" aria-labelledby="text-title">
+  <dialog id="dlg-text" aria-labelledby="text-title" class="closable">
     <form method="dialog" class="dlg wide">
       <h3 id="text-title">Text</h3>
       <textarea id="text-body" class="mono" rows="16" readonly></textarea>
@@ -278,7 +372,63 @@
     </form>
   </dialog>
 
-  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="dlg-memory" aria-labelledby="mem-title" class="closable" data-guard>
+    <form method="dialog" class="dlg wide" id="mem-form">
+      <div id="mem-view-step">
+        <h3 id="mem-title" dir="auto"></h3>
+        <p class="muted small" id="mem-meta"></p>
+        <div id="mem-full" class="fulltext" dir="auto" tabindex="0" role="region" aria-label="Full text of this memory"></div>
+        <div class="row end gap wrap">
+          <button type="button" class="btn" data-action="mem-pin" id="mem-pin">Pin</button>
+          <button type="button" class="btn" data-action="mem-edit">Edit</button>
+          <button type="button" class="btn" data-action="mem-download">Download</button>
+          <button type="button" class="btn danger" data-action="mem-delete">Delete</button>
+          <button type="button" class="btn primary" data-action="close-dialog">Close</button>
+        </div>
+      </div>
+      <div id="mem-edit-step" hidden>
+        <h3 id="mem-edit-title">Edit this memory</h3>
+        <label class="label" for="m-title">Title</label>
+        <input id="m-title" dir="auto" type="text" />
+        <label class="label" for="m-content">Text</label>
+        <textarea id="m-content" dir="auto" rows="10" aria-describedby="mem-error"></textarea>
+        <label class="label" for="m-tags">Tags</label>
+        <input id="m-tags" type="text" aria-describedby="m-tags-hint" />
+        <p class="hint" id="m-tags-hint">Separate tags with commas. Passwords and card numbers are hidden when you save.</p>
+        <p class="error" id="mem-error" role="alert" tabindex="-1" hidden></p>
+        <div class="row end gap"><button type="button" class="btn" data-action="close-dialog">Cancel</button><button type="button" class="btn primary" data-action="mem-save">Save changes</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-bulk" aria-labelledby="bulk-title">
+    <form method="dialog" class="dlg" id="bulk-form">
+      <h3 id="bulk-title">Delete these memories?</h3>
+      <p id="bulk-text" class="muted"></p>
+      <label class="label" for="bulk-confirm" id="bulk-label">Type the words to confirm</label>
+      <input id="bulk-confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn danger" type="button" id="bulk-go" data-action="bulk-go" disabled>Delete</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-wipe" aria-labelledby="wipe-title">
+    <form method="dialog" class="dlg" id="wipe-form">
+      <h3 id="wipe-title">Delete everything?</h3>
+      <p class="muted">This removes every note, conversation and work log from your vault, and the readable copies of them. A backup is made first, so you can still get it back with the command line (<code>memvault backup</code> keeps your backups). Agents and Secure Vault items are not deleted.</p>
+      <label class="label" for="wipe-confirm">Type DELETE ALL to confirm</label>
+      <input id="wipe-confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+      <p class="error" id="wipe-error" role="alert" hidden></p>
+      <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn danger" type="button" id="wipe-go" data-action="wipe-go" disabled>Delete everything</button></div>
+    </form>
+  </dialog>
+
+  <div id="undo" class="undo" role="status" hidden>
+    <span id="undo-text"></span>
+    <button type="button" class="btn sm" data-action="undo">Undo</button>
+  </div>
+
+  <div id="toast" popover="manual" role="status" aria-live="polite"></div>
+  <div id="toast-err" popover="manual" role="alert"><span id="toast-err-text"></span> <button type="button" class="btn sm" data-action="dismiss-error">Dismiss</button></div>
   <script src="app.js" defer></script>
 </body>
 </html>

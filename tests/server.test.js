@@ -10,7 +10,7 @@ process.env.VAULT_ROOT = ROOT;
 process.env.MEMVAULT_TOKEN_FILE = path.join(ROOT, 'token');
 
 const TOKEN = 'test-token-' + crypto.randomBytes(8).toString('hex');
-let server, port, S, D;
+let server, port, S, D, cfgFile;
 
 /** Raw HTTP so tests can control Host / Origin headers exactly (fetch will not). */
 function req(method, p, { headers = {}, body, token = TOKEN, host } = {}) {
@@ -43,7 +43,10 @@ beforeAll(async () => {
   port = await new Promise((res) => {
     const probe = http.createServer().listen(0, '127.0.0.1', () => { const p = probe.address().port; probe.close(() => res(p)); });
   });
-  const app = S.createApp({ vdb, token: TOKEN, port, root: ROOT });
+  cfgFile = path.join(ROOT, 'rc.json');
+  fs.writeFileSync(cfgFile, JSON.stringify({ mcpBridges: [{ name: 'keep-me', command: 'x' }], security: { host: '127.0.0.1' } }));
+  const config = { load: () => JSON.parse(fs.readFileSync(cfgFile, 'utf8')), save: (c) => fs.writeFileSync(cfgFile, JSON.stringify(c)), passphraseFile: path.join(ROOT, 'outside', 'backup-passphrase') };
+  const app = S.createApp({ vdb, token: TOKEN, port, root: ROOT, config });
   server = await new Promise((res) => { const s = app.listen(port, '127.0.0.1', () => res(s)); });
 });
 
@@ -153,6 +156,32 @@ describe('server — adding and finding memory', () => {
     expect((await req('POST', '/add', { body: { type: 'diary', agent_id: 'Bad Id' } })).status).toBe(400);
   });
 
+  it('/upload goes through the same door: the file name is masked and the write is audited', async () => {
+    const boundary = 'mvtest' + crypto.randomBytes(6).toString('hex');
+    const name = 'deploy ghp_abcdefghijklmnopqrstuvwxyz0123456789.txt';
+    const body = Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: text/plain\r\n\r\n` +
+      `hello\r\n--${boundary}--\r\n`
+    );
+    const r = await new Promise((resolve, reject) => {
+      const q = http.request({ host: '127.0.0.1', port, method: 'POST', path: '/upload', headers: {
+        authorization: `Bearer ${TOKEN}`, 'content-type': `multipart/form-data; boundary=${boundary}`, 'content-length': body.length,
+      } }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode, json: JSON.parse(d) })); });
+      q.on('error', reject);
+      q.end(body);
+    });
+    expect(r.status).toBe(200);
+    const row = D.openVaultDb({ root: ROOT }).query('SELECT title, file_path FROM items WHERE id = ?', [r.json.id])[0];
+    expect(row.title).not.toContain('ghp_abc');
+    expect(row.title).toContain('REDACTED');
+    expect(row.file_path).not.toMatch(/abcdefghijklmnop/); // not in the name on disk either
+    expect(fs.readFileSync(row.file_path, 'utf8')).toBe('hello');
+    const { tailAudit } = await import('../audit.mjs');
+    const adds = tailAudit(50, {}, ROOT).filter((x) => x.action === 'add' && x.detail.type === 'file');
+    expect(adds.length).toBeGreaterThan(0);
+    expect(JSON.stringify(tailAudit(500, {}, ROOT))).not.toContain('ghp_abc');
+  });
+
   it('"view as agent" filters search and list to what that agent may see', async () => {
     await req('PUT', '/agents/ana', { body: { name: 'Ana' } });
     await req('PUT', '/agents/bob', { body: { name: 'Bob' } });
@@ -165,6 +194,184 @@ describe('server — adding and finding memory', () => {
     const asAna = await req('GET', '/list?agent=ana');
     expect(asAna.json.results.map((r) => r.title)).toContain('ana-private-note');
     expect((await req('GET', '/list?agent=ghost')).status).toBe(404);
+  });
+});
+
+describe('server — working with one memory at a time', () => {
+  const add = async (over = {}) => (await req('POST', '/add', { body: { type: 'diary', source: 'manual', title: 'one-memory ' + crypto.randomBytes(3).toString('hex'), content: 'full text of the note', tags: 'diary', ...over } })).json.id;
+
+  it('reads one memory in full', async () => {
+    const id = await add({ content: 'x'.repeat(1000) });
+    const r = await req('GET', `/items/${id}`);
+    expect(r.status).toBe(200);
+    expect(r.json.item.content).toHaveLength(1000); // lists only carry a 300-character snippet
+    expect((await req('GET', '/items/nope')).status).toBe(404);
+  });
+
+  it('edits title, content and tags, masks secrets, and audits without content', async () => {
+    const id = await add();
+    const r = await req('PATCH', `/items/${id}`, { body: { title: 'edited', content: 'now API_KEY=abcd1234efgh5678', tags: 'a,b' } });
+    expect(r.status).toBe(200);
+    expect(r.json.redacted).toEqual([{ type: 'secret-assignment', count: 1 }]);
+    const item = (await req('GET', `/items/${id}`)).json.item;
+    expect(item.title).toBe('edited');
+    expect(item.content).not.toContain('abcd1234efgh5678');
+    expect(item.tags).toBe('a,b');
+    const { tailAudit } = await import('../audit.mjs');
+    const last = tailAudit(5, {}, ROOT).filter((x) => x.action === 'edit').pop();
+    expect(last.detail.id).toBe(id);
+    expect(JSON.stringify(last)).not.toContain('abcd1234');
+    expect((await req('PATCH', `/items/${id}`, { body: { scope: 'agent:x' } })).status).toBe(400); // only text fields can change
+    expect((await req('PATCH', '/items/nope', { body: { title: 'x' } })).status).toBe(404);
+  });
+
+  it('pins and unpins, and pinned memories list first', async () => {
+    const id = await add({ title: 'pin me' });
+    await add({ title: 'newer than the pinned one' });
+    expect((await req('PATCH', `/items/${id}`, { body: { pinned: true } })).status).toBe(200);
+    expect((await req('GET', '/list?limit=5')).json.results[0].id).toBe(id);
+    await req('PATCH', `/items/${id}`, { body: { pinned: false } });
+    expect((await req('GET', '/list?limit=5')).json.results[0].id).not.toBe(id);
+    expect((await req('GET', `/items/${id}`)).json.item.tags).not.toMatch(/pinned/);
+  });
+
+  it('deletes one memory and can bring it back (undo)', async () => {
+    const id = await add({ title: 'delete then undo', agent_id: 'ana', scope: 'agent:ana' });
+    const del = await req('DELETE', `/items/${id}`);
+    expect(del.status).toBe(200);
+    expect((await req('GET', `/items/${id}`)).status).toBe(404);
+    const back = await req('POST', `/items/${id}/restore`);
+    expect(back.status).toBe(200);
+    const item = (await req('GET', `/items/${id}`)).json.item;
+    expect(item.title).toBe('delete then undo');
+    expect(item.scope).toBe('agent:ana'); // comes back exactly as it was, private notes stay private
+    expect((await req('POST', `/items/${id}/restore`)).status).toBe(404); // nothing left to restore
+  });
+
+  it('lists what was deleted recently, so Undo still works after the toast is gone', async () => {
+    const id = await add({ title: 'listed in trash', content: 'private words that must not be listed' });
+    expect((await req('GET', '/trash')).json.items.some((i) => i.id === id)).toBe(false);
+    await req('DELETE', `/items/${id}`);
+    const t = await req('GET', '/trash');
+    const row = t.json.items.find((i) => i.id === id);
+    expect(row.title).toBe('listed in trash');
+    expect(t.text).not.toContain('private words'); // titles only
+    await req('POST', `/items/${id}/restore`);
+    expect((await req('GET', '/trash')).json.items.some((i) => i.id === id)).toBe(false);
+  });
+
+  it('bulk delete needs the phrase, takes a backup first, and can be undone', async () => {
+    const ids = [await add({ title: 'bulk-a' }), await add({ title: 'bulk-b' })];
+    expect((await req('POST', '/items/delete-many', { body: { ids } })).status).toBe(400);
+    expect((await req('GET', `/items/${ids[0]}`)).status).toBe(200);
+    const r = await req('POST', '/items/delete-many', { body: { ids, confirm: 'DELETE 2' } });
+    expect(r.json).toMatchObject({ ok: true, deleted: 2 });
+    expect(r.json.backup).toMatch(/^index-.*\.sqlite$/);
+    expect((await req('GET', `/items/${ids[0]}`)).status).toBe(404);
+    const back = await req('POST', '/items/restore-many', { body: { ids } });
+    expect(back.json.restored).toBe(2);
+    expect((await req('GET', `/items/${ids[1]}`)).status).toBe(200);
+  });
+
+  it('deleting, bulk deleting, editing and clearing also deal with the readable Markdown copies', async () => {
+    const { writeMirror } = await import('../mirror.mjs');
+    const mk = async (title, content) => {
+      const r = await req('POST', '/add', { body: { type: 'diary', source: 'mcp', title, content, tags: 'x' } });
+      const row = D.openVaultDb({ root: ROOT }).query('SELECT * FROM items WHERE id = ?', [r.json.id])[0];
+      const file = writeMirror(ROOT, row);
+      return { id: r.json.id, file };
+    };
+    const a = await mk('mirror-a', 'AAA-original');
+    const b = await mk('mirror-b', 'BBB-original');
+    const c = await mk('mirror-c', 'CCC-original');
+    await req('PATCH', `/items/${a.id}`, { body: { content: 'AAA-edited' } });
+    expect(fs.readFileSync(a.file, 'utf8')).toContain('AAA-edited');
+    expect(fs.readFileSync(a.file, 'utf8')).not.toContain('AAA-original');
+    await req('DELETE', `/items/${a.id}`);
+    expect(fs.existsSync(a.file)).toBe(false);
+    await req('POST', '/items/delete-many', { body: { ids: [b.id], confirm: 'DELETE 1' } });
+    expect(fs.existsSync(b.file)).toBe(false);
+    expect(fs.existsSync(c.file)).toBe(true);
+    await req('POST', '/clear', { body: { confirm: 'DELETE', source: 'mcp' } }); // a clear by source removes those copies too
+    expect(fs.existsSync(c.file)).toBe(false);
+  });
+
+  it('exports everything as JSON without the encrypted secrets', async () => {
+    const id = await add({ title: 'export me' });
+    const r = await req('GET', '/export');
+    expect(r.status).toBe(200);
+    expect(r.json.items.some((i) => i.id === id)).toBe(true);
+    expect(r.text).not.toContain('"encrypted"');
+    expect(r.headers['content-disposition']).toMatch(/attachment; filename="memvault-export-/);
+  });
+});
+
+describe('server — settings', () => {
+  it('starts with every kind of automatic capture off and no passphrase', async () => {
+    const r = (await req('GET', '/settings')).json;
+    expect(Object.values(r.capture).every((c) => c.on === false)).toBe(true);
+    expect(r.projects).toEqual([]);
+    expect(r.backup.passphrase).toEqual({ set: false, via: null });
+    expect(r.backup.cloud).toEqual({ folder: false, api: false });
+  });
+
+  it('turns capture on and off, saves projects, and leaves every other setting alone', async () => {
+    const r = await req('PUT', '/settings', { body: { capture: { git: true, browser: false }, projects: [{ name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' }] } });
+    expect(r.status).toBe(200);
+    const file = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    expect(file.sync).toMatchObject({ gitEnabled: true, browserEnabled: false });
+    expect(file.projects).toEqual([{ name: 'Garden Shed', match: ['shed', 'garden build'], tags: 'garden,diy' }]);
+    expect(file.mcpBridges).toEqual([{ name: 'keep-me', command: 'x' }]); // untouched
+    expect(file.security).toEqual({ host: '127.0.0.1' });
+    expect((await req('GET', '/settings')).json.capture.git.on).toBe(true);
+    await req('PUT', '/settings', { body: { capture: { git: false } } });
+  });
+
+  it('refuses anything that is not a plain setting (no way to change the network address, bridges or keys from here)', async () => {
+    for (const body of [{ security: { host: '0.0.0.0' } }, { mcpBridges: [] }, { capture: { evil: true } }, { projects: [{ name: '' }] }, { projects: 'x' }, { storage: { allowPlaintextCloud: true } }]) {
+      expect((await req('PUT', '/settings', { body })).status).toBe(400);
+    }
+    expect(JSON.parse(fs.readFileSync(cfgFile, 'utf8')).security).toEqual({ host: '127.0.0.1' });
+  });
+
+  it('sets a backup passphrase: checked, stored privately outside the vault, never sent back or logged', async () => {
+    expect((await req('PUT', '/settings/passphrase', { body: { passphrase: 'short', confirm: 'short' } })).status).toBe(400);
+    expect((await req('PUT', '/settings/passphrase', { body: { passphrase: 'a long enough phrase', confirm: 'a different phrase!' } })).status).toBe(400);
+    const ok = await req('PUT', '/settings/passphrase', { body: { passphrase: 'a long enough phrase', confirm: 'a long enough phrase' } });
+    expect(ok.status).toBe(200);
+    expect(ok.text).not.toContain('a long enough phrase');
+    const file = path.join(ROOT, 'outside', 'backup-passphrase');
+    expect(fs.readFileSync(file, 'utf8').trim()).toBe('a long enough phrase');
+    if (process.platform !== 'win32') expect(fs.statSync(file).mode & 0o077).toBe(0);
+    expect(JSON.parse(fs.readFileSync(cfgFile, 'utf8')).storage.passphraseFile).toBe(file);
+    const st = await req('GET', '/settings');
+    expect(st.json.backup.passphrase).toEqual({ set: true, via: 'file' });
+    expect(st.text).not.toContain('a long enough phrase');
+    const { tailAudit } = await import('../audit.mjs');
+    expect(JSON.stringify(tailAudit(500, {}, ROOT))).not.toContain('a long enough phrase');
+  });
+
+  it('a cloud backup made right after setting the passphrase is encrypted (no restart needed)', async () => {
+    const drive = path.join(ROOT, 'drive');
+    const file = JSON.parse(fs.readFileSync(cfgFile, 'utf8'));
+    file.storage = { ...file.storage, gdriveFolder: { enabled: true, path: drive } };
+    fs.writeFileSync(cfgFile, JSON.stringify(file));
+    const r = await req('POST', '/backup');
+    expect(r.status).toBe(200);
+    const cloud = r.json.results.find((x) => x.backend === 'gdriveFolder');
+    expect(cloud).toMatchObject({ ok: true, encrypted: true });
+    expect(fs.readdirSync(path.join(drive, 'MemVault')).some((f) => f.endsWith('.mvbak'))).toBe(true);
+  });
+
+  it('checks the dashboard key without touching data', async () => {
+    expect((await req('GET', '/whoami')).json).toEqual({ ok: true });
+    expect((await req('GET', '/whoami', { token: 'wrong' })).status).toBe(401);
+  });
+
+  it('"save now" says plainly when nothing is switched on', async () => {
+    const r = await req('POST', '/sync/run');
+    expect(r.status).toBe(200);
+    expect(r.json.ran).toEqual([]);
   });
 });
 
@@ -221,10 +428,15 @@ describe('server — secrets', () => {
   const PW = 'correct horse battery';
   let id;
 
+  it('tells the page whether the Secure Vault has been set up yet', async () => {
+    expect((await req('GET', '/secrets/status')).json).toEqual({ ok: true, initialised: false });
+  });
+
   it('insists on a real master password the first time', async () => {
     const r = await req('POST', '/secrets/add', { body: { password: 'short', category: 'apikey', label: 'x', fields: { k: 'v' } } });
     expect(r.status).toBe(400);
     expect(r.json.error).toMatch(/at least 10/);
+    expect((await req('GET', '/secrets/status')).json.initialised).toBe(false); // refused, so still not set up
   });
 
   it('stores encrypted (v2) and round-trips', async () => {
@@ -236,6 +448,10 @@ describe('server — secrets', () => {
     expect(JSON.parse(raw).v).toBe(2);
     const get = await req('POST', '/secrets/get', { body: { password: PW, id } });
     expect(get.json.fields).toEqual({ key: 'sk-test-123' });
+  });
+
+  it('reports the Secure Vault as set up once it has a password', async () => {
+    expect((await req('GET', '/secrets/status')).json).toEqual({ ok: true, initialised: true });
   });
 
   it('lists labels only', async () => {
@@ -267,6 +483,34 @@ describe('server — secrets', () => {
     const locked = await req('POST', '/secrets/get', { body: { password: PW, id } });
     expect(locked.status).toBe(429);
     expect(Number(locked.headers['retry-after'])).toBeGreaterThan(0);
+  });
+});
+
+describe('server — secrets in a vault that has no check row', () => {
+  it('an old vault (secrets, no sentinel) still needs the real password, with the lockout', async () => {
+    const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-nosentinel-'));
+    const vdb2 = D.openVaultDb({ root: root2 });
+    const { encryptString } = await import('../crypto-vault.mjs');
+    vdb2.run("INSERT INTO secrets (id,category,label,encrypted,created_at,updated_at) VALUES ('secret_old','password','Old','" + encryptString('{"password":"x"}', 'the real master password', 'secret_old') + "','x','x')");
+    const p2 = await new Promise((res) => { const pr = http.createServer().listen(0, '127.0.0.1', () => { const n = pr.address().port; pr.close(() => res(n)); }); });
+    const srv = await new Promise((res) => { const sv = S.createApp({ vdb: vdb2, token: TOKEN, port: p2, root: root2 }).listen(p2, '127.0.0.1', () => res(sv)); });
+    const call = (m, u, body) => new Promise((resolve, reject) => {
+      const payload = JSON.stringify(body);
+      const r = http.request({ host: '127.0.0.1', port: p2, method: m, path: u, headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode })); });
+      r.on('error', reject); r.end(payload);
+    });
+    try {
+      expect((await call('POST', '/secrets/verify', { password: 'a wrong guess here' })).status).toBe(401);
+      expect((await call('DELETE', '/secrets/delete/secret_old', { password: 'a wrong guess here' })).status).toBe(401);
+      expect(vdb2.query("SELECT COUNT(*) n FROM secrets")[0].n).toBe(1); // not deleted
+      const codes = [];
+      for (let i = 0; i < 6; i++) codes.push((await call('POST', '/secrets/get', { id: 'secret_old', password: 'wrong guess ' + i })).status);
+      expect(codes).toContain(429); // the lockout applies here too
+      expect((await call('POST', '/secrets/verify', { password: 'the real master password' })).status).toBe(429); // locked for a minute
+    } finally {
+      srv.close();
+      fs.rmSync(root2, { recursive: true, force: true });
+    }
   });
 });
 
@@ -349,10 +593,12 @@ describe('server — stats, status and client config', () => {
 describe('diagnostics', () => {
   it('shows paths as ~/… so the account name is not revealed', async () => {
     const { tildify } = await import('../diagnostics.mjs');
-    expect(tildify('/home/alice/.memvault/data', '/home/alice')).toBe('~/.memvault/data');
-    expect(tildify('/home/alice', '/home/alice')).toBe('~');
-    expect(tildify('/home/alicia/x', '/home/alice')).toBe('/home/alicia/x'); // not a prefix match on a longer name
-    expect(tildify('/srv/vault', '/home/alice')).toBe('/srv/vault');
+    const j = (...a) => path.join(path.sep, ...a); // a root-based path in this system's own style
+    const home = j('home', 'alice');
+    expect(tildify(j('home', 'alice', '.memvault', 'data'), home)).toBe(`~${path.sep}.memvault${path.sep}data`);
+    expect(tildify(home, home)).toBe('~');
+    expect(tildify(j('home', 'alicia', 'x'), home)).toBe(j('home', 'alicia', 'x')); // not a prefix match on a longer name
+    expect(tildify(j('srv', 'vault'), home)).toBe(j('srv', 'vault'));
   });
 });
 

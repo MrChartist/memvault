@@ -2,9 +2,8 @@
 /**
  * sync-system.mjs — MemVault System Info Snapshot
  * ─────────────────────────────────────────────────────────────────────────────
- * Captures a snapshot of the system state — OS, hardware, running processes,
- * installed software, disk usage — and saves it to the vault. Helps AI
- * understand your working environment.
+ * Saves a snapshot of basic facts about this computer: OS, hardware, disk space and which developer
+ * tools are installed. It does NOT save the computer's name, network addresses or running programs.
  *
  * Usage:
  *   node sync-system.mjs              (capture and save)
@@ -12,10 +11,14 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import fs from "fs";
+import path from "path";
 import os from "os";
 import { execSync } from "child_process";
 
 import { createIngestQueue } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("systemEnabled", "Saving computer information");
 
 const queue = createIngestQueue({ actor: "system" });
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -51,7 +54,6 @@ function getSystemInfo() {
   const freeMem = os.freemem();
 
   return {
-    hostname: os.hostname(),
     platform: os.platform(),
     arch: os.arch(),
     os: `${os.type()} ${os.release()}`,
@@ -63,45 +65,22 @@ function getSystemInfo() {
     memoryUsage: `${((1 - freeMem / totalMem) * 100).toFixed(0)}%`,
     uptime: `${(os.uptime() / 3600).toFixed(1)} hours`,
     nodeVersion: process.version,
-    homeDir: os.homedir(),
     tmpDir: os.tmpdir(),
   };
 }
 
 function getDiskUsage() {
-  if (process.platform !== "win32") {
-    const df = execSafe("df -h / | tail -1");
-    return df || "N/A";
+  // One built-in call for every system (no df, no wmic: wmic is gone from newer Windows).
+  try {
+    const root = process.platform === "win32" ? path.parse(process.cwd()).root : "/";
+    const st = fs.statfsSync(root);
+    const total = st.blocks * st.bsize, free = st.bavail * st.bsize;
+    if (!total) return "N/A";
+    const gb = (n) => (n / 1024 ** 3).toFixed(0);
+    return `${root} ${gb(free)}GB free / ${gb(total)}GB total (${((1 - free / total) * 100).toFixed(0)}% used)`;
+  } catch {
+    return "N/A";
   }
-
-  // Windows: use WMIC
-  const drives = execSafe('wmic logicaldisk get name,size,freespace /format:csv');
-  if (!drives) return "N/A";
-
-  const lines = drives.split("\n").filter(l => l.trim() && !l.includes("Node"));
-  return lines.map(line => {
-    const parts = line.split(",").map(p => p.trim());
-    if (parts.length >= 4) {
-      const [, free, name, total] = parts;
-      if (total && free) {
-        const totalGb = (Number(total) / (1024 ** 3)).toFixed(0);
-        const freeGb = (Number(free) / (1024 ** 3)).toFixed(0);
-        const usedPct = ((1 - Number(free) / Number(total)) * 100).toFixed(0);
-        return `${name} ${freeGb}GB free / ${totalGb}GB total (${usedPct}% used)`;
-      }
-    }
-    return null;
-  }).filter(Boolean).join("\n") || "N/A";
-}
-
-function getRunningProcesses() {
-  if (process.platform === "win32") {
-    // Get top processes by memory usage
-    const result = execSafe('powershell -command "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name, @{N=\\"MemMB\\";E={[Math]::Round($_.WorkingSet64/1MB)}} | Format-Table -AutoSize | Out-String"');
-    return result || "N/A";
-  }
-
-  return execSafe("ps aux --sort=-%mem | head -20") || "N/A";
 }
 
 function getInstalledNodeVersions() {
@@ -111,21 +90,6 @@ function getInstalledNodeVersions() {
   const pythonV = execSafe("python --version 2>&1") || execSafe("python3 --version 2>&1");
 
   return { node: nodeV, npm: npmV, git: gitV, python: pythonV || "not found" };
-}
-
-function getNetworkInfo() {
-  const interfaces = os.networkInterfaces();
-  const results = [];
-
-  for (const [name, addrs] of Object.entries(interfaces)) {
-    for (const addr of addrs) {
-      if (addr.family === "IPv4" && !addr.internal) {
-        results.push(`${name}: ${addr.address}`);
-      }
-    }
-  }
-
-  return results.join(", ") || "No active network";
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -148,7 +112,7 @@ let totalSynced = 0;
   const sysOk = await postToVault({
     type: "worklog",
     source: "system",
-    title: `[System] ${sys.hostname} — ${sys.os} (${sys.arch})`,
+    title: `[System] ${sys.os} (${sys.arch})`,
     content: `## System Information\n\n${sysContent}`,
     tags: "system,hardware,environment",
   });
@@ -185,24 +149,8 @@ let totalSynced = 0;
   if (toolsOk) totalSynced++;
   console.log(`  🛠️  Node ${tools.node} | npm ${tools.npm} | ${tools.git}`);
 
-  // 4. Network
-  console.log("\n── Network ────────────────────────────");
-  const network = getNetworkInfo();
-  console.log(`  🌐 ${network}`);
-
-  // 5. Top Processes
-  console.log("\n── Top Processes ───────────────────────");
-  const procs = getRunningProcesses();
-
-  const procsOk = await postToVault({
-    type: "worklog",
-    source: "system",
-    title: "[System] Running Processes Snapshot",
-    content: `## Top Processes (by memory)\n\n\`\`\`\n${procs}\n\`\`\`\n\n**Network**: ${network}\n\n_Captured: ${new Date().toISOString()}_`,
-    tags: "system,processes,runtime",
-  });
-  if (procsOk) totalSynced++;
-  console.log(`  📊 Top processes captured`);
+  // The computer's name, its network addresses and the programs running on it are deliberately NOT saved:
+  // program command lines often contain passwords, and none of it is needed to help with a task.
 
   queue.done();
   console.log(`\n═══════════════════════════════════════`);

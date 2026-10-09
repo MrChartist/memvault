@@ -11,7 +11,10 @@ let storage;
 beforeAll(async () => {
   // Seed a fake DB so backupLocal has something to copy.
   fs.mkdirSync(path.join(TMP, 'db'), { recursive: true });
-  fs.writeFileSync(path.join(TMP, 'db', 'index.sqlite'), 'SQLITE-FAKE');
+  const { openVaultDb } = await import('../db.mjs');
+  const seed = openVaultDb({ root: TMP });
+  seed.addItem({ type: 'diary', title: 'seed-row', content: 'x' });
+  seed.close();
   storage = await import('../storage.mjs');
 });
 
@@ -39,11 +42,24 @@ describe('storage — local backup', () => {
     expect(backups[0].name).toMatch(/^index-.*\.sqlite$/);
   });
 
-  it('restores a backup back into the live DB', () => {
+  it('restores a backup back into the live DB', async () => {
     const [latest] = storage.listLocalBackups();
     const res = storage.restoreLocal(latest.name);
     expect(res.ok).toBe(true);
-    expect(fs.readFileSync(path.join(TMP, 'db', 'index.sqlite'), 'utf8')).toBe('SQLITE-FAKE');
+    const { openVaultDb } = await import('../db.mjs');
+    expect(openVaultDb({ root: TMP }).query('SELECT title FROM items').map((r) => r.title)).toEqual(['seed-row']);
+  });
+
+  it('refuses to restore something that is not a MemVault database, and leaves the live one alone', async () => {
+    fs.mkdirSync(path.join(TMP, 'backups'), { recursive: true });
+    fs.writeFileSync(path.join(TMP, 'backups', 'index-notadb.sqlite'), 'this is just text');
+    const half = fs.readFileSync(path.join(TMP, 'db', 'index.sqlite')).subarray(0, 3000); // a cut-off copy
+    fs.writeFileSync(path.join(TMP, 'backups', 'index-cutoff.sqlite'), half);
+    for (const name of ['index-notadb.sqlite', 'index-cutoff.sqlite']) {
+      expect(() => storage.restoreLocal(name)).toThrow(/not a MemVault database|damaged/i);
+    }
+    const { openVaultDb } = await import('../db.mjs');
+    expect(openVaultDb({ root: TMP }).query('SELECT title FROM items').map((r) => r.title)).toEqual(['seed-row']);
   });
 
   it('throws on an unknown backup name', () => {

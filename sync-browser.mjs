@@ -18,6 +18,9 @@ import path from "path";
 import os from "os";
 
 import { createIngestQueue } from "./ingest.mjs";
+import { getVaultDb } from "./db.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("browserEnabled", "Saving browser history and bookmarks");
 
 const queue = createIngestQueue({ actor: "browser" });
 const args = process.argv.slice(2);
@@ -72,18 +75,34 @@ function browserProfiles() {
 const BROWSER_PROFILES = browserProfiles().filter((p) =>
     (!ONLY_CHROME || /^chrome/i.test(p.name)) && (!ONLY_EDGE || /^edge/i.test(p.name)));
 
-// Skip these URL patterns
-const SKIP_URLS = [
-    /^chrome:/, /^edge:/, /^about:/,
-    /^127\.0\./, /^localhost/, /^file:/,
-    /^chrome-extension:/,
-];
-
+// Pages that are private to this computer or network are never saved.
+function parse(url) { try { return new URL(url); } catch { return null; } }
 function shouldSkip(url) {
-    return SKIP_URLS.some(r => r.test(url));
+    const u = parse(url);
+    if (!u || !/^https?:$/.test(u.protocol)) return true; // chrome:, edge:, about:, file:, extensions …
+    const h = u.hostname.toLowerCase();
+    return h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h === "[::1]" ||
+        /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h) || /^169\.254\./.test(h);
+}
+// Only the site and page are kept. The part after "?" or "#" can hold search words, e-mail addresses and
+// one-time links, so it is dropped before anything is stored.
+function cleanUrl(url) {
+    const u = parse(url);
+    return u ? `${u.origin}${u.pathname}` : url;
+}
+
+// Running this again must not add the same visit or bookmark twice.
+const stored = new Set();
+if (!DRY_RUN) {
+    for (const r of getVaultDb().query("SELECT source, content, created_at FROM items WHERE tags LIKE 'browser,%'")) {
+        stored.add(`${r.source}|${String(r.created_at).slice(0, 10)}|${String(r.content).split("\n")[0]}`);
+    }
 }
 
 async function postToVault(entry) {
+    const key = `${entry.source}|${String(entry.created_at).slice(0, 10)}|${String(entry.content).split("\n")[0]}`;
+    if (stored.has(key)) return true;
+    stored.add(key);
     if (DRY_RUN) {
         console.log(`  [DRY] ${entry.title || entry.content?.slice(0, 60)}`);
         return true;
@@ -138,7 +157,7 @@ async function syncHistory(profile) {
     while (stmt.step()) {
         const row = stmt.getAsObject();
         if (shouldSkip(row.url)) continue;
-        const dateKey = `${row.url}::${chromeTimeToISO(row.visit_time).slice(0, 10)}`;
+        const dateKey = `${cleanUrl(row.url)}::${chromeTimeToISO(row.visit_time).slice(0, 10)}`;
         if (seen.has(dateKey)) continue;
         seen.add(dateKey);
         toSync.push(row);
@@ -154,8 +173,8 @@ async function syncHistory(profile) {
         const synced = await postToVault({
             type: "worklog",
             source: profile.name.toLowerCase(),
-            title: row.title || row.url,
-            content: `Visited: ${row.url}\nVisit count: ${row.visit_count}`,
+            title: row.title || cleanUrl(row.url),
+            content: `Visited: ${cleanUrl(row.url)}\nVisit count: ${row.visit_count}`,
             tags: `browser,history,${profile.name.toLowerCase()}`,
             created_at: iso,
         });
@@ -199,8 +218,8 @@ async function syncBookmarks(profile) {
         const synced = await postToVault({
             type: "conversation",
             source: `${profile.name.toLowerCase()}-bookmarks`,
-            title: bm.name || bm.url,
-            content: `Bookmarked URL: ${bm.url}\nFolder: ${bm.folder || "Root"}`,
+            title: bm.name || cleanUrl(bm.url),
+            content: `Bookmarked URL: ${cleanUrl(bm.url)}\nFolder: ${bm.folder || "Root"}`,
             tags: `browser,bookmark,${profile.name.toLowerCase()},${bm.folder?.split("/")[0] || "root"}`,
             created_at: bm.date_added
                 ? chromeTimeToISO(bm.date_added)
@@ -217,7 +236,6 @@ async function syncBookmarks(profile) {
 async function main() {
     console.log("╔════════════════════════════════════════╗");
     console.log("║  Browser → MemVault Sync               ║");
-    console.log(`║  Windows User: ${WIN_USER.padEnd(24)}║`);
     console.log(`║  ${DRY_RUN ? "DRY RUN                             " : "LIVE MODE                           "}║`);
     console.log("╚════════════════════════════════════════╝\n");
 
@@ -242,4 +260,4 @@ async function main() {
     console.log(`═══════════════════════════════════════\n`);
 }
 
-main().catch(console.error);
+main().catch((e) => { console.error(e); process.exitCode = 1; });

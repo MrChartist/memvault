@@ -23,12 +23,14 @@ import { z } from "zod";
 import {
   autoTag, mergeAutoTags, scoreRelevance, rankByRelevance,
   detectProject, generateDigest, deduplicateEntries,
-  filterUnseen, resetSession, getSessionStats,
+  filterUnseen, resetSession, getSessionStats, searchWords,
 } from "./context-engine.mjs";
 
 import { VAULT_ROOT, ensureVaultDir } from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
 import { ingest } from "./ingest.mjs";
+import { redact } from "./redact.mjs";
+import { writeMirror } from "./mirror.mjs";
 import { audit } from "./audit.mjs";
 import {
   getAgent, listAgents, saveAgent, buildBriefing, scopesFor, listInbox, AGENT_ID_RE,
@@ -71,6 +73,9 @@ if (AGENT_ID) {
 const actor = () => AGENT_ID || "owner";
 const queryAll = (sql, params = []) => db.query(sql, params);
 
+/** A value that goes inside a comma-separated tag list: a comma would start a new tag (and could fake a routing tag). */
+const tagSafe = (v) => String(v).replace(/[,\r\n]+/g, " ").trim().slice(0, 80);
+
 function isoDate() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -79,7 +84,7 @@ function isoDate() {
 /** Any-word keyword search, ranked by the relevance engine. Shared by the smart tools. */
 function keywordCandidates(query, max = 10, contentChars = 2000) {
   const esc = (w) => w.replace(/[\\%_]/g, "\\$&");
-  const words = [...new Set(String(query).toLowerCase().split(/[^\p{L}\p{N}_@:.+#-]+/u).filter((w) => w.length > 2))].slice(0, 8);
+  const words = searchWords(query, 8);
   if (!words.length) return [];
   const clause = words
     .map(() => "(LOWER(title) LIKE ? ESCAPE '\\' OR LOWER(content) LIKE ? ESCAPE '\\' OR LOWER(tags) LIKE ? ESCAPE '\\')")
@@ -129,6 +134,30 @@ server.tool = (name, ...rest) => {
     return handler(args, extra);
   };
   return registerTool(name, ...rest);
+};
+
+// Resources and prompts read memory just like tools do, so they follow the same rules:
+// every use is audited (by name, never content), and an agent whose profile limits its tools
+// does not get the memory-reading ones at all (only `activate_agent` stays).
+const registerResourceRaw = server.resource.bind(server);
+server.resource = (name, ...rest) => {
+  if (allowList) return;
+  const handler = rest[rest.length - 1];
+  rest[rest.length - 1] = async (...a) => {
+    audit({ actor: actor(), action: "resource", detail: { resource: name } });
+    return handler(...a);
+  };
+  return registerResourceRaw(name, ...rest);
+};
+const registerPromptRaw = server.prompt.bind(server);
+server.prompt = (name, ...rest) => {
+  if (allowList && name !== "activate_agent") return;
+  const handler = rest[rest.length - 1];
+  rest[rest.length - 1] = async (args, extra) => {
+    audit({ actor: actor(), action: "prompt", detail: { prompt: name, args: Object.keys(args || {}) } });
+    return handler(args, extra);
+  };
+  return registerPromptRaw(name, ...rest);
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,21 +230,15 @@ server.tool(
     );
     const stored = items[0];
 
-    // Flat-file mirror — written from what was STORED, so it can never leak what the DB masked.
-    const day = isoDate();
-    const backupDir = path.join(VAULT_ROOT, type === "diary" ? "entries" : type === "conversation" ? "conversations" : "worklogs", day.slice(0, 4), day.slice(5, 7));
-    ensureDir(backupDir);
-    const safeTitle = String(stored.title).replace(/[^a-z0-9]+/gi, "-").slice(0, 60);
-    const backupFile = path.join(backupDir, `${day}_${safeTitle}.md`);
-    if (scope === "shared") {
-      fs.writeFileSync(backupFile, `# ${stored.title}\n\n${stored.content}\n\n---\nSource: ${source || "mcp"}\nTags: ${tags || ""}\nCreated: ${created_at}\n`, { mode: 0o600 });
-    }
+    // Flat-file copy — written from what was STORED, so it can never hold what the DB masked, and named with the
+    // memory's id so deleting or editing the memory also removes or rewrites it.
+    const backupFile = scope === "shared" ? writeMirror(VAULT_ROOT, { ...stored, id: ids[0], type, created_at }) : null;
     const note = redacted.length ? `\n🔒 Masked before saving: ${redacted.map((r) => `${r.count}× ${r.type}`).join(", ")}` : "";
     const where = scope === "shared" ? "shared vault" : `private to ${AGENT_ID}`;
     return {
       content: [{
         type: "text",
-        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${tags || "none"}${scope === "shared" ? `\n- **Backed up to**: ${backupFile}` : ""}${note}`,
+        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${stored.tags || "none"}${backupFile ? `\n- **Copy saved as**: ${backupFile}` : ""}${note}`,
       }],
     };
   }
@@ -271,7 +294,7 @@ server.tool(
   },
   async ({ topic, limit }) => {
     const maxResults = limit || 10;
-    const keywords = topic.split(/\s+/).filter(w => w.length > 2);
+    const keywords = searchWords(topic, 8);
     const conditions = keywords.map(() => "(title LIKE ? OR content LIKE ? OR tags LIKE ?)").join(" OR ");
     const params = keywords.flatMap(k => {
       const like = `%${k}%`;
@@ -327,7 +350,7 @@ server.tool(
     return {
       content: [{
         type: "text",
-        text: `## 📊 Vault Statistics\n\n- **Total entries**: ${total}\n- **Encrypted secrets**: ${secretCount}\n\n### Breakdown by Type\n${typeBreakdown || "- (empty vault)"}\n\n### Activity Range\n- **First entry**: ${firstEntry?.created_at || "N/A"}\n- **Last entry**: ${lastEntry?.created_at || "N/A"}\n- **Vault path**: ${VAULT_ROOT}`,
+        text: `## 📊 Vault Statistics\n\n- **Total entries**: ${total}\n- **Encrypted secrets**: ${secretCount}\n\n### Breakdown by Type\n${typeBreakdown || "- (empty vault)"}\n\n### Activity Range\n- **First entry**: ${firstEntry?.created_at || "N/A"}\n- **Last entry**: ${lastEntry?.created_at || "N/A"}${AGENT_ID ? "" : `\n- **Vault path**: ${VAULT_ROOT}`}`,
       }],
     };
   }
@@ -448,7 +471,7 @@ server.tool(
 // 💻 vault_system_info — System environment info
 server.tool(
   "vault_system_info",
-  "Get the user's system information — OS, hardware, dev tools, running processes. Use this to understand the user's working environment when answering system-specific questions.",
+  "Get basic facts about the user's computer — OS, hardware and which developer tools are installed. Use this to understand the user's working environment when answering system-specific questions.",
   {},
   async () => {
     const rows = queryAll(
@@ -506,7 +529,7 @@ server.tool(
   },
   async ({ topic, limit, freshOnly }) => {
     const maxResults = limit || 10;
-    const keywords = topic.split(/\s+/).filter(w => w.length > 2);
+    const keywords = searchWords(topic, 8);
     const conditions = keywords.map(() => "(title LIKE ? OR content LIKE ? OR tags LIKE ?)").join(" OR ");
     const params = keywords.flatMap(k => { const l = `%${k}%`; return [l, l, l]; });
 
@@ -627,16 +650,18 @@ server.tool(
   "vault_daily_digest",
   "Generate an auto-summary of today's activity from the vault — diary entries, worklogs, conversations, projects touched, and tech stack used. Perfect for daily standup context or catching up on your day.",
   {
-    date: z.string().optional().describe("Date in YYYY-MM-DD format (default: today)"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use the YYYY-MM-DD format").optional().describe("Date in YYYY-MM-DD format (default: today)"),
   },
   async ({ date }) => {
     const targetDate = date || isoDate();
 
+    // A bound parameter, never pasted into the SQL: `date` comes from the AI.
     const rows = queryAll(
       `SELECT id, type, source, title, substr(content, 1, 400) as snippet, tags, created_at
        FROM items
-       WHERE created_at LIKE '${targetDate}%'
-       ORDER BY created_at ASC;`
+       WHERE substr(created_at, 1, 10) = ?
+       ORDER BY created_at ASC;`,
+      [targetDate]
     );
 
     const digest = generateDigest(rows);
@@ -666,7 +691,7 @@ server.tool(
     const detectedProject = project || detectProject(what)?.name;
     const tags = [
       "memory", `memory:${cat}`,
-      ...(detectedProject ? [`project:${detectedProject.toLowerCase().replace(/\s+/g, "-")}`] : []),
+      ...(detectedProject ? [`project:${tagSafe(detectedProject).toLowerCase().replace(/\s+/g, "-")}`] : []),
       ...detectedTags,
     ].join(",");
 
@@ -693,7 +718,7 @@ server.tool(
     return {
       content: [{
         type: "text",
-        text: `💾 **Remembered${scope === "shared" ? "" : ` (private to ${AGENT_ID})`}!**\n\n- **What**: ${what.slice(0, 100)}${what.length > 100 ? "..." : ""}\n- **Category**: ${cat}${detectedProject ? `\n- **Project**: ${detectedProject}` : ""}\n- **Tags**: \`${tags}\`${masked}`,
+        text: `💾 **Remembered${scope === "shared" ? "" : ` (private to ${AGENT_ID})`}!**\n\n- **What**: ${redact(what).text.slice(0, 100)}${what.length > 100 ? "..." : ""}\n- **Category**: ${cat}${detectedProject ? `\n- **Project**: ${detectedProject}` : ""}\n- **Tags**: \`${tags}\`${masked}`,
       }],
     };
   }
@@ -709,11 +734,11 @@ function registerResource(uri, name, description, type) {
     uri,
     { description, mimeType: "text/plain" },
     async () => {
-      const where = type ? `WHERE type = '${type}'` : "";
       const rows = queryAll(
         `SELECT type, title, substr(content, 1, 400) as snippet, tags, created_at
-         FROM items ${where}
-         ORDER BY created_at DESC LIMIT 20;`
+         FROM items ${type ? "WHERE type = ?" : ""}
+         ORDER BY created_at DESC LIMIT 20;`,
+        type ? [type] : []
       );
 
       const text = rows.length === 0
@@ -743,7 +768,7 @@ server.resource(
     const secretCount = queryAll("SELECT COUNT(*) as count FROM secrets WHERE id != '__sentinel__'")[0]?.count || 0;
 
     const breakdown = byType.map(r => `${r.type}: ${r.count}`).join(", ");
-    const text = `MemVault Stats | Total: ${total} | ${breakdown} | Secrets: ${secretCount} | Path: ${VAULT_ROOT}`;
+    const text = `MemVault Stats | Total: ${total} | ${breakdown} | Secrets: ${secretCount}${AGENT_ID ? "" : ` | Path: ${VAULT_ROOT}`}`; // the full path contains the account name, so only the owner gets it
 
     return { contents: [{ uri: "memvault://stats", text, mimeType: "text/plain" }] };
   }
@@ -762,7 +787,7 @@ server.prompt(
   },
   async ({ agent_id, task }) => {
     const id = agent_id || AGENT_ID;
-    const p = id ? getAgent(db, id) : null;
+    const p = id && (!AGENT_ID || id === AGENT_ID) ? getAgent(db, id) : null; // a bound connection can only be its own agent
     const text = p
       ? `${buildBriefing(db, p, { task: task || "" })}\n\n---\nYou are now this agent. ${task ? `Task: ${task}` : "Wait for the user's request."}`
       : `No agent selected. Available: ${agentIdsHint()}`;
@@ -840,8 +865,9 @@ server.prompt(
     const rows = queryAll(
       `SELECT type, title, substr(content, 1, 500) as snippet, created_at
        FROM items
-       WHERE created_at LIKE '${today}%'
-       ORDER BY created_at DESC;`
+       WHERE substr(created_at, 1, 10) = ?
+       ORDER BY created_at DESC;`,
+      [today]
     );
 
     const entries = rows.map(r => {
@@ -893,6 +919,8 @@ server.tool(
   async ({ agent_id, task }) => {
     const id = agent_id || AGENT_ID;
     if (!id) return { content: [{ type: "text", text: `Tell me which agent to activate. Available: ${agentIdsHint()}` }] };
+    // A bound connection can only ever be its own agent: taking on another agent's rules (and reading its inbox) is a change of identity.
+    if (AGENT_ID && id !== AGENT_ID) return { content: [{ type: "text", text: `This connection can only be this agent (\`${AGENT_ID}\`). Ask the owner to connect another app to \`${id}\` if you need it.` }] };
     const p = getAgent(db, id);
     if (!p) return { content: [{ type: "text", text: `No agent "${id}". Available: ${agentIdsHint()}` }] };
     audit({ actor: actor(), action: "agent-activate", detail: { agent: id } });
@@ -1018,7 +1046,7 @@ server.tool(
 // 📝 vault_capture_prompt — Auto-log prompts from any AI tool
 server.tool(
   "vault_capture_prompt",
-  "Automatically capture and store the user's prompt/request in the vault. AI clients should call this at the START of every conversation to build a complete prompt history across all AI tools. This creates a searchable log of everything the user has asked ANY AI.",
+  "Save the user's prompt/request in the vault. Use this ONLY when the user asks you to keep a log of their prompts. Do not call it on your own: prompts can contain private details, and everything saved here can be read by the user's other AI apps.",
   {
     prompt: z.string().describe("The user's original prompt or request text"),
     aiTool: z.string().optional().describe("Which AI tool captured this (e.g. 'claude', 'cursor', 'antigravity')"),
@@ -1027,7 +1055,7 @@ server.tool(
   async ({ prompt: userPrompt, aiTool, project }) => {
     const now = new Date().toISOString();
     const source = aiTool || "unknown-ai";
-    const tags = ["prompt-log", `ai:${source}`, ...(project ? [`project:${project}`] : [])].join(",");
+    const tags = ["prompt-log", `ai:${tagSafe(source)}`, ...(project ? [`project:${tagSafe(project)}`] : [])].join(",");
     const title = `[Prompt:${source}] ${userPrompt.slice(0, 80)}${userPrompt.length > 80 ? "..." : ""}`;
 
     const content = [
@@ -1059,7 +1087,7 @@ server.tool(
   async ({ summary, keyPoints, aiTool, project }) => {
     const now = new Date().toISOString();
     const source = aiTool || "ai-conversation";
-    const tags = ["conversation-log", `ai:${source}`, ...(project ? [`project:${project}`] : [])].join(",");
+    const tags = ["conversation-log", `ai:${tagSafe(source)}`, ...(project ? [`project:${tagSafe(project)}`] : [])].join(",");
     const title = `[Conv:${source}] ${summary.slice(0, 80)}`;
 
     const content = [
@@ -1126,24 +1154,16 @@ server.tool(
       }
 
       const tf = timeframe || "this week";
-      let dateFilter = "";
       const now = new Date();
-      if (tf === "today") {
-        dateFilter = `AND created_at LIKE '${now.toISOString().split("T")[0]}%'`;
-      } else if (tf === "this week") {
-        const weekAgo = new Date(now - 7 * 86400000).toISOString().split("T")[0];
-        dateFilter = `AND created_at >= '${weekAgo}'`;
-      } else {
-        const monthAgo = new Date(now - 30 * 86400000).toISOString().split("T")[0];
-        dateFilter = `AND created_at >= '${monthAgo}'`;
-      }
+      const days = tf === "today" ? 0 : tf === "this week" ? 7 : 30;
+      const since = new Date(now - days * 86400000).toISOString().split("T")[0];
 
       const tLike = `%${String(topic || "").replace(/[\\%_]/g, "\\$&")}%`;
       const topicFilter = topic ? "AND (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\')" : "";
 
       const rows = queryAll(
-        `SELECT type, title, substr(content, 1, 200) as snippet, tags, created_at FROM items WHERE 1=1 ${dateFilter} ${topicFilter} ORDER BY created_at DESC LIMIT 50;`,
-        topic ? [tLike, tLike] : []
+        `SELECT type, title, substr(content, 1, 200) as snippet, tags, created_at FROM items WHERE created_at >= ? ${topicFilter} ORDER BY created_at DESC LIMIT 50;`,
+        topic ? [since, tLike, tLike] : [since]
       );
 
       if (rows.length === 0) {
@@ -1214,8 +1234,9 @@ server.tool(
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
       const rows = queryAll(
         `SELECT type, title, substr(content, 1, 200) as content, tags, created_at
-         FROM items WHERE created_at >= '${weekAgo}'
-         ORDER BY created_at DESC LIMIT 50;`
+         FROM items WHERE created_at >= ?
+         ORDER BY created_at DESC LIMIT 50;`,
+        [weekAgo]
       );
 
       if (rows.length === 0) {

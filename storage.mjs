@@ -23,9 +23,14 @@
 import fs from "fs";
 import path from "path";
 import { pathToFileURL } from "url";
+import { isMain } from "./is-main.mjs";
 import { VAULT_ROOT, STORAGE_CONFIG } from "./config.mjs";
 import { FileLock } from "./filelock.mjs";
 import { encryptBuffer, decryptBuffer, isEncryptedBackup, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
+import initSqlJs from "sql.js";
+import { retryBusy } from "./retry.mjs";
+
+const SQL = await initSqlJs();
 
 const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
 const BACKUP_DIR = path.join(VAULT_ROOT, "backups");
@@ -78,8 +83,24 @@ export function backupLocal() {
   return { backend: "local", ok: true, location: dest };
 }
 
+/** Refuse anything that is not a healthy MemVault database, BEFORE it can replace the live one. */
+function assertMemVaultDb(bytes) {
+  let db;
+  try {
+    db = new SQL.Database(bytes);
+    const ok = db.exec("PRAGMA integrity_check")[0]?.values?.[0]?.[0];
+    const hasItems = db.exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name='items'").length > 0;
+    if (ok !== "ok" || !hasItems) throw new Error("bad");
+  } catch {
+    throw new Error("That file is not a MemVault database, or it is damaged, so nothing was restored. Your current vault is unchanged.");
+  } finally {
+    db?.close();
+  }
+}
+
 /** Replace the live DB with `bytes`, atomically and under the DB lock. Snapshots the current DB first. */
 function installDb(bytes) {
+  assertMemVaultDb(bytes);
   ensureDir(path.dirname(DB_PATH));
   ensureDir(BACKUP_DIR);
   const lock = new FileLock(`${DB_PATH}.lock`);
@@ -90,7 +111,7 @@ function installDb(bytes) {
     }
     const tmp = `${DB_PATH}.${process.pid}.restore.tmp`;
     fs.writeFileSync(tmp, bytes, { mode: 0o600 });
-    fs.renameSync(tmp, DB_PATH);
+    retryBusy(() => fs.renameSync(tmp, DB_PATH));
   } finally {
     lock.release();
   }
@@ -338,8 +359,7 @@ export async function backupVault(config = STORAGE_CONFIG) {
 
 // ─── CLI ────────────────────────────────────────────────────────────────────
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
-if (isMain) {
+if (isMain(import.meta.url)) {
   const cmd = process.argv[2] || "backup";
   if (cmd === "list") {
     const backups = listLocalBackups();

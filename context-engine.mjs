@@ -72,6 +72,22 @@ const TOPIC_PATTERNS = [
  * @param {string} text - Title + content to analyze
  * @returns {string[]} Array of detected tags
  */
+const SHORT_STOP = new Set(["an", "as", "at", "be", "by", "do", "if", "in", "is", "it", "me", "my", "of", "on", "or", "so", "to", "up", "us", "we"]);
+const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+/**
+ * The words worth searching for in a question. Two-letter words count ("AI", "Go") except very common ones,
+ * and a Chinese, Japanese or Korean word counts however short (those scripts have no spaces and short words).
+ */
+export function searchWords(text, max = 8) {
+  const out = [];
+  for (const w of String(text).toLowerCase().split(/[^\p{L}\p{N}_@:.+#-]+/u)) {
+    if (!w) continue;
+    if (w.length > 2 || (w.length === 2 && !SHORT_STOP.has(w)) || CJK.test(w)) out.push(w);
+  }
+  return [...new Set(out)].slice(0, max);
+}
+
 export function autoTag(text) {
   if (!text) return [];
   const tags = new Set();
@@ -108,7 +124,7 @@ export function mergeAutoTags(existingTags, text) {
 export function scoreRelevance(entry, query) {
   let score = 0;
   const queryLower = query.toLowerCase();
-  const keywords = queryLower.split(/\s+/).filter(w => w.length > 2);
+  const keywords = searchWords(queryLower, 12);
 
   const title = (entry.title || "").toLowerCase();
   const content = (entry.content || entry.snippet || "").toLowerCase();

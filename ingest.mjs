@@ -33,6 +33,16 @@ const toList = (m) => [...m].map(([type, count]) => ({ type, count }));
  *          mirrors an entry to a flat file must write from `items`, never from the
  *          original input, or the mirror would leak what the database does not.
  */
+/** A usable timestamp as ISO text, or undefined (the database then uses "now"). Nothing odd is stored. */
+export function cleanDate(v) {
+  if (v === undefined || v === null || v === "") return undefined;
+  const t = Date.parse(String(v));
+  if (!Number.isFinite(t)) return undefined;
+  const d = new Date(t);
+  if (d.getUTCFullYear() < 1990 || d.getTime() > Date.now() + 86400000) return undefined; // before the web, or in the future
+  return d.toISOString();
+}
+
 export function ingest(items, { vdb = getVaultDb(), actor = "api", security = SECURITY_CONFIG, root = VAULT_ROOT } = {}) {
   const list = Array.isArray(items) ? items : [items];
   if (list.length === 0) return { ids: [], items: [], redacted: [] };
@@ -47,10 +57,12 @@ export function ingest(items, { vdb = getVaultDb(), actor = "api", security = SE
           return r.item;
         });
 
+  for (const it of prepared) it.created_at = cleanDate(it.created_at);
   const ids = vdb.addItems(prepared);
 
   if (security.audit !== false) {
-    const sources = [...new Set(list.map((i) => i.source).filter(Boolean))];
+    // From the masked items: the audit log must never hold what the database masked.
+    const sources = [...new Set(prepared.map((i) => i.source).filter(Boolean))];
     audit(
       {
         actor,

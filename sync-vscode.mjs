@@ -16,6 +16,8 @@ import path from "path";
 import os from "os";
 
 import { createIngestQueue } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("vscodeEnabled", "Saving VS Code projects");
 
 const queue = createIngestQueue({ actor: "vscode" });
 const args = process.argv.slice(2);

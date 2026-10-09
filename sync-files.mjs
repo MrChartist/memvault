@@ -19,6 +19,8 @@ import os from "os";
 
 import { SYNC_CONFIG } from "./config.mjs";
 import { createIngestQueue } from "./ingest.mjs";
+import { requireEnabled } from "./sync-guard.mjs";
+requireEnabled("filesEnabled", "Saving recently changed file names");
 
 const queue = createIngestQueue({ actor: "files" });
 const argsArr = process.argv.slice(2);

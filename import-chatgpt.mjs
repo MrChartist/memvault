@@ -15,6 +15,7 @@
 import fs from "fs";
 import path from "path";
 import { createIngestQueue } from "./ingest.mjs";
+import { runImport, toIso } from "./import-common.mjs";
 
 const queue = createIngestQueue({ actor: "chatgpt-import" });
 
@@ -35,45 +36,50 @@ function findConversationsFile(inputPath) {
   return null;
 }
 
-function extractMessages(mapping) {
-  if (!mapping) return [];
-
-  const messages = [];
-  for (const nodeId of Object.keys(mapping)) {
-    const node = mapping[nodeId];
-    const msg = node?.message;
-    if (!msg || !msg.content?.parts) continue;
-
-    const role = msg.author?.role || "unknown";
-    const textParts = msg.content.parts
-      .filter((p) => typeof p === "string")
-      .join("\n");
-
-    if (textParts.trim()) {
-      messages.push({
-        role,
-        text: textParts.trim(),
-        timestamp: msg.create_time
-          ? new Date(msg.create_time * 1000).toISOString()
-          : null,
-      });
-    }
+/** The messages in the order the user actually saw them: from the first message to the one the chat ended on. */
+function orderedNodes(conv) {
+  const mapping = conv.mapping;
+  if (!mapping || typeof mapping !== "object") return [];
+  if (conv.current_node && mapping[conv.current_node]) {
+    // Follow parent links from the last message back to the start. This leaves out answers the user
+    // regenerated and abandoned, which are also stored in the mapping.
+    const chain = [];
+    const seen = new Set();
+    let id = conv.current_node;
+    while (id && mapping[id] && !seen.has(id)) { seen.add(id); chain.push(mapping[id]); id = mapping[id].parent; }
+    return chain.reverse();
   }
+  // No marker for the last message: keep export order, and let a message with no time follow the one before it.
+  let last = 0;
+  return Object.values(mapping)
+    .map((node, index) => { const t = node?.message?.create_time; if (t) last = t; return { node, index, t: t || last }; })
+    .sort((a, b) => a.t - b.t || a.index - b.index)
+    .map((x) => x.node);
+}
 
-  // Sort by timestamp
-  messages.sort((a, b) => {
-    if (!a.timestamp || !b.timestamp) return 0;
-    return new Date(a.timestamp) - new Date(b.timestamp);
-  });
-
+function extractMessages(conv) {
+  const messages = [];
+  for (const node of orderedNodes(conv)) {
+    const msg = node?.message;
+    if (!msg || !Array.isArray(msg.content?.parts)) continue;
+    const role = msg.author?.role || "unknown";
+    if (role === "tool") continue; // tool output is noise, not conversation
+    const text = msg.content.parts
+      .map((p) => (typeof p === "string" ? p : p && /image/i.test(p.content_type || "") ? "[image]" : ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    if (text) messages.push({ role, text, timestamp: toIso(msg.create_time) });
+  }
   return messages;
 }
 
 function formatConversation(conv) {
-  const messages = extractMessages(conv.mapping);
+  if (!conv || typeof conv !== "object") return null;
+  const messages = extractMessages(conv);
   if (messages.length === 0) return null;
 
-  const lines = [`# ${conv.title || "Untitled Conversation"}`, ""];
+  const lines = [`# ${conv.title || "Untitled ChatGPT Conversation"}`, ""];
 
   for (const msg of messages) {
     const roleLabel =
@@ -90,9 +96,7 @@ function formatConversation(conv) {
     title: conv.title || "Untitled ChatGPT Conversation",
     content: lines.join("\n"),
     tags: ["import", "chatgpt", "conversation", "ai-history"].join(","),
-    created_at: conv.create_time
-      ? new Date(conv.create_time * 1000).toISOString()
-      : new Date().toISOString(),
+    created_at: toIso(conv.create_time),
     messageCount: messages.length,
   };
 }
@@ -124,51 +128,18 @@ export async function importChatGPT(inputPath, options = {}) {
 
   console.log(`📊 Found ${conversations.length} ChatGPT conversations`);
 
-  let imported = 0, skipped = 0, errors = 0;
   const dryRun = options.dryRun || false;
-
-  for (const conv of conversations) {
-    const formatted = formatConversation(conv);
-    if (!formatted) {
-      skipped++;
-      continue;
-    }
-
-    if (dryRun) {
-      console.log(`  📝 [DRY RUN] "${formatted.title}" (${formatted.messageCount} messages)`);
-      imported++;
-      continue;
-    }
-
-    try {
-      const result = { ok: queue.add({
-          type: "conversation",
-          source: "chatgpt-import",
-          title: formatted.title,
-          content: formatted.content,
-          tags: formatted.tags,
-        }) };
-      if (result.ok) {
-        imported++;
-        if (imported % 10 === 0) {
-          console.log(`  ✅ Imported ${imported} conversations...`);
-        }
-      } else {
-        errors++;
-      }
-    } catch (e) {
-      errors++;
-      if (errors <= 3) console.error(`  ⚠️ Error: ${e.message}`);
-    }
-  }
-
-  queue.done();
+  const { imported, skipped, duplicates, errors } = await runImport({
+    source: "chatgpt-import", queue, items: conversations, format: formatConversation, dryRun,
+  });
+  if (!dryRun && errors === 0 && imported === 0 && duplicates === 0 && skipped === 0) console.log("Nothing found to import.");
   console.log(`\n🎉 ChatGPT Import Complete!`);
   console.log(`   ✅ Imported: ${imported}`);
+  if (duplicates) console.log(`   ♻️  Already in your vault: ${duplicates} (not added again)`);
   console.log(`   ⏭️  Skipped:  ${skipped} (empty conversations)`);
   if (errors) console.log(`   ❌ Errors:   ${errors}`);
 
-  return { imported, skipped, errors };
+  return { imported, skipped, duplicates, errors };
 }
 
 // ─── CLI ────────────────────────────────────────────────────────────────────

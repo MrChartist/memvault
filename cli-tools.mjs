@@ -9,6 +9,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import crypto from "crypto";
 import { spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 
@@ -111,17 +112,42 @@ async function healthy(url) {
   }
 }
 
-function openBrowser(url) {
+/** Open a file or address in the default program (here: the redirect page, so no key is on the command line). */
+function openBrowser(target) {
   const isWSL = process.platform === "linux" && /microsoft/i.test(os.release());
-  const cmds = process.platform === "darwin" ? [["open", [url]]]
-    : process.platform === "win32" ? [["cmd", ["/c", "start", "", url.replace(/&/g, "^&")]]]
-    : isWSL ? [["wslview", [url]], ["cmd.exe", ["/c", "start", "", url]], ["xdg-open", [url]]]
-    : [["xdg-open", [url]]];
+  const winPath = () => { const r = spawnSync("wslpath", ["-w", target], { encoding: "utf8" }); return r.status === 0 ? r.stdout.trim() : target; };
+  const cmds = process.platform === "darwin" ? [["open", [target]]]
+    : process.platform === "win32" ? [["cmd", ["/c", "start", "", target]]]
+    : isWSL ? [["wslview", [target]], ["cmd.exe", ["/c", "start", "", winPath()]], ["xdg-open", [target]]]
+    : [["xdg-open", [target]]];
   for (const [c, a] of cmds) {
     const r = spawnSync(c, a, { stdio: "ignore" });
     if (!r.error && r.status === 0) return true;
   }
   return false;
+}
+
+/**
+ * A small page that sends the browser to the dashboard with the key in the address fragment.
+ * The browser is started with this file's PATH, not the address, so the key never appears in a command
+ * line that another account on the computer can read. The file is private (mode 0600) and old ones are removed.
+ */
+export function makeOpenPage({ url, dir }) {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  try {
+    for (const f of fs.readdirSync(dir)) {
+      if (/^open-[a-f0-9]+\.html$/.test(f) && Date.now() - fs.statSync(path.join(dir, f)).mtimeMs > 10 * 60_000) fs.rmSync(path.join(dir, f), { force: true });
+    }
+  } catch { /* best effort */ }
+  const file = path.join(dir, `open-${crypto.randomBytes(6).toString("hex")}.html`);
+  const safe = String(url).replace(/"/g, "%22").replace(/</g, "%3C");
+  fs.writeFileSync(
+    file,
+    `<!doctype html><meta charset="utf-8"><title>Opening MemVault…</title><meta http-equiv="refresh" content="0;url=${safe}">` +
+      `<p>Opening MemVault… If nothing happens, <a href="${safe}">click here</a>.</p>`,
+    { mode: 0o600 }
+  );
+  return file;
 }
 
 export async function cmdOpen() {
@@ -135,7 +161,8 @@ export async function cmdOpen() {
   }
   // The token travels in the URL FRAGMENT: browsers never send it to the server or in Referer headers.
   const url = `${base}/#token=${auth.ensureToken()}`;
-  if (openBrowser(url)) console.log(`${OK} Opened ${base}`);
+  const page = makeOpenPage({ url, dir: path.dirname(cfg.TOKEN_FILE) });
+  if (openBrowser(page)) console.log(`${OK} Opened ${base}`);
   else console.log(`Could not open a browser automatically. Open this link yourself:\n${url}`);
 }
 
@@ -198,7 +225,7 @@ export async function cmdScrub(argv) {
 
   const changes = [];
   const byType = new Map();
-  for (const r of db.query("SELECT id, title, content, tags FROM items")) {
+  for (const r of db.query("SELECT id, title, content, tags, source FROM items")) {
     const { item, findings } = redactItem(r, { disable });
     if (!findings.length) continue;
     changes.push(item);
@@ -226,11 +253,21 @@ export async function cmdScrub(argv) {
   const backup = backupLocal();
   if (!backup.ok) { console.error(`${BAD} Backup failed (${backup.error}); nothing changed.`); process.exit(1); }
   db.transaction((tx) => {
-    for (const c of changes) tx.run("UPDATE items SET title = ?, content = ?, tags = ? WHERE id = ?", [c.title, c.content, c.tags, c.id]);
+    for (const c of changes) tx.run("UPDATE items SET title = ?, content = ?, tags = ?, source = ? WHERE id = ?", [c.title, c.content, c.tags, c.source, c.id]);
   });
+  // Keep the original Markdown files too, so a scrub can be undone (the database backup does not hold them).
+  const filesBackup = path.join(cfg.VAULT_ROOT, "backups", `scrub-files-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+  if (files.length) {
+    for (const f of files) {
+      const dest = path.join(filesBackup, path.relative(cfg.VAULT_ROOT, f.file));
+      fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
+      fs.copyFileSync(f.file, dest);
+    }
+  }
   for (const f of files) fs.writeFileSync(f.file, f.text);
   audit({ actor: "owner", action: "scrub", detail: { items: changes.length, files: files.length, backup: path.basename(backup.location) } });
   console.log(`\n${OK} Masked ${changes.length} item(s) and ${files.length} file(s). Backup kept: ${path.basename(backup.location)}`);
+  if (files.length) console.log(`The original Markdown files were copied to: ${path.relative(cfg.VAULT_ROOT, filesBackup)}`);
   console.log("Note: older backups and any cloud copies made before this still contain the original text.");
 }
 
