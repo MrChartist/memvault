@@ -23,7 +23,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
-  autoTag, rankByRelevance,
+  autoTag, rankByRelevance, extractKeywords,
   detectProject, generateDigest, deduplicateEntries, filterUnseen,
 } from "./context-engine.mjs";
 import { VAULT_ROOT, ensureVaultDir } from "./config.mjs";
@@ -44,7 +44,6 @@ const server = new McpServer({
 const text = (t) => ({ content: [{ type: "text", text: t }] });
 const shortDate = (iso, opts = { day: "numeric", month: "short", year: "numeric" }, fallback = "unknown") =>
   iso ? new Date(iso).toLocaleDateString("en-IN", opts) : fallback;
-const keywordsOf = (s) => String(s).split(/\s+/).filter((w) => w.length > 2);
 const limitSchema = (max, dflt) =>
   z.number().int().min(1).max(max).optional().describe(`Maximum results to return (default: ${dflt})`);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
@@ -145,7 +144,7 @@ server.tool(
     limit: limitSchema(20, 10),
   },
   async ({ topic, limit }) => {
-    const rows = searchItems({ terms: keywordsOf(topic), limit: limit || 10, snippet: 600 });
+    const rows = searchItems({ terms: extractKeywords(topic), orderBy: "matches", limit: limit || 10, snippet: 600 });
     if (rows.length === 0) {
       return text(`No prior context found for topic: "${topic}". This appears to be a new topic for this user.`);
     }
@@ -262,13 +261,12 @@ server.tool(
   async ({ topic, limit, freshOnly }) => {
     const maxResults = limit || 10;
     // Fetch more than needed so we can rank and deduplicate
-    let rows = searchItems({ terms: keywordsOf(topic), limit: maxResults * 3, snippet: 600 });
+    let rows = searchItems({ terms: extractKeywords(topic), orderBy: "matches", limit: maxResults * 3, snippet: 600 });
     if (rows.length === 0) return text(`No context found for: "${topic}". This appears to be a new topic.`);
 
     rows = rankByRelevance(rows, topic);
     rows = deduplicateEntries(rows, 0.55);
-    if (freshOnly) rows = filterUnseen(rows);
-    rows = rows.slice(0, maxResults);
+    rows = freshOnly ? filterUnseen(rows, maxResults) : rows.slice(0, maxResults);
 
     const project = detectProject(topic);
     const projectNote = project ? `\n\n> 🎯 Detected project: **${project.name}**` : "";
@@ -600,8 +598,7 @@ server.tool(
   async ({ query, limit }) => {
     try {
       const maxResults = limit || 10;
-      const terms = keywordsOf(query);
-      let rows = searchItems({ terms: terms.length ? terms : [query], limit: maxResults * 3, snippet: 300 });
+      let rows = searchItems({ terms: extractKeywords(query), orderBy: "matches", limit: maxResults * 3, snippet: 300 });
       if (rows.length === 0) return text(`No results for "${query}"`);
 
       rows = rankByRelevance(rows, query);

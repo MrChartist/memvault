@@ -45,6 +45,16 @@ if (process.argv.includes("--remove")) {
   process.exit(0);
 }
 
+// Windows Script Host reads .vbs files in the system ANSI code page, so a path with
+// characters outside plain ASCII would silently break the launcher. Refuse clearly instead.
+const nonAscii = [node, here, startupFolder, syncVbsPath].filter((p) => /[^\x00-\x7F]/.test(p));
+if (nonAscii.length) {
+  console.error("❌ These paths contain non-ASCII characters, which the Windows Script Host launcher cannot read reliably:");
+  for (const p of nonAscii) console.error(`   ${p}`);
+  console.error("   Install MemVault (and Node.js) under a plain-ASCII folder, or start it with Task Scheduler manually.");
+  process.exit(1);
+}
+
 console.log("🚀 Setting up MemVault autostart for Windows...\n");
 
 // 1. Hidden launcher in the Startup folder

@@ -162,7 +162,7 @@ npx -y @mrchartist/memvault import ~/Downloads/Takeout/        # Gemini (Google 
 npx -y @mrchartist/memvault import ~/Downloads/perplexity-export/
 ```
 
-Each conversation keeps its **original date**, and importing the same export twice adds nothing new.
+Each conversation keeps its **original date**, and importing the same export twice adds nothing new. Sharded ChatGPT exports (`conversations-000.json`, …) and Gemini Takeout answers are supported on a best-effort basis — please report any export that does not import.
 
 ---
 
@@ -270,7 +270,7 @@ MemVault is **local-first**: the vault is a SQLite file on your disk, and nothin
 |--------|----------------|---------|
 | **Git** | Commit subject/body, author name, repo name and path | On |
 | **VS Code** | Recent project folders, installed extensions, a few editor preferences | On |
-| **System** | Hostname, OS, CPU/RAM, disk usage, dev tool versions, local IP addresses, names of the 20 largest processes | On |
+| **System** | Hostname, OS, CPU/RAM, disk usage, dev tool versions, local IP addresses, names of the 20 largest processes (executable names only — never their command-line arguments) | On |
 | **Files** | Names, sizes and modified dates of recent files in `~/Documents` and `~/Desktop` — **never file contents** | On |
 | **Browser** | Pages visited 2+ times and bookmarks (Chrome, Edge, Brave) | **Off** |
 | **Clipboard** | Copied text — anything that looks like a secret is skipped (best effort) | **Off** (manual daemon) |
@@ -294,7 +294,7 @@ There is **no telemetry, no analytics, and no account**. The web UI loads no thi
 - **stdio transport** — the MCP server talks over stdin/stdout, never over the network.
 - **Loopback-only web server** — `memvault serve` binds to `127.0.0.1`. It has **no login**, so it also rejects requests with a foreign `Host` header (DNS rebinding) or a cross-site `Origin` (a web page you visit cannot read or write your vault), sends no CORS headers, and applies a strict Content-Security-Policy.
 - **Encrypted secrets** — AES-256-GCM, key from your master password with PBKDF2-SHA256 (600k iterations, random salt per secret). The master password is never stored; failed guesses are rate-limited. Secret *values* are never exposed to the MCP server or the AI.
-- **Safe re-runs** — sync and import are idempotent; no engine ever deletes vault data.
+- **Safe re-runs** — sync and import are idempotent. Engines never delete anything they did not create; "current state" snapshots (system info, VS Code extensions, per-folder file activity, bridge pulls) are *replaced* by the newer snapshot instead of piling up.
 - **Safe local edits** — several MemVault processes (web UI, MCP server, sync job) can share one vault without overwriting each other.
 
 > ⚠️ Do **not** set `"host": "0.0.0.0"` unless the network is fully trusted — anyone who can reach the port could read and change your vault. The server prints a warning if you do.
@@ -340,7 +340,7 @@ memvault/
 
 ## ⚙️ Configuration
 
-MemVault reads `~/.memvaultrc.json` (the wizard creates it with owner-only permissions). Everything is optional:
+MemVault reads `~/.memvaultrc.json` (the wizard creates it owner-only on Linux/macOS). Everything is optional. Paths may start with `~` (your home folder):
 
 ```json
 {

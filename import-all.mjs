@@ -54,10 +54,13 @@ function detectPlatforms(inputPath) {
   // Folder — scan for known files
   const files = fs.readdirSync(inputPath);
 
-  // ChatGPT: conversations.json with mapping field
-  if (files.includes("conversations.json")) {
+  // ChatGPT: conversations.json (or numbered shards conversations-000.json ...) with a mapping field
+  const chatgptFile = files.includes("conversations.json")
+    ? "conversations.json"
+    : files.filter((f) => /^conversations-\d+\.json$/.test(f)).sort()[0];
+  if (chatgptFile) {
     try {
-      const sample = fs.readFileSync(path.join(inputPath, "conversations.json"), "utf8");
+      const sample = fs.readFileSync(path.join(inputPath, chatgptFile), "utf8");
       const parsed = JSON.parse(sample);
       if (Array.isArray(parsed) && parsed[0]?.mapping) {
         detected.push({ platform: "chatgpt", path: inputPath });
@@ -66,7 +69,7 @@ function detectPlatforms(inputPath) {
   }
 
   // Claude: look for chat_conversations key
-  for (const f of files.filter(f => f.endsWith(".json") && f !== "conversations.json")) {
+  for (const f of files.filter(f => f.endsWith(".json") && !/^conversations(-\d+)?\.json$/.test(f))) {
     try {
       const sample = fs.readFileSync(path.join(inputPath, f), "utf8");
       const parsed = JSON.parse(sample);

@@ -19,19 +19,21 @@ import { isMainModule } from "./util.mjs";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function findConversationsFile(inputPath) {
-  if (fs.statSync(inputPath).isFile()) {
-    return inputPath;
+/**
+ * The export is either one `conversations.json` or — for larger accounts — numbered
+ * shards (`conversations-000.json`, `conversations-001.json`, ...). Returns every file to read.
+ */
+export function findConversationFiles(inputPath) {
+  if (fs.statSync(inputPath).isFile()) return [inputPath];
+
+  for (const dir of [inputPath, path.join(inputPath, "chatgpt")]) {
+    if (!fs.existsSync(dir)) continue;
+    const single = path.join(dir, "conversations.json");
+    if (fs.existsSync(single)) return [single];
+    const shards = fs.readdirSync(dir).filter((f) => /^conversations-\d+\.json$/.test(f)).sort();
+    if (shards.length) return shards.map((f) => path.join(dir, f));
   }
-  // Look inside folder for conversations.json
-  const candidates = [
-    path.join(inputPath, "conversations.json"),
-    path.join(inputPath, "chatgpt", "conversations.json"),
-  ];
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
-  }
-  return null;
+  return [];
 }
 
 function extractMessages(mapping) {
@@ -99,26 +101,27 @@ function formatConversation(conv) {
 // ─── Main Import ────────────────────────────────────────────────────────────
 
 export async function importChatGPT(inputPath, options = {}) {
-  const filePath = findConversationsFile(inputPath);
-  if (!filePath) {
-    console.error("❌ Could not find conversations.json in:", inputPath);
+  const filePaths = findConversationFiles(inputPath);
+  if (filePaths.length === 0) {
+    console.error("❌ Could not find conversations.json (or conversations-000.json ...) in:", inputPath);
     return { imported: 0, skipped: 0, errors: 0 };
   }
 
-  console.log(`📂 Reading: ${filePath}`);
-  const raw = fs.readFileSync(filePath, "utf8");
-  let conversations;
-
-  try {
-    conversations = JSON.parse(raw);
-  } catch (e) {
-    console.error("❌ Invalid JSON:", e.message);
-    return { imported: 0, skipped: 0, errors: 0 };
-  }
-
-  if (!Array.isArray(conversations)) {
-    console.error("❌ Expected an array of conversations");
-    return { imported: 0, skipped: 0, errors: 0 };
+  console.log(`📂 Reading: ${filePaths.length === 1 ? filePaths[0] : `${filePaths.length} files (${path.basename(filePaths[0])} ...)`}`);
+  const conversations = [];
+  for (const filePath of filePaths) {
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch (e) {
+      console.error(`❌ Invalid JSON in ${path.basename(filePath)}:`, e.message);
+      return { imported: 0, skipped: 0, errors: 0 };
+    }
+    if (!Array.isArray(parsed)) {
+      console.error(`❌ Expected an array of conversations in ${path.basename(filePath)}`);
+      return { imported: 0, skipped: 0, errors: 0 };
+    }
+    conversations.push(...parsed);
   }
 
   console.log(`📊 Found ${conversations.length} ChatGPT conversations`);

@@ -91,3 +91,48 @@ describe('isMainModule — works where `import.meta.url === file://${argv[1]}` d
   });
 
 });
+
+describe('setup wizard', () => {
+  const wizard = (answers, rc) => {
+    const home = fs.mkdtempSync(path.join(TMP, 'wiz-'));
+    if (rc) fs.writeFileSync(path.join(home, '.memvaultrc.json'), JSON.stringify(rc));
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'init.mjs')], {
+      env: { ...process.env, HOME: home, USERPROFILE: home, VAULT_ROOT: '' },
+      input: answers.join('\n') + '\n', encoding: 'utf8',
+    });
+    const cfgFile = path.join(home, '.memvaultrc.json');
+    return { ...r, home, cfg: fs.existsSync(cfgFile) ? JSON.parse(fs.readFileSync(cfgFile, 'utf8')) : null };
+  };
+  // 1 vault path · 6 engines (git vscode system files browser clipboard) · git dir · gemini key · drive folder? · drive api? · bridges?
+  const ALL_DEFAULT = (vault) => [vault, '', '', '', '', '', '', '', '', '', '', ''];
+
+  it('works with piped answers and saves an owner-only config', () => {
+    const r = wizard(['', 'y', 'y', 'y', 'y', 'n', 'n', '', '', 'n', 'n', 'n']);
+    expect(r.status).toBe(0);
+    expect(r.cfg.sync.browserEnabled).toBe(false);
+    expect(r.cfg.sync.clipboardEnabled).toBe(false);
+    expect(r.stdout).toContain('@mrchartist/memvault');
+    if (process.platform !== 'win32') expect(fs.statSync(path.join(r.home, '.memvaultrc.json')).mode & 0o777).toBe(0o600);
+  });
+
+  it('expands "~" in the vault location instead of creating a folder named "~"', () => {
+    const r = wizard(['~/myvault', 'n', 'n', 'n', 'n', 'n', 'n', '', 'n', 'n', 'n']);
+    expect(r.cfg.vaultRoot).toBe(path.join(r.home, 'myvault'));
+    expect(fs.existsSync(path.join(r.home, 'myvault', 'db'))).toBe(true);
+  });
+
+  it('answering "n" really turns Drive API upload off, even if it was enabled before', () => {
+    const r = wizard(['', 'n', 'n', 'n', 'n', 'n', 'n', '', 'n', 'n', 'n'], {
+      storage: { gdriveApi: { enabled: true, clientId: 'x', clientSecret: 'y', refreshToken: 'z' } },
+    });
+    expect(r.cfg.storage.gdriveApi.enabled).toBe(false);
+    expect(r.cfg.storage.gdriveApi.clientId).toBe('x'); // credentials are kept, just disabled
+  });
+
+  it('fails loudly (non-zero, nothing saved) if its input ends early', () => {
+    const r = wizard(['only-one-answer']);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('nothing was saved');
+    expect(r.cfg).toBeNull();
+  });
+});

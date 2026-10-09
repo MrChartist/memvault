@@ -195,6 +195,7 @@ export async function syncBridge(bridge) {
             type: "conversation",
             source: `mcp:${bridge.name}`,
             title: `[${bridge.name}] ${r.name || r.uri}`,
+            file_path: r.uri, // distinguishes two resources that share a display name
             content: text,
             tags: `mcp-bridge,${bridge.name}`,
             created_at: now,

@@ -54,14 +54,28 @@ function findGeminiFile(inputPath) {
   return findRecursive(inputPath);
 }
 
-function formatGeminiActivity(activity) {
-  const title = activity.title || "Gemini Conversation";
+/** Takeout stores formatted answers as HTML; reduce it to readable text. */
+export function htmlToText(html) {
+  return String(html || "")
+    .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6])\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+const PROMPT_PREFIX = /^(Used Gemini Apps?|Prompted)\s*/i;
+
+export function formatGeminiActivity(activity) {
+  const title = (activity.title || "").replace(PROMPT_PREFIX, "").trim() || "Gemini Conversation";
   const time = activity.time || new Date().toISOString();
 
   // Extract the response text from subtitles
-  const subtitles = (activity.subtitles || [])
-    .map((s) => s.name || s)
-    .filter(Boolean);
+  const subtitles = [
+    ...(activity.subtitles || []).map((s) => s.name || s),
+    ...(activity.safeHtmlItem || []).map((i) => htmlToText(i?.html)),
+  ].filter(Boolean);
 
   // Build content
   const lines = [`# ${title}`, ""];
@@ -69,7 +83,7 @@ function formatGeminiActivity(activity) {
   // The title usually contains the user's prompt
   if (activity.title && activity.title !== "Gemini Apps") {
     lines.push("### 👤 User");
-    lines.push(activity.title.replace(/^Used Gemini Apps?\s*/, ""));
+    lines.push(activity.title.replace(PROMPT_PREFIX, ""));
     lines.push("");
   }
 

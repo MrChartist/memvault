@@ -18,7 +18,7 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { SYNC_CONFIG } from "./config.mjs";
 import { flagValue, flagNumber, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import { isMainModule, expandHome } from "./util.mjs";
 
 const MAX_DEPTH = 3; // how deep to look for .git directories
 const SKIP_DIRS = new Set([
@@ -51,8 +51,9 @@ export function findGitRepos(rootDir, depth = 0) {
   return repos;
 }
 
-const git = (repoPath, args, timeout = 10_000) =>
-  execFileSync("git", args, { cwd: repoPath, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] });
+// maxBuffer: the default 1 MiB overflows on a busy repo (~3,000 commits) and the repo would be dropped.
+const git = (repoPath, args, timeout = 60_000) =>
+  execFileSync("git", args, { cwd: repoPath, encoding: "utf8", timeout, maxBuffer: 512 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 
 // ASCII unit/record separators cannot appear in commit text, unlike quotes or newlines.
 const FIELD = "\x1f";
@@ -71,11 +72,17 @@ export function parseGitLog(output) {
   return commits;
 }
 
-function getGitCommits(repoPath, days) {
+export function getGitCommits(repoPath, days) {
   try {
     return parseGitLog(git(repoPath, ["log", `--since=${days} days ago`, `--format=${LOG_FORMAT}`, "--no-merges"]));
-  } catch {
-    return []; // empty repo, git missing, timeout...
+  } catch (e) {
+    // An empty repository ("does not have any commits yet") is normal; anything else
+    // must not vanish silently, or a repo would just look like it had no activity.
+    const msg = String(e.stderr || e.message || e);
+    if (!/does not have any commits yet|bad default revision/i.test(msg)) {
+      console.warn(`  ⚠️  Could not read git history of ${repoPath}: ${msg.split("\n")[0]}`);
+    }
+    return [];
   }
 }
 
@@ -124,7 +131,7 @@ export async function main(args = process.argv.slice(2)) {
   const dryRun = args.includes("--dry-run");
   const days = flagNumber(args, "--days", 14);
   const explicitRoot = flagValue(args, "--path") || process.env.GIT_SCAN_ROOT;
-  const roots = explicitRoot ? [explicitRoot] : SYNC_CONFIG.gitDirs;
+  const roots = explicitRoot ? [expandHome(explicitRoot)] : SYNC_CONFIG.gitDirs;
 
   console.log(`🔍 Git sync — last ${days} days${dryRun ? " (dry run)" : ""}`);
 

@@ -56,7 +56,7 @@ Please follow these rules — they are what makes MemVault safe to run on a sche
 
 - **Idempotent.** Re-running must not duplicate data. Either give entries their real `created_at` (the id is then a hash of the
   content, so duplicates are ignored) or set `upsert: true` for "current state" snapshots (older entries with the same
-  `source` + `title` are replaced).
+  `source` + `title` + `file_path` are replaced — set `file_path` when two snapshots can share a title).
 - **Never delete or overwrite vault data** that the engine did not create.
 - **Privacy first.** Capture the minimum. Anything sensitive (browser history, clipboard, messages, anything that could contain
   credentials) must be **off by default** and documented in the README privacy table. Never capture file *contents* by default.

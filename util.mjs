@@ -3,6 +3,8 @@
  */
 
 import fs from "fs";
+import os from "os";
+import path from "path";
 import { fileURLToPath } from "url";
 
 /**
@@ -20,6 +22,20 @@ export function isMainModule(metaUrl) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Turn a user-typed path into an absolute one. Shells expand "~", but JSON config
+ * files, MCP client "env" blocks and Windows cmd do not — a literal "~/x" would
+ * otherwise become a folder called "~" inside whatever the current directory is.
+ * Relative paths are taken relative to the user's home folder, not the cwd.
+ */
+export function expandHome(p, home = os.homedir()) {
+  if (typeof p !== "string" || !p.trim()) return p;
+  let out = p.trim();
+  if (out === "~") out = home;
+  else if (/^~[\\/]/.test(out)) out = path.join(home, out.slice(2));
+  return path.isAbsolute(out) ? path.normalize(out) : path.resolve(home, out);
 }
 
 /** Version from this package's package.json (single source of truth). */

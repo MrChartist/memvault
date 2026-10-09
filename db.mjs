@@ -25,6 +25,11 @@ import { VAULT_ROOT } from "./config.mjs";
 
 export const DB_PATH = path.join(VAULT_ROOT, "db", "index.sqlite");
 const LOCK_PATH = `${DB_PATH}.lock`;
+// A lock is only held for the few milliseconds of a read-modify-write. Treat one as
+// abandoned after STALE_MS, and make waiters patient enough (WAIT_MS > STALE_MS) to
+// outlast a crashed holder instead of failing just before the lock becomes breakable.
+const STALE_MS = 10_000;
+const WAIT_MS = 20_000;
 
 export const ITEM_TYPES = ["diary", "conversation", "worklog", "file"];
 
@@ -75,10 +80,14 @@ function sleep(ms) {
 function load() {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
   if (db) { try { db.close(); } catch { /* already closed */ } }
+  // Take the signature BEFORE reading: if another process commits in between, we hold
+  // newer data under an older signature, which just costs one extra reload. The other
+  // order would mark stale data as fresh.
+  const sig = fileSig();
   db = fs.existsSync(DB_PATH) ? new SQL.Database(fs.readFileSync(DB_PATH)) : new SQL.Database();
   db.run(SCHEMA);
   dropLegacyFtsTriggers();
-  loadedSig = fileSig();
+  loadedSig = sig;
 }
 
 /**
@@ -144,13 +153,13 @@ function withLock(fn) {
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
       try {
-        // A lock older than 15s belongs to a process that died mid-write.
-        if (Date.now() - fs.statSync(LOCK_PATH).mtimeMs > 15_000) {
+        // An old lock belongs to a process that died mid-write.
+        if (Date.now() - fs.statSync(LOCK_PATH).mtimeMs > STALE_MS) {
           fs.unlinkSync(LOCK_PATH);
           continue;
         }
       } catch { /* lock vanished — retry */ }
-      if (Date.now() - started > 8_000) {
+      if (Date.now() - started > WAIT_MS) {
         throw new Error(`Timed out waiting for the vault database lock (${LOCK_PATH}). Delete it if no MemVault process is running.`);
       }
       sleep(15);
@@ -268,8 +277,10 @@ const str = (v, max) => (v == null || v === "" ? null : String(v).slice(0, max))
  * duplicating every row.
  *
  * Snapshots: set `upsert: true` for "current state" entries (system info, VS Code
- * extensions...). Older entries with the same source+title are replaced, so
- * running a scheduled sync every 30 minutes does not pile up near-identical rows.
+ * extensions...). Older entries with the same source + title + file_path are
+ * replaced, so running a scheduled sync every 30 minutes does not pile up
+ * near-identical rows. Use `file_path` to tell apart snapshots that share a title
+ * (two projects both called "app", two bridge resources with the same name).
  *
  * @param {Array<{type:string,source?:string,title?:string,content?:string,
  *                file_path?:string,tags?:string,created_at?:string,upsert?:boolean}>} entries
@@ -299,14 +310,15 @@ export function addItems(entries) {
         id = `${e.type}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
       }
 
+      const filePath = str(e.file_path, 2000);
       if (e.upsert && source && title) {
-        d.run("DELETE FROM items WHERE source = ? AND title = ?", [source, title]);
+        d.run("DELETE FROM items WHERE source = ? AND title = ? AND COALESCE(file_path, '') = ?", [source, title, filePath || ""]);
       }
 
       d.run(
         `INSERT OR IGNORE INTO items (id,type,source,title,content,file_path,tags,created_at)
          VALUES (?,?,?,?,?,?,?,?)`,
-        [id, e.type, source, title, content, str(e.file_path, 2000), str(e.tags, 2000), createdAt]
+        [id, e.type, source, title, content, filePath, str(e.tags, 2000), createdAt]
       );
       if (d.getRowsModified() > 0) inserted++;
       else duplicates++;
@@ -326,10 +338,13 @@ export function addItems(entries) {
  * @param {string} [o.type]     restrict to an item type
  * @param {string} [o.since]    only entries with created_at >= this ISO timestamp
  * @param {string} [o.until]    only entries with created_at <  this ISO timestamp
+ * @param {"recent"|"matches"} [o.orderBy="recent"]  "matches" puts entries that contain
+ *        the MOST of the given terms first (then newest), so an old entry that matches
+ *        every keyword beats a recent one that matches a single common word.
  * @param {number} [o.limit=20]
  * @param {number} [o.snippet=300]  characters of content to return
  */
-export function searchItems({ terms, match = "any", type, since, until, limit = 20, snippet = 300 }) {
+export function searchItems({ terms, match = "any", type, since, until, orderBy = "recent", limit = 20, snippet = 300 }) {
   const clean = (terms || []).map((t) => String(t).trim()).filter(Boolean);
   const clauses = clean.map(
     () => "(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')"
@@ -356,11 +371,24 @@ export function searchItems({ terms, match = "any", type, since, until, limit = 
 
   const safeSnippet = Math.max(1, Math.min(Number(snippet) || 300, 5000));
   const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 500));
+
+  // Parameters appear in SQL order: WHERE first, then ORDER BY.
+  let orderBySql = "created_at DESC";
+  if (orderBy === "matches" && clean.length > 1) {
+    const termHit = "(CASE WHEN (title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\') THEN 1 ELSE 0 END)";
+    const likeParams = clean.flatMap((t) => {
+      const like = `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      return [like, like, like];
+    });
+    orderBySql = `${clean.map(() => termHit).join(" + ")} DESC, created_at DESC`;
+    params.push(...likeParams);
+  }
+
   return queryAll(
     `SELECT id, type, source, title, substr(content, 1, ${safeSnippet}) AS snippet, file_path, tags, created_at
      FROM items
      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-     ORDER BY created_at DESC
+     ORDER BY ${orderBySql}
      LIMIT ${safeLimit}`,
     params
   );

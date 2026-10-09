@@ -11,7 +11,7 @@ import multer from "multer";
 import { z } from "zod";
 import { VAULT_ROOT, PORT, HOST, SERVER_CONFIG } from "./config.mjs";
 import { DB_PATH, ITEM_TYPES, addItems, searchItems, queryAll, queryOne, run, getStats } from "./db.mjs";
-import { SENTINEL_ID, authenticate, decrypt, encrypt } from "./secrets.mjs";
+import { SENTINEL_ID, authenticate, decrypt, encrypt, hasSentinel } from "./secrets.mjs";
 import { createSecurityMiddleware, createAttemptLimiter, isLoopbackAddress } from "./security.mjs";
 import { isMainModule, isoDate, clampInt, getVersion } from "./util.mjs";
 
@@ -25,6 +25,13 @@ function safeSlug(s) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "")
     .slice(0, 80) || "item";
+}
+
+/** multer decodes multipart file names as latin1; recover the UTF-8 original ("résumé 日本語.txt"). */
+export function fixFilenameEncoding(name) {
+  if (/[^\x00-\xFF]/.test(name)) return name; // already real Unicode
+  const decoded = Buffer.from(name, "latin1").toString("utf8");
+  return decoded.includes("\uFFFD") ? name : decoded; // genuine latin1 names stay as they are
 }
 
 const EntrySchema = z.object({
@@ -101,7 +108,7 @@ export function createApp() {
   app.post("/upload", upload.single("file"), (req, res) => {
     if (!req.file) return res.status(400).json({ ok: false, error: "No file uploaded" });
 
-    const original = path.basename(req.file.originalname || "file");
+    const original = path.basename(fixFilenameEncoding(req.file.originalname || "file"));
     const ext = path.extname(original).replace(/[^.a-zA-Z0-9]/g, "").slice(0, 16);
     const dayDir = path.join(VAULT_ROOT, "files", isoDate());
     ensureDir(dayDir);
@@ -136,6 +143,9 @@ export function createApp() {
     limiter.succeed();
     return true;
   }
+
+  // Has a master password been set yet? (lets the UI ask for it twice the first time)
+  app.get("/secrets/status", (req, res) => res.json({ ok: true, initialized: hasSentinel() }));
 
   app.post("/secrets/verify", (req, res) => {
     const { password } = req.body || {};
@@ -246,7 +256,7 @@ export function createApp() {
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
-    const status = err.status || err.statusCode || 500;
+    const status = err.status || err.statusCode || (err.name === "MulterError" ? 400 : 500);
     if (status >= 500) console.error(`[MemVault] ${req.method} ${req.path}:`, err);
     res.status(status).json({ ok: false, error: status >= 500 ? "Internal server error" : err.message });
   });
@@ -257,7 +267,18 @@ export function createApp() {
 export function startServer({ port = PORT, host = HOST } = {}) {
   const app = createApp();
   return new Promise((resolve, reject) => {
-    const server = app.listen(port, host, () => {
+    // Events, not the listen() callback: Express 5 hands start-up errors (EADDRINUSE,
+    // bad host...) to that callback, where `server.address()` is still null.
+    const server = app.listen(port, host);
+    server.once("error", (e) => {
+      if (e.code === "EADDRINUSE") {
+        console.error(`❌ Port ${port} is already in use. Is MemVault already running? Set "port" in ~/.memvaultrc.json or VAULT_PORT to change it.`);
+      } else {
+        console.error(`❌ Could not start the server on ${host}:${port}: ${e.message}`);
+      }
+      reject(e);
+    });
+    server.once("listening", () => {
       const shown = host === "0.0.0.0" || host === "::" ? "localhost" : host;
       console.log(`MemVault running on http://${shown}:${server.address().port}`);
       console.log(`VAULT_ROOT=${VAULT_ROOT}`);
@@ -268,12 +289,6 @@ export function startServer({ port = PORT, host = HOST } = {}) {
         );
       }
       resolve(server);
-    });
-    server.on("error", (e) => {
-      if (e.code === "EADDRINUSE") {
-        console.error(`❌ Port ${port} is already in use. Is MemVault already running? Set "port" in ~/.memvaultrc.json or VAULT_PORT to change it.`);
-      }
-      reject(e);
     });
   });
 }

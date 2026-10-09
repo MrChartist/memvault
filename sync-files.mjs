@@ -21,7 +21,7 @@ import fs from "fs";
 import path from "path";
 import { SYNC_CONFIG } from "./config.mjs";
 import { flagValue, flagNumber, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule } from "./util.mjs";
+import { isMainModule, expandHome } from "./util.mjs";
 
 // File extensions to track
 const TRACK_EXTENSIONS = new Set([
@@ -91,7 +91,7 @@ export async function main(args = process.argv.slice(2)) {
   const dryRun = args.includes("--dry-run");
   const hours = flagNumber(args, "--hours", 48);
   const custom = flagValue(args, "--path");
-  const scanDirs = (custom ? [custom] : SYNC_CONFIG.filesDirs).map((d) => path.resolve(d));
+  const scanDirs = (custom ? [expandHome(custom)] : SYNC_CONFIG.filesDirs).map((d) => path.resolve(d));
 
   console.log(`📁 File activity — last ${hours} hours${dryRun ? " (dry run)" : ""}`);
 
@@ -138,8 +138,9 @@ export async function main(args = process.argv.slice(2)) {
     entries.push({
       type: "worklog",
       source: "filesystem",
-      upsert: true, // a stable title lets each run replace the previous snapshot
+      upsert: true, // each run replaces the previous snapshot of THIS folder (file_path tells same-named folders apart)
       title: `[Files] ${projectName}`,
+      file_path: projectPath,
       content: [
         `## Recent File Activity: ${projectName}`,
         ``,

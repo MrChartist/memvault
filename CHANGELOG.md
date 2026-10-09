@@ -25,6 +25,7 @@ First public release.
 - `~/.memvaultrc.json` is written with owner-only permissions.
 - The web UI no longer loads Google Fonts (no third-party requests).
 - The clipboard engine skips text that looks like credentials.
+- The System engine records process **names only**. It used `ps aux`, which also stored every process's command-line arguments (passwords, tokens) and exposed them through `vault_system_info`.
 
 ### Fixed
 - **`sync-antigravity` deleted the entire vault** before checking that Antigravity was installed. It never deletes anything now and is off by default.
@@ -42,6 +43,16 @@ First public release.
 - `wmic` (removed from current Windows) replaced with PowerShell for disk info.
 - Daily digests used the UTC day instead of your local day.
 - `backup` returned success when a Google Drive upload failed.
+- `~` in config values, `VAULT_ROOT`, CLI flags and wizard answers is expanded to the home folder; it used to create a folder literally named `~` in the current directory (different processes could then end up on different vaults, and a Drive "backup" never reached Drive).
+- `sync-git` silently imported nothing for repositories whose `git log` output exceeded 1 MiB (~3,000 commits), and now reports git errors.
+- Browser history re-imported rows whenever a page's visit count changed; per-folder file snapshots with the same folder name overwrote each other; both fixed (`upsert` now also keys on `file_path`).
+- `memvault serve` crashed with a `TypeError` instead of a clear message when the port was in use.
+- `vault_smart_context` / `vault_get_context` / `vault_smart_search` missed relevant older entries for natural-language questions (stop words matched everything; only the newest rows were ranked) and returned unrelated entries for very short topics; `freshOnly` marked entries as seen that it never returned; de-duplication merged different commits of one repo.
+- The setup wizard no longer leaves Drive API upload enabled after answering "n"; the Secure Vault asks for the master password twice on first use.
+- Database lock: waiters now outlast a crashed holder's stale lock, and a load/commit race window was closed.
+- Uploaded non-ASCII file names are stored correctly; a wrong upload field name is a 400, not a 500.
+- Importers: sharded ChatGPT exports (`conversations-000.json`, …) and Gemini Takeout `safeHtmlItem` answers.
+- Windows: Python probing avoids the Microsoft Store alias; `setup-windows.mjs` refuses non-ASCII install paths instead of writing a launcher Windows cannot read.
 - Documentation and the setup wizard told users to run `npx memvault …`, which is a *different* npm package; they now use `@mrchartist/memvault`.
 
 ### Changed
@@ -54,5 +65,5 @@ First public release.
 
 ### Added
 - Documentation: privacy table, security model (`SECURITY.md`), `CONTRIBUTING.md`, Code of Conduct, autostart guides.
-- Test suite grew from 19 to 160+ tests (database concurrency, server hardening, secrets, sync engines, importers, MCP end-to-end, CLI).
+- Test suite grew from 19 to 190+ tests (database concurrency, server hardening, secrets, sync engines, importers, MCP end-to-end, CLI).
 - CI on Linux, macOS and Windows; dependency review automation.

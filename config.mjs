@@ -18,6 +18,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { expandHome } from "./util.mjs";
 
 const HOME = os.homedir();
 export const CONFIG_FILE = path.join(HOME, ".memvaultrc.json");
@@ -48,8 +49,9 @@ const userConfig = loadUserConfig();
 
 // ─── VAULT_ROOT ─────────────────────────────────────────────────────────────
 // Priority: 1. ENV, 2. ~/.memvaultrc.json, 3. Default (~/.memvault/data)
-export const VAULT_ROOT =
-  process.env.VAULT_ROOT || userConfig.vaultRoot || path.join(HOME, ".memvault", "data");
+export const VAULT_ROOT = expandHome(
+  process.env.VAULT_ROOT || userConfig.vaultRoot || path.join(HOME, ".memvault", "data")
+);
 
 // ─── Web server ─────────────────────────────────────────────────────────────
 const rawPort = Number(process.env.VAULT_PORT || process.env.PORT || userConfig.port || 7799);
@@ -83,6 +85,12 @@ export const SYNC_CONFIG = {
   antigravityEnabled: false,
   ...(userConfig.sync || {}),
 };
+// "~/code" in the config file means the user's home, not a folder named "~"
+for (const key of ["gitDirs", "filesDirs"]) {
+  SYNC_CONFIG[key] = (Array.isArray(SYNC_CONFIG[key]) ? SYNC_CONFIG[key] : [SYNC_CONFIG[key]])
+    .filter((d) => typeof d === "string" && d.trim())
+    .map((d) => expandHome(d));
+}
 
 // ─── AI Configuration ───────────────────────────────────────────────────────
 export const AI_CONFIG = userConfig.ai || {};
@@ -116,6 +124,7 @@ export const STORAGE_CONFIG = {
   // Keep at most N local timestamped backups (0 = unlimited)
   keepLocalBackups: userConfig.storage?.keepLocalBackups ?? 20,
 };
+if (STORAGE_CONFIG.gdriveFolder.path) STORAGE_CONFIG.gdriveFolder.path = expandHome(STORAGE_CONFIG.gdriveFolder.path);
 
 // ─── MCP Bridges — connect OUT to other AI tools' MCP servers ────────────────
 // Each entry describes an external MCP server that MemVault can connect to as a

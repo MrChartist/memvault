@@ -73,14 +73,16 @@ function getDiskUsage() {
   return lines.join("\n") || "N/A";
 }
 
-function getRunningProcesses() {
+export function getRunningProcesses() {
   if (process.platform === "win32") {
     return powershell(
       "Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name, @{N='MemMB';E={[Math]::Round($_.WorkingSet64/1MB)}} | Format-Table -AutoSize | Out-String"
     ) || "N/A";
   }
+  // Executable names only. `ps aux` would also record every process's command-line
+  // ARGUMENTS, which routinely contain passwords, tokens and session ids.
   // GNU ps understands --sort; BSD/macOS ps uses -m (sort by memory).
-  const cmd = process.platform === "darwin" ? "ps aux -m | head -n 20" : "ps aux --sort=-%mem | head -n 20";
+  const cmd = process.platform === "darwin" ? "ps -Ao pid,%mem,comm -m | head -n 21" : "ps -Ao pid,%mem,comm --sort=-%mem | head -n 21";
   return execSafe(cmd) || "N/A";
 }
 
@@ -89,7 +91,8 @@ function getDevTools() {
     node: execSafe("node --version"),
     npm: execSafe("npm --version"),
     git: execSafe("git --version"),
-    python: execSafe("python3 --version") || execSafe("python --version") || "not found",
+    // On Windows `python`/`python3` can be Microsoft Store stubs; the `py` launcher is the safe probe.
+    python: (process.platform === "win32" ? execSafe("py -3 --version") : execSafe("python3 --version") || execSafe("python --version")) || "not found",
   };
 }
 

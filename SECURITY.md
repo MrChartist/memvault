@@ -30,9 +30,10 @@ Security fixes are released for the latest minor version on npm.
 | SQL injection through tool arguments | All queries are parameterised; `LIKE` wildcards in user text are escaped |
 | Guessing the master password | PBKDF2-SHA256 with 600,000 iterations and a random salt per secret; failed attempts are throttled with exponential back-off |
 | A stolen/leaked secrets blob | Secrets are AES-256-GCM encrypted; tampering is detected |
+| Credentials in process command lines ending up in the vault | The System engine records executable names only, never command-line arguments |
 | Leaking secrets from the clipboard into the vault | The (opt-in) clipboard engine skips text that looks like keys, tokens, private keys, card numbers, or `password=` lines |
 | Leaking your environment to third-party MCP servers | Bridges receive only a minimal environment plus their own configured `env` |
-| Data loss from concurrent processes | A cross-process lock and atomic writes; sync/import never delete data |
+| Data loss from concurrent processes | A cross-process lock and atomic writes; engines never delete data they did not create (snapshots are replaced by newer snapshots) |
 
 **Not protected / out of scope**
 
@@ -51,5 +52,5 @@ Security fixes are released for the latest minor version on npm.
 
 - Keep `host` at its default (`127.0.0.1`).
 - Enable only the capture engines you need; browser history and clipboard are off by default.
-- Keep `~/.memvaultrc.json` private (MemVault writes it with owner-only permissions) — it may contain API keys.
+- Keep `~/.memvaultrc.json` private — it may contain API keys. MemVault writes it owner-only (`0600`) on Linux/macOS; on Windows, file permissions are not changed, so rely on your user profile's default access rules.
 - Use a long, unique master password for the Secure Vault, and do not forget it: it cannot be recovered.

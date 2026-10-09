@@ -109,4 +109,5 @@ For the web UI at login, add a second agent with `server.mjs` as the program and
 
 - Keep the web UI on `127.0.0.1` (the default). It has no login — see [SECURITY.md](../SECURITY.md).
 - If a sync run fails, `sync-all.mjs` exits with a non-zero status, so schedulers can report it.
+- The Windows launcher is a VBScript, which Windows reads in the system ANSI code page, so `setup-windows.mjs` refuses to run if the install or Node.js path contains non-ASCII characters (install under a plain-ASCII folder instead).
 - Under WSL, run MemVault inside WSL and it will also find Windows-side browser profiles and Antigravity data.

@@ -137,3 +137,41 @@ describe('MCP server — digests use the local day', () => {
     expect(res.text).toContain('Fixed auth bug');
   });
 });
+
+describe('MCP server — retrieval finds the right entry, not just the newest', () => {
+  const count = (text) => (text.match(/^### \d+\./gm) || []).length;
+
+  it('answers a natural-language question with the OLD specific entry despite many newer, chattier ones', async () => {
+    await call('vault_add', { type: 'worklog', title: 'Decision: database schema uses UUID primary keys', content: 'We decided in review that every table gets a UUID primary key.' });
+    for (let i = 0; i < 40; i++) {
+      await call('vault_add', { type: 'diary', title: `Weather note ${i}`, content: 'Did you see the thing about the weather today? It was all about the rain.' });
+    }
+    const q = 'what did I decide about the database schema';
+    for (const tool of ['vault_get_context', 'vault_smart_context']) {
+      const r = await call(tool, { topic: q });
+      expect(r.text, tool).toContain('UUID primary keys');
+    }
+    expect((await call('vault_smart_search', { query: q })).text).toContain('UUID primary keys');
+  });
+
+  it('a very short topic is matched literally instead of returning "everything recent"', async () => {
+    await call('vault_add', { type: 'diary', title: 'Learning Go generics', content: 'Go 1.22 notes on generics.' });
+    const r = await call('vault_get_context', { topic: 'Go' });
+    expect(r.text).toContain('Learning Go generics');
+    expect(r.text).not.toContain('Weather note 39'); // not just the newest entries
+  });
+
+  it('freshOnly pages through results instead of burning candidates it never showed', async () => {
+    for (let i = 0; i < 25; i++) {
+      await call('vault_add', { type: 'worklog', title: `zebra-${i} quokka${i}x`, content: `unique${i}alpha unique${i}beta distinct${i}gamma topic${i}delta` });
+    }
+    const seen = new Set();
+    for (let round = 0; round < 3; round++) {
+      const r = await call('vault_smart_context', { topic: 'zebra', limit: 5, freshOnly: true });
+      const titles = [...r.text.matchAll(/zebra-(\d+)/g)].map((m) => m[1]);
+      expect(new Set(titles).size, `round ${round}`).toBe(5);
+      for (const t of titles) { expect(seen.has(t)).toBe(false); seen.add(t); }
+    }
+    expect(seen.size).toBe(15);
+  });
+});

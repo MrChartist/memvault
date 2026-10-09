@@ -15,6 +15,35 @@
 import { USER_PROJECTS } from "./config.mjs";
 import { escapeRegExp } from "./util.mjs";
 
+// ─── Keyword extraction ─────────────────────────────────────────────────────
+
+const STOPWORDS = new Set((
+  "a an the and or but if of to in on at by for with about from into over after before between is are was were be been being " +
+  "do does did doing done have has had i me my we our you your he she it its they them their this that these those what which " +
+  "who whom when where why how can could should would will shall may might must not no yes so as than then there here just also " +
+  "any some all more most other such only own same too very tell show find get give let make need want know think like please " +
+  "recent recently latest last"
+).split(/\s+/));
+
+/**
+ * Pull the meaningful words out of a natural-language topic or question.
+ *   "what did I decide about the database schema" → ["decide", "database", "schema"]
+ * Short symbolic tokens ("c++", "c#") are kept. If nothing survives (e.g. the topic
+ * is just "Go"), the whole text is used as one literal phrase instead of becoming an
+ * empty — and therefore match-everything — query.
+ */
+export function extractKeywords(topic) {
+  const text = String(topic || "").trim();
+  const keywords = [];
+  for (const raw of text.split(/\s+/)) {
+    const token = raw.replace(/^[^\w#+]+|[^\w#+]+$/g, "").toLowerCase();
+    if (!token || STOPWORDS.has(token)) continue;
+    const symbolic = /[^a-z0-9]/.test(token);
+    if ((token.length > 2 || (symbolic && token.length >= 2)) && !keywords.includes(token)) keywords.push(token);
+  }
+  return keywords.length ? keywords : text ? [text] : [];
+}
+
 // ─── Auto-Tagging ───────────────────────────────────────────────────────────
 
 const TECH_PATTERNS = [
@@ -301,6 +330,10 @@ export function deduplicateEntries(entries, threshold = 0.6) {
     let isDupe = false;
 
     for (const existing of unique) {
+      // Entries of one kind (commits, file snapshots...) share a lot of boilerplate
+      // in their body, so different titles mean different entries no matter how
+      // similar the bodies look.
+      if (entry.title && existing.title && jaccardSimilarity(entry.title, existing.title) <= 0.5) continue;
       const existingText = `${existing.title || ""} ${existing.content || existing.snippet || ""}`;
       if (jaccardSimilarity(entryText, existingText) > threshold) {
         isDupe = true;
@@ -320,13 +353,19 @@ export function deduplicateEntries(entries, threshold = 0.6) {
 const seenEntryIds = new Set();
 
 /**
- * Mark entries as seen and filter out already-seen ones
+ * Return up to `limit` entries not yet seen this session, and mark exactly those as seen
  * @param {Object[]} entries - Array with `id` field
- * @returns {Object[]} Only entries not yet seen this session
+ * @param {number} [limit] - Maximum entries to return (default: all unseen)
+ * @returns {Object[]} Entries not yet seen this session
  */
-export function filterUnseen(entries) {
-  const unseen = entries.filter(e => !seenEntryIds.has(e.id));
-  for (const e of unseen) seenEntryIds.add(e.id);
+export function filterUnseen(entries, limit = Infinity) {
+  const unseen = [];
+  for (const e of entries) {
+    if (unseen.length >= limit) break;
+    if (seenEntryIds.has(e.id)) continue;
+    unseen.push(e);
+    seenEntryIds.add(e.id); // only entries that are actually returned count as "seen"
+  }
   return unseen;
 }
 

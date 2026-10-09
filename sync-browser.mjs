@@ -167,7 +167,7 @@ export async function main(args = process.argv.slice(2)) {
         entries.push({
           type: "worklog", source: tag,
           title: row.title || row.url,
-          content: `Visited: ${row.url}\nVisit count: ${row.visit_count}`,
+          content: `Visited: ${row.url}`, // no volatile fields (e.g. visit count): they would defeat de-duplication
           tags: `browser,history,${tag}`,
           created_at: row.iso, // real timestamp → de-duplicated on re-run
         });

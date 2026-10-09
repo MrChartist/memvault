@@ -16,7 +16,7 @@ function loadConfig(rc, env = {}) {
   if (rc !== undefined) fs.writeFileSync(path.join(home, '.memvaultrc.json'), typeof rc === 'string' ? rc : JSON.stringify(rc));
   const script = `
     const c = await import(${CONFIG_URL});
-    console.log(JSON.stringify({ HOST: c.HOST, PORT: c.PORT, VAULT_ROOT: c.VAULT_ROOT, SYNC: c.SYNC_CONFIG, SERVER: c.SERVER_CONFIG, PROJECTS: c.USER_PROJECTS, HOME: ${JSON.stringify(home)} }));
+    console.log(JSON.stringify({ HOST: c.HOST, PORT: c.PORT, VAULT_ROOT: c.VAULT_ROOT, SYNC: c.SYNC_CONFIG, SERVER: c.SERVER_CONFIG, PROJECTS: c.USER_PROJECTS, DRIVE: c.STORAGE_CONFIG.gdriveFolder.path, HOME: ${JSON.stringify(home)} }));
   `;
   const f = path.join(home, 'probe.mjs');
   fs.writeFileSync(f, script);
@@ -79,6 +79,37 @@ describe('config overrides', () => {
     expect(c.HOST).toBe('0.0.0.0');
     expect(c.SERVER).toEqual({ allowedHosts: ['a.local'], allowedOrigins: ['https://x.example'] });
     expect(c.PROJECTS).toHaveLength(1);
+  });
+});
+
+describe('"~" in config values and env vars means the user\'s home, not a folder called "~"', () => {
+  it('expands vaultRoot, git/files dirs and the Drive folder (relative paths are taken from home, not the cwd)', () => {
+    const c = loadConfig({
+      vaultRoot: '~/myvault',
+      sync: { gitDirs: ['~/code', 'projects'], filesDirs: ['~/Notes'] },
+      storage: { gdriveFolder: { enabled: true, path: '~/Google Drive' } },
+    });
+    expect(c.VAULT_ROOT).toBe(path.join(c.HOME, 'myvault'));
+    expect(c.SYNC.gitDirs).toEqual([path.join(c.HOME, 'code'), path.join(c.HOME, 'projects')]);
+    expect(c.SYNC.filesDirs).toEqual([path.join(c.HOME, 'Notes')]);
+    expect(c.DRIVE).toBe(path.join(c.HOME, 'Google Drive'));
+  });
+
+  it('expands VAULT_ROOT from the environment too (MCP client env blocks are not shell-expanded)', () => {
+    const c = loadConfig({}, { VAULT_ROOT: '~/from-env' });
+    expect(c.VAULT_ROOT).toBe(path.join(c.HOME, 'from-env'));
+    expect(path.isAbsolute(c.VAULT_ROOT)).toBe(true);
+  });
+
+  it('expandHome handles ~, ~/x, ~\\x, relative and absolute paths', async () => {
+    const { expandHome } = await import('../util.mjs');
+    const home = path.join(TMP, 'h');
+    expect(expandHome('~', home)).toBe(home);
+    expect(expandHome('~/a/b', home)).toBe(path.join(home, 'a', 'b'));
+    expect(expandHome('~\\a', home)).toBe(path.join(home, 'a'));
+    expect(expandHome('rel/x', home)).toBe(path.join(home, 'rel', 'x'));
+    expect(expandHome(path.join(TMP, 'abs'), home)).toBe(path.join(TMP, 'abs'));
+    expect(expandHome('', home)).toBe('');
   });
 });
 

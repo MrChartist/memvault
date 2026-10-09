@@ -1184,10 +1184,14 @@
         <div class="pw-row">
           <input id="master-pw" class="pw-input" type="password" placeholder="Master password"
             onkeydown="if(event.key==='Enter')unlockVault()" aria-label="Master password" />
-          <button class="btn-unlock" onclick="unlockVault()">🔓 Unlock</button>
+          <button class="btn-unlock" id="unlock-btn" onclick="unlockVault()">🔓 Unlock</button>
+        </div>
+        <div class="pw-row" id="pw2-row" style="display:none;margin-top:10px">
+          <input id="master-pw2" class="pw-input" type="password" placeholder="Confirm master password"
+            onkeydown="if(event.key==='Enter')unlockVault()" aria-label="Confirm master password" />
         </div>
         <p class="pw-error" id="pw-error">Wrong password. Try again.</p>
-        <p class="lock-hint">First use? The password you enter (8+ characters) becomes your master password. It cannot be recovered if you forget it.</p>
+        <p class="lock-hint">First use? You will be asked to choose a master password (8+ characters). It cannot be recovered if you forget it.</p>
       </div>
       <div id="vault-unlocked" style="display:none">
         <div class="secrets-header">
@@ -1462,7 +1466,7 @@
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       el.classList.add('active');
       showOnlyPanel('secure');
-      if (vaultSession) showUnlocked();
+      if (vaultSession) showUnlocked(); else refreshVaultStatus();
     }
 
     function openAccessMap(el) {
@@ -1562,9 +1566,25 @@
       custom: [['value', 'Value'], ['notes', 'Notes']],
     };
 
+    // First use: no master password exists yet, so ask for it twice (a typo would lock you out for good).
+    let vaultInitialized = true;
+    async function refreshVaultStatus() {
+      try {
+        vaultInitialized = (await (await fetch(`${API}/secrets/status`)).json()).initialized !== false;
+      } catch { /* keep the previous value */ }
+      document.getElementById('pw2-row').style.display = vaultInitialized ? 'none' : '';
+      document.getElementById('unlock-btn').textContent = vaultInitialized ? '🔓 Unlock' : '🔐 Create vault';
+    }
+
     async function unlockVault() {
       const pw = document.getElementById('master-pw').value;
       if (!pw) return;
+      if (!vaultInitialized && pw !== document.getElementById('master-pw2').value) {
+        const el = document.getElementById('pw-error');
+        el.textContent = 'The two passwords do not match.';
+        el.style.display = 'block';
+        return;
+      }
       try {
         const r = await fetch(`${API}/secrets/verify`, {
           method: 'POST', headers: { 'content-type': 'application/json' },
@@ -1573,8 +1593,11 @@
         const d = await r.json();
         if (d.ok) {
           vaultSession = pw;
+          vaultInitialized = true;
           document.getElementById('pw-error').style.display = 'none';
           document.getElementById('master-pw').value = '';
+          document.getElementById('master-pw2').value = '';
+          refreshVaultStatus();
           showUnlocked();
         } else {
           const el = document.getElementById('pw-error');

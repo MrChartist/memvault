@@ -195,12 +195,53 @@ describe('server — browser attack surface', () => {
   });
 });
 
+function multipart(field, filename, content) {
+  const boundary = '----memvault' + Math.random().toString(16).slice(2);
+  const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\nContent-Type: text/plain\r\n\r\n`, 'utf8');
+  const body = Buffer.concat([head, Buffer.from(content), Buffer.from(`\r\n--${boundary}--\r\n`)]);
+  return { body, headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
+}
+
+describe('server — uploads', () => {
+  it('keeps non-ASCII file names intact (multer decodes them as latin1)', async () => {
+    const m = multipart('file', 'résumé 日本語.txt', 'hello');
+    const r = await request('POST', '/upload', { headers: m.headers, body: m.body });
+    expect(r.status).toBe(200);
+    const row = (await request('GET', '/search?q=' + encodeURIComponent('résumé'))).body.results[0];
+    expect(row.title).toBe('résumé 日本語.txt');
+  });
+
+  it('a wrong form field name is a 400, not a 500', async () => {
+    const m = multipart('not-file', 'x.txt', 'hello');
+    const r = await request('POST', '/upload', { headers: m.headers, body: m.body });
+    expect(r.status).toBe(400);
+    expect(r.body.ok).toBe(false);
+  });
+
+  it('fixFilenameEncoding leaves real Unicode and genuine latin1 names alone', async () => {
+    const { fixFilenameEncoding } = await import('../server.mjs');
+    expect(fixFilenameEncoding('plain.txt')).toBe('plain.txt');
+    expect(fixFilenameEncoding('日本語.txt')).toBe('日本語.txt');
+    expect(fixFilenameEncoding('caf\u00e9.txt')).toBe('caf\u00e9.txt'); // lone 0xE9 is invalid UTF-8
+    expect(fixFilenameEncoding(Buffer.from('café.txt', 'utf8').toString('latin1'))).toBe('café.txt');
+  });
+});
+
 describe('server — secrets', () => {
   const pw = 'correct horse battery';
+
+  it('reports whether a master password exists yet (so the UI can ask for it twice)', async () => {
+    expect((await request('GET', '/secrets/status')).body).toEqual({ ok: true, initialized: false });
+  });
 
   it('refuses a weak master password on first use', async () => {
     const r = await request('POST', '/secrets/verify', { json: { password: 'short' } });
     expect(r.status).toBe(400);
+  });
+
+  it('status flips to initialized once a master password is set', async () => {
+    expect((await request('POST', '/secrets/verify', { json: { password: pw } })).body.ok).toBe(true);
+    expect((await request('GET', '/secrets/status')).body.initialized).toBe(true);
   });
 
   it('add → list (labels only) → get → delete', async () => {
