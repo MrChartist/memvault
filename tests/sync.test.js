@@ -3,6 +3,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
+import { fileURLToPath } from 'url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault-sync-'));
 const BRAIN = path.join(TMP, 'brain');
@@ -113,6 +116,18 @@ describe('sync-files', () => {
     expect(rows.map((r) => r.title).sort()).toEqual(['[Files] docs', '[Files] proj1']);
     expect(rows.find((r) => r.title === '[Files] proj1').content).toContain('notes.md');
     expect(rows.find((r) => r.title === '[Files] proj1').content).not.toContain('image.png');
+  });
+
+  it('a relative --path is relative to the cwd even when HOME is somewhere unrelated and deep (macOS CI caught the opposite)', () => {
+    const deepHome = path.join(TMP, 'x', 'y', 'z', 'w', 'v', 'home');
+    fs.mkdirSync(deepHome, { recursive: true });
+    const out = execFileSync(process.execPath, [path.join(ROOT, 'sync-files.mjs'), '--path', 'docs', '--hours', '1', '--dry-run'], {
+      cwd: TMP,
+      env: { ...process.env, HOME: deepHome, USERPROFILE: deepHome, VAULT_ROOT: path.join(TMP, 'vault-rel') },
+      encoding: 'utf8',
+    });
+    expect(out).toMatch(/recently modified files/);
+    expect(out).not.toMatch(/not found/);
   });
 
   it('accepts a relative --path', async () => {

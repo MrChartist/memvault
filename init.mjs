@@ -12,7 +12,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { CONFIG_FILE, loadUserConfig, saveUserConfig } from "./config.mjs";
-import { expandHome } from "./util.mjs";
+import { resolveUserPath } from "./util.mjs";
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: process.stdin.isTTY });
 // Read answers through an async iterator: unlike rl.question() it also works when
@@ -41,7 +41,7 @@ async function main() {
   const defaultVaultData = existing.vaultRoot || path.join(HOME, ".memvault", "data");
 
   // ── 1. Vault location ──────────────────────────────────────────────────────
-  const vaultRoot = expandHome(
+  const vaultRoot = resolveUserPath(
     (await ask(`1. Where to store your vault data?\n   [default: ${defaultVaultData}]: `)).trim() || defaultVaultData
   );
 
@@ -57,7 +57,7 @@ async function main() {
   let gitDirs = existing.sync?.gitDirs || [HOME];
   if (gitOn) {
     const dirAns = await ask(`\n   Which root folder holds your code projects? (scanned 3 levels deep)\n   [default: ${gitDirs[0]}]: `);
-    if (dirAns.trim()) gitDirs = [expandHome(dirAns.trim())];
+    if (dirAns.trim()) gitDirs = [resolveUserPath(dirAns.trim())];
   }
 
   // ── 3. AI intelligence (Gemini) ────────────────────────────────────────────
@@ -70,7 +70,7 @@ async function main() {
   const gdriveFolderOn = yes(await ask("   - ☁️  Mirror to a Google Drive for Desktop folder? (y/n) [n]: "), false);
   let gdriveFolderPath = existing.storage?.gdriveFolder?.path || "";
   if (gdriveFolderOn) {
-    gdriveFolderPath = expandHome(
+    gdriveFolderPath = resolveUserPath(
       (await ask(`   Path to your synced Drive folder (e.g. ${path.join(HOME, "Google Drive")}): `)).trim() || gdriveFolderPath
     );
   }

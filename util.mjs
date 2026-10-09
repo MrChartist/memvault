@@ -25,17 +25,35 @@ export function isMainModule(metaUrl) {
 }
 
 /**
- * Turn a user-typed path into an absolute one. Shells expand "~", but JSON config
- * files, MCP client "env" blocks and Windows cmd do not — a literal "~/x" would
- * otherwise become a folder called "~" inside whatever the current directory is.
- * Relative paths are taken relative to the user's home folder, not the cwd.
+ * Expand a leading "~" to the home folder (and nothing else). Shells do this for
+ * you, but JSON config files, MCP client "env" blocks and Windows cmd do not — a
+ * literal "~/x" would otherwise become a folder called "~" inside the current directory.
+ */
+export function expandTilde(p, home = os.homedir()) {
+  if (typeof p !== "string" || !p.trim()) return p;
+  const out = p.trim();
+  if (out === "~") return home;
+  if (/^~[\\/]/.test(out)) return path.join(home, out.slice(2));
+  return out;
+}
+
+/**
+ * A path from a CONFIG FILE → absolute. "~" is expanded and a relative path is taken
+ * relative to the user's home folder (config files have no meaningful working directory).
  */
 export function expandHome(p, home = os.homedir()) {
-  if (typeof p !== "string" || !p.trim()) return p;
-  let out = p.trim();
-  if (out === "~") out = home;
-  else if (/^~[\\/]/.test(out)) out = path.join(home, out.slice(2));
+  const out = expandTilde(p, home);
+  if (typeof out !== "string" || !out) return out;
   return path.isAbsolute(out) ? path.normalize(out) : path.resolve(home, out);
+}
+
+/**
+ * A path typed on the COMMAND LINE or set in an environment variable → absolute.
+ * "~" is expanded and a relative path is relative to the current directory, like any CLI tool.
+ */
+export function resolveUserPath(p, home = os.homedir()) {
+  const out = expandTilde(p, home);
+  return typeof out === "string" && out ? path.resolve(out) : out;
 }
 
 /** Version from this package's package.json (single source of truth). */

@@ -18,7 +18,7 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { SYNC_CONFIG } from "./config.mjs";
 import { flagValue, flagNumber, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule, expandHome } from "./util.mjs";
+import { isMainModule, resolveUserPath } from "./util.mjs";
 
 const MAX_DEPTH = 3; // how deep to look for .git directories
 const SKIP_DIRS = new Set([
@@ -131,7 +131,7 @@ export async function main(args = process.argv.slice(2)) {
   const dryRun = args.includes("--dry-run");
   const days = flagNumber(args, "--days", 14);
   const explicitRoot = flagValue(args, "--path") || process.env.GIT_SCAN_ROOT;
-  const roots = explicitRoot ? [expandHome(explicitRoot)] : SYNC_CONFIG.gitDirs;
+  const roots = explicitRoot ? [resolveUserPath(explicitRoot)] : SYNC_CONFIG.gitDirs;
 
   console.log(`🔍 Git sync — last ${days} days${dryRun ? " (dry run)" : ""}`);
 

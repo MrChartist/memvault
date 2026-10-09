@@ -20,7 +20,7 @@
 import fs from "fs";
 import path from "path";
 import { candidateHomes, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule, expandHome } from "./util.mjs";
+import { isMainModule, resolveUserPath } from "./util.mjs";
 
 const ARTIFACT_TYPES = [
   { file: "walkthrough.md", type: "worklog", label: "Walkthrough" },
@@ -30,7 +30,7 @@ const ARTIFACT_TYPES = [
 
 function resolveLocations() {
   if (process.env.BRAIN_DIR) {
-    return { brain: expandHome(process.env.BRAIN_DIR), summaries: process.env.CONV_SUMMARY ? expandHome(process.env.CONV_SUMMARY) : null };
+    return { brain: resolveUserPath(process.env.BRAIN_DIR), summaries: process.env.CONV_SUMMARY ? resolveUserPath(process.env.CONV_SUMMARY) : null };
   }
   for (const home of candidateHomes()) {
     const base = path.join(home, ".gemini", "antigravity");

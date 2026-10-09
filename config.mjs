@@ -18,7 +18,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { expandHome } from "./util.mjs";
+import { expandHome, resolveUserPath } from "./util.mjs";
 
 const HOME = os.homedir();
 export const CONFIG_FILE = path.join(HOME, ".memvaultrc.json");
@@ -49,9 +49,9 @@ const userConfig = loadUserConfig();
 
 // ─── VAULT_ROOT ─────────────────────────────────────────────────────────────
 // Priority: 1. ENV, 2. ~/.memvaultrc.json, 3. Default (~/.memvault/data)
-export const VAULT_ROOT = expandHome(
-  process.env.VAULT_ROOT || userConfig.vaultRoot || path.join(HOME, ".memvault", "data")
-);
+export const VAULT_ROOT = process.env.VAULT_ROOT
+  ? resolveUserPath(process.env.VAULT_ROOT) // environment: relative to the cwd, "~" expanded
+  : expandHome(userConfig.vaultRoot || path.join(HOME, ".memvault", "data")); // config file: relative to home
 
 // ─── Web server ─────────────────────────────────────────────────────────────
 const rawPort = Number(process.env.VAULT_PORT || process.env.PORT || userConfig.port || 7799);

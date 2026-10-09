@@ -101,6 +101,15 @@ describe('"~" in config values and env vars means the user\'s home, not a folder
     expect(path.isAbsolute(c.VAULT_ROOT)).toBe(true);
   });
 
+  it('command-line / env paths are relative to the cwd (only config-file paths are home-relative)', async () => {
+    const { resolveUserPath, expandTilde } = await import('../util.mjs');
+    const home = path.join(TMP, 'h');
+    expect(resolveUserPath('./tests', home)).toBe(path.resolve('tests'));
+    expect(resolveUserPath('~/x', home)).toBe(path.join(home, 'x'));
+    expect(resolveUserPath(path.join(TMP, 'abs'), home)).toBe(path.join(TMP, 'abs'));
+    expect(expandTilde('rel/x', home)).toBe('rel/x'); // untouched
+  });
+
   it('expandHome handles ~, ~/x, ~\\x, relative and absolute paths', async () => {
     const { expandHome } = await import('../util.mjs');
     const home = path.join(TMP, 'h');

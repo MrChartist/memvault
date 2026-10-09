@@ -21,7 +21,7 @@ import fs from "fs";
 import path from "path";
 import { SYNC_CONFIG } from "./config.mjs";
 import { flagValue, flagNumber, saveEntries, describeResult } from "./sync-lib.mjs";
-import { isMainModule, expandHome } from "./util.mjs";
+import { isMainModule, resolveUserPath } from "./util.mjs";
 
 // File extensions to track
 const TRACK_EXTENSIONS = new Set([
@@ -91,7 +91,7 @@ export async function main(args = process.argv.slice(2)) {
   const dryRun = args.includes("--dry-run");
   const hours = flagNumber(args, "--hours", 48);
   const custom = flagValue(args, "--path");
-  const scanDirs = (custom ? [expandHome(custom)] : SYNC_CONFIG.filesDirs).map((d) => path.resolve(d));
+  const scanDirs = (custom ? [resolveUserPath(custom)] : SYNC_CONFIG.filesDirs).map((d) => path.resolve(d));
 
   console.log(`📁 File activity — last ${hours} hours${dryRun ? " (dry run)" : ""}`);
 
