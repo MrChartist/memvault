@@ -1,19 +1,28 @@
 name: CI
 
+# Runs for every pull request (whatever branch it targets) and for pushes to main.
 on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
+  # The main check: Linux, the three supported Node versions.
   test:
+    name: test (Linux, Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         node-version: [20.x, 22.x, 24.x]
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
@@ -23,12 +32,82 @@ jobs:
       - name: Unit and integration tests
         run: npm test
 
+  # Windows and macOS have never been run by the author. These jobs are here so that anything that
+  # breaks shows up as a clear failure instead of staying hidden. They do not block a merge yet
+  # (continue-on-error); remove that line once both are green.
+  test-other-os:
+    name: test (${{ matrix.os }}, Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        node-version: [22.x]
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  # Install the packed tarball the way a user would, into folders whose names contain a space and
+  # non-Latin letters, then run the everyday commands. Catches missing files and bad launchers.
+  install-smoke:
+    name: install smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22.x, cache: npm }
+      - run: npm ci
+      - name: Pack, install into a path with a space and non-Latin letters, and run
+        shell: bash
+        run: |
+          npm pack --silent
+          PREFIX="$RUNNER_TEMP/prefix रोहित e2e"
+          mkdir -p "$PREFIX"
+          npm install -g --prefix "$PREFIX" ./mrchartist-memvault-*.tgz
+          export PATH="$PREFIX:$PREFIX/bin:$PATH"
+          export HOME="$RUNNER_TEMP/home रोहित e2e" USERPROFILE="$RUNNER_TEMP/home रोहित e2e"
+          mkdir -p "$HOME"
+          memvault setup
+          memvault doctor
+          memvault agent list
+          memvault mcp-config > cfg.json
+          node -e "JSON.parse(require('fs').readFileSync('cfg.json','utf8')); console.log('mcp-config is valid JSON')"
+
+  # Known-vulnerable packages that users install (development tools are not shipped).
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22.x, cache: npm }
+      - run: npm ci --omit=dev
+      - run: npm audit --omit=dev --audit-level=moderate
+
   # Real-browser checks: stored-script attacks, the content-security policy, WCAG 2.1 AA audits
   # in light, dark and phone layouts, keyboard use and right-to-left text.
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with: { persist-credentials: false }
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
