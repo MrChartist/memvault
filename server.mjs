@@ -16,6 +16,7 @@ import { ensureToken, createGuards, createLimiter, isLoopbackHost } from "./auth
 import { encryptString, decryptString, isLegacyBlob, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
 import { ingest } from "./ingest.mjs";
 import { redact, redactItem } from "./redact.mjs";
+import { removeMirrors, removeAllMirrors, updateMirror } from "./mirror.mjs";
 import { audit, verifyAudit, tailAudit } from "./audit.mjs";
 import {
   AGENT_ID_RE, listAgents, getAgent, saveAgent, deleteAgent, installStarterPack,
@@ -295,6 +296,7 @@ export function createApp({
     } catch (e) {
       return res.status(500).json({ ok: false, error: e.message });
     }
+    updateMirror(root, { ...item, ...r.item });
     log("edit", { id: item.id, fields: Object.keys(fields).concat(pinned === undefined ? [] : ["pinned"]), redacted: r.findings.map((f) => `${f.count}x ${f.type}`) });
     res.json({ ok: true, redacted: r.findings, item: { ...item, ...r.item } });
   });
@@ -304,6 +306,7 @@ export function createApp({
     if (!item) return res.status(404).json({ ok: false, error: "That memory was not found. It may have been deleted." });
     trashPut(item);
     vdb.run("DELETE FROM items WHERE id = ?", [item.id]);
+    removeMirrors(root, [item]);
     log("delete", { id: item.id, count: 1 });
     res.json({ ok: true, undoable: true });
   });
@@ -330,6 +333,7 @@ export function createApp({
     if (!backup.ok && rows.length) return res.status(500).json({ ok: false, error: `Backup failed, nothing deleted: ${backup.error}` });
     rows.forEach(trashPut);
     vdb.transaction((tx) => { for (const r of rows) tx.run("DELETE FROM items WHERE id = ?", [r.id]); });
+    removeMirrors(root, rows);
     log("delete", { count: rows.length, backup: backup.location ? path.basename(backup.location) : null });
     res.json({ ok: true, deleted: rows.length, backup: backup.location ? path.basename(backup.location) : null });
   });
@@ -404,7 +408,9 @@ export function createApp({
       if (!backup.ok && n > 0) {
         return res.status(500).json({ ok: false, error: `Backup failed, nothing deleted: ${backup.error}` });
       }
+      const doomed = scoped ? vdb.query(`SELECT id, title, created_at FROM items ${clause}`, params) : null;
       vdb.run(`DELETE FROM items ${clause}`, params);
+      if (scoped) removeMirrors(root, doomed); else removeAllMirrors(root); // the readable copies go too
       log("clear", { scoped, source, tagPrefix, deleted: n, backup: backup.location ? path.basename(backup.location) : null });
       res.json({ ok: true, deleted: n, backup: backup.location ? path.basename(backup.location) : null });
     } catch (e) {

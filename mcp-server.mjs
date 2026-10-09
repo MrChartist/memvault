@@ -30,6 +30,7 @@ import { VAULT_ROOT, ensureVaultDir } from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
 import { ingest } from "./ingest.mjs";
 import { redact } from "./redact.mjs";
+import { writeMirror } from "./mirror.mjs";
 import { audit } from "./audit.mjs";
 import {
   getAgent, listAgents, saveAgent, buildBriefing, scopesFor, listInbox, AGENT_ID_RE,
@@ -229,21 +230,15 @@ server.tool(
     );
     const stored = items[0];
 
-    // Flat-file mirror — written from what was STORED, so it can never leak what the DB masked.
-    const day = isoDate();
-    const backupDir = path.join(VAULT_ROOT, type === "diary" ? "entries" : type === "conversation" ? "conversations" : "worklogs", day.slice(0, 4), day.slice(5, 7));
-    ensureDir(backupDir);
-    const safeTitle = String(stored.title).replace(/[^a-z0-9]+/gi, "-").slice(0, 60);
-    const backupFile = path.join(backupDir, `${day}_${safeTitle}.md`);
-    if (scope === "shared") {
-      fs.writeFileSync(backupFile, `# ${stored.title}\n\n${stored.content}\n\n---\nSource: ${stored.source}\nTags: ${stored.tags || ""}\nCreated: ${created_at}\n`, { mode: 0o600 });
-    }
+    // Flat-file copy — written from what was STORED, so it can never hold what the DB masked, and named with the
+    // memory's id so deleting or editing the memory also removes or rewrites it.
+    const backupFile = scope === "shared" ? writeMirror(VAULT_ROOT, { ...stored, id: ids[0], type, created_at }) : null;
     const note = redacted.length ? `\n🔒 Masked before saving: ${redacted.map((r) => `${r.count}× ${r.type}`).join(", ")}` : "";
     const where = scope === "shared" ? "shared vault" : `private to ${AGENT_ID}`;
     return {
       content: [{
         type: "text",
-        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${stored.tags || "none"}${scope === "shared" ? `\n- **Backed up to**: ${backupFile}` : ""}${note}`,
+        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${stored.tags || "none"}${backupFile ? `\n- **Copy saved as**: ${backupFile}` : ""}${note}`,
       }],
     };
   }

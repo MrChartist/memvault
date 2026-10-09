@@ -261,6 +261,29 @@ describe('server — working with one memory at a time', () => {
     expect((await req('GET', `/items/${ids[1]}`)).status).toBe(200);
   });
 
+  it('deleting, bulk deleting, editing and clearing also deal with the readable Markdown copies', async () => {
+    const { writeMirror } = await import('../mirror.mjs');
+    const mk = async (title, content) => {
+      const r = await req('POST', '/add', { body: { type: 'diary', source: 'mcp', title, content, tags: 'x' } });
+      const row = D.openVaultDb({ root: ROOT }).query('SELECT * FROM items WHERE id = ?', [r.json.id])[0];
+      const file = writeMirror(ROOT, row);
+      return { id: r.json.id, file };
+    };
+    const a = await mk('mirror-a', 'AAA-original');
+    const b = await mk('mirror-b', 'BBB-original');
+    const c = await mk('mirror-c', 'CCC-original');
+    await req('PATCH', `/items/${a.id}`, { body: { content: 'AAA-edited' } });
+    expect(fs.readFileSync(a.file, 'utf8')).toContain('AAA-edited');
+    expect(fs.readFileSync(a.file, 'utf8')).not.toContain('AAA-original');
+    await req('DELETE', `/items/${a.id}`);
+    expect(fs.existsSync(a.file)).toBe(false);
+    await req('POST', '/items/delete-many', { body: { ids: [b.id], confirm: 'DELETE 1' } });
+    expect(fs.existsSync(b.file)).toBe(false);
+    expect(fs.existsSync(c.file)).toBe(true);
+    await req('POST', '/clear', { body: { confirm: 'DELETE', source: 'mcp' } }); // a clear by source removes those copies too
+    expect(fs.existsSync(c.file)).toBe(false);
+  });
+
   it('exports everything as JSON without the encrypted secrets', async () => {
     const id = await add({ title: 'export me' });
     const r = await req('GET', '/export');
