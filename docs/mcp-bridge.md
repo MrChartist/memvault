@@ -16,9 +16,9 @@ MemVault ships a catalog of popular, **local, no-API-key** memory servers so
 bridging works out of the box. List them and enable one in a single command:
 
 ```bash
-npx memvault bridge presets        # see the catalog
-npx memvault bridge add memory     # enable the official knowledge-graph memory
-npx memvault bridge sync memory    # pull its memories into your vault
+npx -y @mrchartist/memvault bridge presets        # see the catalog
+npx -y @mrchartist/memvault bridge add memory     # enable the official knowledge-graph memory
+npx -y @mrchartist/memvault bridge sync memory    # pull its memories into your vault
 ```
 
 | Preset | Package | Notes |
@@ -73,13 +73,13 @@ external MCP server to connect to:
 
 ```bash
 # Inspect what each connected server exposes (tools + resources)
-npx memvault bridge list
+npx -y @mrchartist/memvault bridge list
 
 # Pull data from all bridges into the vault
-npx memvault bridge sync
+npx -y @mrchartist/memvault bridge sync
 
 # Pull from just one bridge
-npx memvault bridge sync openmemory
+npx -y @mrchartist/memvault bridge sync openmemory
 
 # Call a specific tool on a bridge ad-hoc
 node mcp-bridge.mjs call openmemory search '{"query":"auth bug"}'

@@ -74,6 +74,14 @@ const TOPIC_PATTERNS = [
  */
 const SHORT_STOP = new Set(["an", "as", "at", "be", "by", "do", "if", "in", "is", "it", "me", "my", "of", "on", "or", "so", "to", "up", "us", "we"]);
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+// Function words of three letters or more. In "what did I decide about the database schema" they would match
+// almost every entry and crowd out the three words that matter.
+const LONG_STOP = new Set((
+  "the and but for nor yet are was were been being does did doing done has had having you your yours his her hers its " +
+  "they them their this that these those what which who whom whose when where why how can could should would will shall " +
+  "may might must not yes than then there here just also any some all more most other such only own same too very about " +
+  "above after again against before below between during from into onto over under until upon with within without"
+).split(/\s+/));
 
 /**
  * The words worth searching for in a question. Two-letter words count ("AI", "Go") except very common ones,
@@ -81,11 +89,15 @@ const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hang
  */
 export function searchWords(text, max = 8) {
   const out = [];
+  const stopped = [];
   for (const w of String(text).toLowerCase().split(/[^\p{L}\p{N}_@:.+#-]+/u)) {
     if (!w) continue;
-    if (w.length > 2 || (w.length === 2 && !SHORT_STOP.has(w)) || CJK.test(w)) out.push(w);
+    if (w.length > 2 || (w.length === 2 && !SHORT_STOP.has(w)) || CJK.test(w)) {
+      (LONG_STOP.has(w) ? stopped : out).push(w);
+    }
   }
-  return [...new Set(out)].slice(0, max);
+  // A question made only of function words ("what is the") still searches for something.
+  return [...new Set(out.length ? out : stopped)].slice(0, max);
 }
 
 export function autoTag(text) {
@@ -330,13 +342,20 @@ export function deduplicateEntries(entries, threshold = 0.6) {
 const seenEntryIds = new Set();
 
 /**
- * Mark entries as seen and filter out already-seen ones
+ * Return up to `limit` entries not yet seen this session, and mark exactly those as seen
+ * (candidates that were not returned stay available for the next call).
  * @param {Object[]} entries - Array with `id` field
- * @returns {Object[]} Only entries not yet seen this session
+ * @param {number} [limit] - Maximum entries to return (default: all unseen)
+ * @returns {Object[]} Entries not yet seen this session
  */
-export function filterUnseen(entries) {
-  const unseen = entries.filter(e => !seenEntryIds.has(e.id));
-  for (const e of unseen) seenEntryIds.add(e.id);
+export function filterUnseen(entries, limit = Infinity) {
+  const unseen = [];
+  for (const e of entries) {
+    if (unseen.length >= limit) break;
+    if (seenEntryIds.has(e.id)) continue;
+    unseen.push(e);
+    seenEntryIds.add(e.id);
+  }
   return unseen;
 }
 

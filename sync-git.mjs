@@ -7,7 +7,7 @@
  * Usage:
  *   node sync-git.mjs                    (sync all configured repos)
  *   node sync-git.mjs --dry-run          (preview, no posts)
- *   node sync-git.mjs --path "D:\AG"     (scan specific directory)
+ *   node sync-git.mjs --path ~/code      (scan specific directory)
  *   node sync-git.mjs --days 30          (last 30 days, default: 14)
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -17,6 +17,7 @@ import path from "path";
 import os from "os";
 import { execSync } from "child_process";
 import { SYNC_CONFIG } from "./config.mjs";
+import { resolveUserPath } from "./paths.mjs";
 import { createIngestQueue } from "./ingest.mjs";
 import { getVaultDb } from "./db.mjs";
 import { readCommits } from "./git-log.mjs";
@@ -41,7 +42,7 @@ const DAYS = daysIdx !== -1 ? Number(args[daysIdx + 1]) || 14 : 14;
 
 // Parse --path "..."
 const pathIdx = args.indexOf("--path");
-const SCAN_ROOT = pathIdx !== -1 ? args[pathIdx + 1] : (process.env.GIT_SCAN_ROOT || (SYNC_CONFIG.gitDirs && SYNC_CONFIG.gitDirs[0]) || os.homedir());
+const SCAN_ROOT = pathIdx !== -1 ? resolveUserPath(args[pathIdx + 1]) : (process.env.GIT_SCAN_ROOT ? resolveUserPath(process.env.GIT_SCAN_ROOT) : (SYNC_CONFIG.gitDirs && SYNC_CONFIG.gitDirs[0]) || os.homedir());
 
 // Max depth to search for .git directories
 const MAX_DEPTH = 3;

@@ -23,6 +23,15 @@ describe('command line', () => {
     for (const c of ['setup', 'open', 'doctor', 'scrub', 'agent', 'audit', 'token', 'mcp-config', 'backup', 'import', 'sync', 'clipboard']) expect(r.stdout).toContain(c);
   });
 
+  it('--version prints the package version, so a bug report can say which one', () => {
+    const want = JSON.parse(fs.readFileSync(path.join(path.dirname(CLI), 'package.json'), 'utf8')).version;
+    for (const flag of ['--version', '-v', 'version']) {
+      const r = run(flag);
+      expect(r.status).toBe(0);
+      expect(r.stdout.trim()).toBe(want);
+    }
+  });
+
   it('an unknown command says so and fails', () => {
     const r = run('nonsense');
     expect(r.status).toBe(1);

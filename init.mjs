@@ -11,6 +11,7 @@ import readline from "readline";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { resolveUserPath } from "./paths.mjs";
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 // Typed live, readline's own prompt works. When input is piped or scripted, lines can arrive before a
@@ -45,8 +46,9 @@ async function main() {
   const defaultVaultData = existing.vaultRoot || path.join(HOME, ".memvault", "data");
 
   // ── 1. Vault location ──────────────────────────────────────────────────────
-  const vaultRoot =
-    (await ask(`1. Where to store your vault data?\n   [default: ${defaultVaultData}]: `)).trim() || defaultVaultData;
+  const vaultRoot = resolveUserPath(
+    (await ask(`1. Where to store your vault data?\n   [default: ${defaultVaultData}]: `)).trim() || defaultVaultData
+  );
 
   // ── 2. Capture engines ─────────────────────────────────────────────────────
   console.log("\n2. Optional automatic capture. Everything here is OFF unless you say yes, and you can change it any time.");
@@ -61,7 +63,7 @@ async function main() {
   let gitDirs = existing.sync?.gitDirs || [HOME];
   if (gitOn) {
     const dirAns = await ask(`\n   Which root folder holds your code projects? (scanned 3 levels deep)\n   [default: ${gitDirs[0]}]: `);
-    if (dirAns.trim()) gitDirs = [dirAns.trim()];
+    if (dirAns.trim()) gitDirs = [resolveUserPath(dirAns.trim())];
   }
 
   // ── 3. AI intelligence (Gemini) ────────────────────────────────────────────
@@ -73,8 +75,9 @@ async function main() {
   const gdriveFolderOn = yes(await ask("   - Mirror to a Google Drive for Desktop folder? (y/n) [n]: "), false);
   let gdriveFolderPath = existing.storage?.gdriveFolder?.path || "";
   if (gdriveFolderOn) {
-    gdriveFolderPath =
-      (await ask(`   Path to your synced Drive folder (e.g. ${path.join(HOME, "Google Drive")}): `)).trim() || gdriveFolderPath;
+    gdriveFolderPath = resolveUserPath(
+      (await ask(`   Path to your synced Drive folder (e.g. ${path.join(HOME, "Google Drive")}): `)).trim() || gdriveFolderPath
+    );
   }
   const gdriveApiOn = yes(await ask("   - Upload backups via the Google Drive API (OAuth)? (y/n) [n]: "), false);
   let gdriveApi = existing.storage?.gdriveApi || {};
@@ -129,7 +132,7 @@ async function main() {
     storage: {
       local: { enabled: true },
       gdriveFolder: { enabled: gdriveFolderOn, path: gdriveFolderPath },
-      gdriveApi: { enabled: gdriveApiOn, ...gdriveApi },
+      gdriveApi: { ...gdriveApi, enabled: gdriveApiOn }, // the answer wins over any previously saved "enabled"
       keepLocalBackups: existing.storage?.keepLocalBackups ?? 20,
     },
     mcpBridges,

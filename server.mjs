@@ -99,6 +99,13 @@ function isoDate() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** multer decodes multipart file names as latin1; recover the UTF-8 original ("résumé 日本語.txt"). */
+export function fixFilenameEncoding(name) {
+  if (/[^\x00-\xFF]/.test(name)) return name; // already real Unicode
+  const decoded = Buffer.from(name, "latin1").toString("utf8");
+  return decoded.includes("\uFFFD") ? name : decoded; // genuine latin1 names stay as they are
+}
+
 function safeSlug(s) {
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 80) || "item";
 }
@@ -370,7 +377,7 @@ export function createApp({
 
   app.post("/upload", upload.single("file"), (req, res) => {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    const original = req.file.originalname || "file";
+    const original = fixFilenameEncoding(req.file.originalname || "file");
     const dayDir = path.join(root, "files", isoDate());
     ensureDir(dayDir);
     // The stored copy is named from the MASKED name, so a secret in a file name never reaches the disk path.
@@ -798,7 +805,7 @@ export function createApp({
 
   // JSON body errors etc. → clean JSON, never a stack trace.
   app.use((err, _req, res, _next) => {
-    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : 500;
+    const status = err.status && err.status >= 400 && err.status < 600 ? err.status : err.name === "MulterError" ? 400 : 500;
     res.status(status).json({ ok: false, error: status === 500 ? "Internal error" : err.message });
   });
 

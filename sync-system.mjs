@@ -112,6 +112,7 @@ let totalSynced = 0;
   const sysOk = await postToVault({
     type: "worklog",
     source: "system",
+    upsert: true, // a snapshot: each run replaces the previous one instead of adding another
     title: `[System] ${sys.os} (${sys.arch})`,
     content: `## System Information\n\n${sysContent}`,
     tags: "system,hardware,environment",
@@ -125,6 +126,7 @@ let totalSynced = 0;
   const diskOk = await postToVault({
     type: "worklog",
     source: "system",
+    upsert: true, // a snapshot: each run replaces the previous one instead of adding another
     title: "[System] Disk Usage Snapshot",
     content: `## Disk Usage\n\n\`\`\`\n${disk}\n\`\`\``,
     tags: "system,disk,storage",
@@ -142,6 +144,7 @@ let totalSynced = 0;
   const toolsOk = await postToVault({
     type: "worklog",
     source: "system",
+    upsert: true, // a snapshot: each run replaces the previous one instead of adding another
     title: "[System] Developer Tools Installed",
     content: `## Developer Tools\n\n${toolsContent}`,
     tags: "system,tools,development",

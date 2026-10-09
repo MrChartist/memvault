@@ -92,7 +92,7 @@ export function createIngestQueue({ batchSize = 200, actor = "sync", ...opts } =
     const batch = buf;
     buf = [];
     const r = ingest(batch, { actor, ...opts });
-    stored += r.ids.length;
+    stored += r.ids.inserted ?? r.ids.length; // repeats of already-stored items are not "new"
     mergeFindings(redacted, r.redacted);
   };
 

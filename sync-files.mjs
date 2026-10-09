@@ -7,7 +7,7 @@
  *
  * Usage:
  *   node sync-files.mjs                       (sync default directories)
- *   node sync-files.mjs --path "D:\Projects"  (scan specific directory)
+ *   node sync-files.mjs --path ~/projects     (scan specific directory)
  *   node sync-files.mjs --hours 24            (last 24 hours, default: 48)
  *   node sync-files.mjs --dry-run             (preview, no posts)
  * ─────────────────────────────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ import path from "path";
 import os from "os";
 
 import { SYNC_CONFIG } from "./config.mjs";
+import { resolveUserPath } from "./paths.mjs";
 import { createIngestQueue } from "./ingest.mjs";
 import { requireEnabled } from "./sync-guard.mjs";
 requireEnabled("filesEnabled", "Saving recently changed file names");
@@ -30,7 +31,7 @@ const hoursIdx = argsArr.indexOf("--hours");
 const HOURS = hoursIdx !== -1 ? Number(argsArr[hoursIdx + 1]) || 48 : 48;
 
 const pathIdx = argsArr.indexOf("--path");
-const CUSTOM_PATH = pathIdx !== -1 ? argsArr[pathIdx + 1] : null;
+const CUSTOM_PATH = pathIdx !== -1 ? resolveUserPath(argsArr[pathIdx + 1]) : null;
 
 const HOME = os.homedir();
 
@@ -206,7 +207,9 @@ const cutoffTime = Date.now() - (HOURS * 60 * 60 * 1000);
     const synced = await postToVault({
       type: "worklog",
       source: "filesystem",
-      title: `[Files] ${projectName} — ${files.length} files modified`,
+      upsert: true, // snapshot of THIS folder: replaces its previous snapshot (file_path tells same-named folders apart)
+      title: `[Files] ${projectName}`,
+      file_path: projectPath,
       content,
       tags: `files,activity,${projectName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
     });
