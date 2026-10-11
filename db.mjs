@@ -77,6 +77,30 @@ const BASE_SCHEMA = `
   );
 `;
 
+// Multi-device sync (device-sync.mjs) has to know when each memory last changed and which ones were deleted.
+// Triggers record both on every write path (the dashboard, the CLI, imports, older versions of MemVault too),
+// so no caller can forget. `updated_at` stays empty until a memory is first changed.
+const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+const CHANGE_TRACKING = `
+  CREATE TABLE IF NOT EXISTS tombstones (
+    kind TEXT NOT NULL,              -- item | agent
+    id TEXT NOT NULL,
+    deleted_at TEXT NOT NULL,
+    PRIMARY KEY (kind, id)
+  );
+  CREATE TRIGGER IF NOT EXISTS mv_items_changed AFTER UPDATE OF type, source, title, content, file_path, tags, agent_id, scope ON items
+    BEGIN UPDATE items SET updated_at = ${NOW_SQL} WHERE id = NEW.id; END;
+  CREATE TRIGGER IF NOT EXISTS mv_items_deleted AFTER DELETE ON items
+    BEGIN INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('item', OLD.id, ${NOW_SQL}); END;
+  CREATE TRIGGER IF NOT EXISTS mv_items_added AFTER INSERT ON items
+    BEGIN DELETE FROM tombstones WHERE kind = 'item' AND id = NEW.id; END;
+  CREATE TRIGGER IF NOT EXISTS mv_agents_deleted AFTER DELETE ON agents
+    BEGIN INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('agent', OLD.id, ${NOW_SQL}); END;
+  CREATE TRIGGER IF NOT EXISTS mv_agents_added AFTER INSERT ON agents
+    BEGIN DELETE FROM tombstones WHERE kind = 'agent' AND id = NEW.id; END;
+`;
+const TRIGGER_NAMES = ["mv_items_changed", "mv_items_deleted", "mv_items_added", "mv_agents_deleted", "mv_agents_added"];
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /** Best-effort POSIX permissions; harmless no-op on Windows. */
@@ -121,6 +145,8 @@ export function migrate(db) {
   }
   db.run("CREATE INDEX IF NOT EXISTS idx_items_scope ON items(scope)");
   db.run("CREATE INDEX IF NOT EXISTS idx_items_agent ON items(agent_id)");
+  if (!cols.includes("updated_at")) db.run("ALTER TABLE items ADD COLUMN updated_at TEXT");
+  db.run(CHANGE_TRACKING);
 
   db.run("INSERT OR IGNORE INTO meta (key,value) VALUES ('vault_id', ?)", [crypto.randomUUID()]);
   db.run("INSERT OR REPLACE INTO meta (key,value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
@@ -212,6 +238,10 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
 
   /** Remove everything this agent is not allowed to see from an in-memory copy. */
   const applyScope = (db) => {
+    // This copy is only ever read, never saved: the change triggers would just fill it with deletion records,
+    // and which ids were deleted is not the agent's business either.
+    for (const t of TRIGGER_NAMES) db.run(`DROP TRIGGER IF EXISTS ${t}`);
+    db.run("DELETE FROM tombstones");
     const visible = rows(db, "SELECT DISTINCT scope FROM items")
       .map((r) => r.scope)
       .filter(scopeMatches);

@@ -27,6 +27,9 @@ import { listLocalBackups, backupLocal, backupVault, enabledBackends, resolvePas
 import { spawn } from "child_process";
 import { collectDiagnostics } from "./diagnostics.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
+import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
+import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
+import { resolveUserPath } from "./paths.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
@@ -172,6 +175,20 @@ export function createApp({
   // 2. Public, data-free: the web UI shell and a minimal health probe.
   app.use(express.static(path.join(__dirname, "public")));
   app.get("/health", (_req, res) => res.json({ ok: true, name: "memvault", version: PKG_VERSION }));
+
+  // A phone or tablet trades a one-time pairing code (made by the owner) for a key of its own. No key is
+  // needed for this one route, so wrong guesses are limited: with codes of 8 characters from 32 that expire
+  // after 10 minutes, a few tries a minute can never find one.
+  const pairLimiter = createLimiter({ max: 5, windowMs: 60_000, lockMs: 60_000 });
+  app.post("/pair", express.json({ limit: "2kb" }), (req, res) => {
+    const gate = pairLimiter.check("pair");
+    if (!gate.allowed) return res.status(429).json({ ok: false, error: `Too many wrong codes. Try again in ${gate.retryAfterSec} seconds.` });
+    const got = redeemPairingCode(String(req.body?.code || ""), { name: typeof req.body?.name === "string" ? req.body.name : undefined });
+    if (!got) { pairLimiter.fail("pair"); return res.status(401).json({ ok: false, error: "That code is wrong or has expired. Make a new one on the computer." }); }
+    pairLimiter.success("pair");
+    log("device-paired", { device: got.id, name: got.name });
+    res.json({ ok: true, key: got.key, id: got.id, name: got.name });
+  });
 
   // 3. Everything below needs the API token.
   app.use(requireToken);
@@ -729,6 +746,71 @@ export function createApp({
     res.json({ ok: true });
   });
 
+  // ── other computers and phones (device-sync.mjs, device-keys.mjs) ─────────
+
+  const devicesDir = path.dirname(TOKEN_FILE);
+  const devSettings = () => deviceSettings(config.load(), { dir: devicesDir });
+  const DevicesSchema = z.object({
+    enabled: z.boolean().optional(),
+    folder: z.string().max(1000).optional(),
+    name: z.string().max(60).optional(),
+  }).strict();
+
+  app.get("/devices", (_req, res) => {
+    res.json({
+      ok: true,
+      ...deviceStatus({ vdb, settings: devSettings(), dir: devicesDir }),
+      phones: listDeviceKeys(),
+      addresses: (security.allowedOrigins || []).filter((o) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$)/.test(o)),
+    });
+  });
+
+  app.put("/devices", (req, res) => {
+    const parsed = DevicesSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Only the shared folder, the on/off switch and this computer's name can be changed here." });
+    const { enabled, folder, name } = parsed.data;
+    const change = {};
+    if (folder !== undefined) {
+      const f = folder.trim() ? resolveUserPath(folder.trim()) : "";
+      if (f && !fs.existsSync(f)) return res.status(400).json({ ok: false, error: `The folder ${f} does not exist. Create it (or start your sync app) first.` });
+      change.folder = f;
+    }
+    if (enabled !== undefined) change.enabled = enabled;
+    try {
+      if (Object.keys(change).length) updateDeviceSettings(change, { load: () => config.load({ forUpdate: true }), save: config.save });
+      if (name !== undefined) renameDevice(name, { dir: devicesDir });
+    } catch (e) { return res.status(400).json({ ok: false, error: e.message }); }
+    log("devices", { changed: [...Object.keys(change), ...(name !== undefined ? ["name"] : [])] });
+    res.json({ ok: true });
+  });
+
+  app.put("/devices/passphrase", (req, res) => {
+    const parsed = PassphraseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
+    if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
+    try { saveSyncPassphrase(parsed.data.passphrase, devSettings()); } catch (e) { return res.status(400).json({ ok: false, error: e.message }); }
+    log("devices", { changed: ["sync-passphrase"] });
+    res.json({ ok: true });
+  });
+
+  app.post("/devices/sync", (_req, res) => {
+    const r = syncDevices({ vdb, settings: devSettings(), dir: devicesDir, security, backup: backupLocal, force: true });
+    res.json({ ok: r.ok, added: r.added, changed: r.changed, deleted: r.deleted, agents: r.agents, backup: r.backup || null, problems: r.problems });
+  });
+
+  app.post("/devices/pair-code", (req, res) => {
+    const name = typeof req.body?.name === "string" ? req.body.name : "Phone";
+    const { code, expiresAt } = createPairingCode({ name });
+    log("devices", { changed: ["pairing-code"] });
+    res.json({ ok: true, code, expiresAt });
+  });
+
+  app.delete("/devices/phones/:id", (req, res) => {
+    if (!forgetDeviceKey(req.params.id)) return res.status(404).json({ ok: false, error: "Not found" });
+    log("device-forgotten", { device: req.params.id });
+    res.json({ ok: true });
+  });
+
   // One round of every switched-on capture engine (the clipboard watcher runs separately, by design).
   app.post("/sync/run", async (_req, res) => {
     const uc = config.load();
@@ -813,7 +895,30 @@ export function createApp({
     res.status(status).json({ ok: false, error: status === 500 ? "Internal error" : err.message });
   });
 
+  app.locals.vdb = vdb;
+  app.locals.security = security;
   return app;
+}
+
+/**
+ * While the dashboard server runs, it keeps this computer in step with the others: a check every minute,
+ * a sync when one is due (every few minutes; the setting is devices.intervalMinutes). AI apps do the same
+ * in the background, and a lock makes sure only one of them syncs at a time.
+ */
+function startDeviceSync(app) {
+  const tick = () => {
+    try {
+      const settings = deviceSettings();
+      if (!syncDue(settings)) return;
+      const r = syncDevices({ vdb: app.locals.vdb, settings, security: app.locals.security, backup: backupLocal });
+      if (r.added || r.changed || r.deleted) console.log(`Devices: +${r.added} added, ${r.changed} changed, ${r.deleted} deleted`);
+      for (const p of r.problems) console.warn(`Devices: ${p}`);
+    } catch (e) {
+      console.warn(`Devices: ${e.message}`);
+    }
+  };
+  setTimeout(tick, 15_000).unref();
+  setInterval(tick, 60_000).unref();
 }
 
 /** Start listening. Refuses a non-loopback bind unless explicitly allowed. */
@@ -842,6 +947,7 @@ export function start({ app = createApp(), port = PORT, host = SECURITY_CONFIG.h
     console.log(`VAULT_ROOT=${VAULT_ROOT}`);
     console.log(`Run \`memvault open\` to open the dashboard (it passes your API token for you).`);
     if (!isLoopbackHost(host)) console.warn(`⚠️  Listening on ${host} (allowRemote). Keep your API token private.`);
+    startDeviceSync(app);
   });
 }
 

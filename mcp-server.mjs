@@ -17,6 +17,7 @@
 
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -1416,3 +1417,22 @@ process.stderr.write(`[MemVault MCP] Server started — stdio transport — ${pr
 process.stderr.write(`[MemVault MCP] VAULT_ROOT=${VAULT_ROOT}\n`);
 process.stderr.write(`[MemVault MCP] DB_PATH=${DB_PATH}\n`);
 
+
+// Keep this computer in step with your other computers (device-sync.mjs) while the AI app is open. The sync
+// itself runs as a separate, short-lived process with owner access, so this process (which may be bound to
+// one agent and see only its share) never holds the whole vault. A lock lets only one sync run at a time.
+{
+  const { deviceSettings, syncDue } = await import("./device-sync.mjs");
+  const { spawn } = await import("child_process");
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "device-sync.mjs");
+  const tick = () => {
+    try {
+      if (!syncDue(deviceSettings())) return;
+      const env = { ...process.env };
+      delete env.MEMVAULT_AGENT;
+      spawn(process.execPath, [script, "sync", "--if-due", "--quiet"], { stdio: "ignore", env }).unref();
+    } catch { /* a sync problem must never disturb the AI app; `memvault devices` shows it */ }
+  };
+  setTimeout(tick, 20_000).unref();
+  setInterval(tick, 60_000).unref();
+}

@@ -37,6 +37,7 @@ const commands = {
   bridge:  { script: "mcp-bridge.mjs", desc: "Connect other AI MCP servers (list|presets|add|sync|call)" },
   vault:   { script: "vault.mjs",      desc: "Add a note from the command line (diary | convo | worklog)" },
   clipboard: { script: "sync-clipboard.mjs", desc: "Watch what you copy and save it (off until switched on; passwords are hidden)" },
+  devices: { script: "device-sync.mjs", desc: "One memory on all your computers, and your phone (setup | sync | pair | …)" },
 };
 
 function showHelp(exitCode = 0) {
@@ -68,6 +69,8 @@ More:
   memvault bridge list                      # Inspect connected AI MCP servers
   memvault bridge sync                      # Pull other AI memories into the vault
   memvault clipboard                        # Save what you copy (switch it on in Settings first)
+  memvault devices setup --folder ~/Sync    # Share one memory with your other computers
+  memvault devices pair --name "iPhone"     # A one-time code to open the dashboard on a phone
 `);
   process.exit(exitCode);
 }
