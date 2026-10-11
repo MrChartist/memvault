@@ -11,18 +11,21 @@ The order is a decision, not a wish list. Items are in the order they should be 
 These are blockers. The verdict in [docs/review/REVIEW.md](docs/review/REVIEW.md) depends on them.
 
 ### N1. Run it on Windows and macOS, and make CI green there
-- **Problem.** Every test and every manual check so far ran on Linux. Windows and macOS paths (file locking, file permissions, browser-history folders, `memvault open`, launchers) have never run. CI jobs for both now exist but are not blocking, and have never run.
+- **Status on 2026-10-11.** Most of the CI part is done. The Windows and macOS jobs (unit tests, install check and browser tests) are blocking and green on `main`, next to Linux on Node 20, 22 and 24. Windows and macOS run Node 22 only. **Still open:** nobody has used MemVault on a real Windows or macOS computer by hand; Node 20 and 24 are not run on Windows or macOS.
+- **Problem.** Every manual check so far ran on Linux. On Windows and macOS only the automated tests have run, so paths a person uses (file locking under real use, browser-history folders, `memvault open`, launchers, connecting a real AI app) have not been tried by hand.
 - **Who benefits.** Most non-technical users are on Windows or macOS.
-- **Approach.** Push the branch, read the first Windows and macOS results, fix what fails, then make those jobs blocking. Then do a clean-machine install by hand on one real Windows and one real macOS computer.
+- **Approach.** Do a clean-machine install by hand on one real Windows and one real macOS computer, and fix what fails.
 - **Effort.** S to M (depends on what fails). **Risk.** Medium: file locking and renaming behave differently on Windows, and the retry added in this review is only tested with simulated errors.
 - **Success.** All CI jobs green on 3 systems × Node 20/22/24; a person who has never seen MemVault gets from nothing to "Claude remembers my preference" on Windows without help.
 
 ### N2. Release process, provenance and a way back
-- **Problem.** Nothing is published. There is no recorded release or rollback procedure.
-- **Approach.** Write `docs/release.md` (done in this review as a draft); publish from CI with `npm publish --provenance`; attach a software bill of materials; tag the release; keep the previous version installable. If a release is bad: `npm deprecate` the version at once and publish a fixed patch; `npm unpublish` is only possible for a short time after release and should not be relied on.
-- **Effort.** S. **Risk.** Low. **Success.** `npx @mrchartist/memvault setup` works on a computer that has never had MemVault; the package page shows a provenance badge; a rollback was practised once on a test version.
+- **Status on 2026-10-11.** `docs/release.md` and `.github/workflows/release.yml` exist (a pushed `v*` tag runs the tests and the audit, checks the version and publishes with provenance). **Still open:** add the `NPM_TOKEN` repository secret, do the first publish (the package is not on npm yet), and add a software bill of materials.
+- **Problem.** Nothing is published.
+- **Approach.** Publish from CI with `npm publish --provenance`; attach a software bill of materials; tag the release; keep the previous version installable. If a release is bad: `npm deprecate` the version at once and publish a fixed patch; `npm unpublish` is only possible for a short time after release and should not be relied on.
+- **Effort.** S. **Risk.** Low. **Success.** `npm install -g @mrchartist/memvault` and `npx -y @mrchartist/memvault setup` both work on a computer that has never had MemVault; the package page shows a provenance badge; a rollback was practised once on a test version.
 
 ### N3. A working private security contact
+- **Status on 2026-10-11.** GitHub private vulnerability reporting was verified **off** (GitHub API). Until it is on, SECURITY.md asks people to open an issue titled "Security contact needed" with no details. No fallback email address exists in the files.
 - **Problem.** SECURITY.md points to GitHub private vulnerability reporting, which the owner must switch on.
 - **Approach.** Switch it on, send a test report to yourself, add a fallback email if the owner wants one.
 - **Effort.** S. **Success.** A test report arrives privately.
@@ -128,7 +131,8 @@ These are blockers. The verdict in [docs/review/REVIEW.md](docs/review/REVIEW.md
 - **Effort.** M. **Success.** The top five support questions are answered by a page.
 
 ### L8. Community and governance
-- **Approach.** CONTRIBUTING and a code of conduct, issue templates (including a "this does not work for me" accessibility template), a stated policy on response times, and a second maintainer with access to releases.
+- **Status on 2026-10-11.** `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, bug and feature issue templates and a pull request template exist. **Still open:** an accessibility ("this does not work for me") issue template, a stated policy on response times, and a second maintainer.
+- **Approach.** An accessibility issue template, a stated policy on response times, and a second maintainer with access to releases.
 - **Effort.** S, ongoing. **Success.** Someone other than the owner has shipped a fix.
 
 ---
@@ -141,7 +145,7 @@ These are blockers. The verdict in [docs/review/REVIEW.md](docs/review/REVIEW.md
 | A hosted MemVault, accounts or sign-in | It would break the central promise: your notes stay on your computer. |
 | Any telemetry or analytics, even optional | Trust is the product. Learn from issues and interviews instead. |
 | Logging every prompt by default | Private prompts would land in shared memory. It is now opt-in and says so. |
-| Rewriting the dashboard in a framework | No evidence it is needed. The plain HTML needs no build step, keeps the strict content policy simple, and is passing 108 browser checks. Revisit only if the interface grows past what one person can keep consistent. |
+| Rewriting the dashboard in a framework | No evidence it is needed. The plain HTML needs no build step, keeps the strict content policy simple, and passes its browser checks. Revisit only if the interface grows past what one person can keep consistent. |
 | A mobile app | Different security model and a large cost; the dashboard already works on a phone screen. |
 | Sandboxing bridge programs | Too large for now. X9 reduces the risk; the docs say a bridge runs as you. |
 | Claiming "100% safe" | Not true of any software. The documents say what is and is not protected. |

@@ -9,20 +9,21 @@ MemVault keeps your memory on your own computer, so removing the program does **
 
 ## 2. Disconnect your AI apps
 
-Open each AI app's settings for tools (MCP servers) and remove the entry called `memvault` or `memvault-<agent name>`. Then restart the app. Common places are listed in the dashboard under **Connect an AI app**.
+Open each AI app's settings for tools (MCP servers) and remove the entry called `memvault`, or `memvault-` followed by an agent's id (for example `memvault-study-buddy`). Then restart the app. Common places are listed in the dashboard under **Connect an AI app**.
 
 ## 3. Stop anything that starts MemVault by itself
 
 Only if you set these up yourself:
 
-- Windows: delete the shortcut or script in your Startup folder, and the scheduled task `MemVault-Periodic-Sync` (Task Scheduler), and the folder `%LOCALAPPDATA%\MemVault`, if they exist.
-- Linux: stop and remove the service you created from `examples/memvault.service`.
+- Windows: if you used `setup-windows.mjs`, run `node setup-windows.mjs --remove` from the MemVault folder. It removes the start-up item (`MemVault-Autostart.vbs` in your Startup folder), the scheduled task `MemVault-Periodic-Sync` and the script it ran. You can then delete the empty folder `%LOCALAPPDATA%\MemVault`. If you made your own start-up items (for example from `examples/wsl2`), delete those by hand.
+- Linux: stop and remove the service you created from `examples/memvault.service` (and the sync timer, if you added one from [autostart.md](autostart.md)).
+- macOS: unload and delete the launchd file you added from [autostart.md](autostart.md) (`launchctl unload ~/Library/LaunchAgents/com.memvault.sync.plist`).
 
 ## 4. Remove the program
 
 | How you installed it | Command |
 |---|---|
-| `npx` (no install) | Nothing to remove. `npm cache clean --force` clears the downloaded copy. |
+| `npx -y @mrchartist/memvault …` | npx keeps an unpacked copy in its own folder. By default that is `~/.npm/_npx` on macOS and Linux and `%LocalAppData%\npm-cache\_npx` on Windows (`npm config get cache` shows the folder that holds `_npx`). Removing that folder removes the downloaded copy (and any other packages npx downloaded; they are fetched again when needed). `npm cache clean --force` does **not** remove it: it only clears npm's download cache. |
 | `npm install -g @mrchartist/memvault` | `npm uninstall -g @mrchartist/memvault` |
 | From the source code | Delete the folder you cloned. |
 

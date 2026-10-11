@@ -1,5 +1,58 @@
 # Changelog
 
+## Unreleased
+
+Fixes found by installing the packed package and by testing each part again, plus documentation checked line by line against the code. Nothing here is on npm yet.
+
+**Security and privacy**
+- A key or password that crossed the 80-character cut of a title was stored half-masked: its first part stayed in the title, and search returned it. This affected `vault_remember`, `vault_capture_prompt`, `vault_log_conversation`, git capture, the Gemini and Perplexity importers and Antigravity capture. Secrets are now masked first, and the title is shortened after that.
+- Taking access away now works at once. An AI app tied to an agent checks the agent's profile again on every request. If you delete the agent, or change what it may read, write or use, the request is refused and that connection ends. Restart the app to connect with the new access. (Before, it kept the old access until the app was restarted.)
+- `agent_define` with only a name used to replace an existing agent of that name with default settings (all tools, no read limits). It now updates that agent and keeps its permissions, and anything the AI leaves out stays as it was.
+- Gemini features are off until you set `"ai": { "enabled": true }` in `~/.memvaultrc.json`. A `GEMINI_API_KEY` that happens to be set for another program no longer sends your notes to Google. The key can still come from the settings file or from `GEMINI_API_KEY`.
+- `memvault open` only hands the dashboard key to a server that answers as MemVault, refuses to start when another program uses the port, and removes its short-lived key page when no browser could be opened.
+- An agent is no longer shown the full path of the vault folder when it saves a note with `vault_add`.
+
+**Data safety**
+- A reload of the vault that failed (file busy, out of memory, a file from a newer MemVault) no longer leaves MemVault holding a closed database.
+- A save that fails (for example, a full disk) is now dropped, instead of showing up anyway and being saved by the next write.
+- A settings file with a mistake in it still loads as the defaults, but the dashboard's Settings, the backup passphrase and `memvault bridge add` now refuse to save and name the file, instead of writing an empty file over yours. Settings are saved in one step (a temporary file, then a rename).
+- Short "file busy" moments on Windows no longer cut a normal wait for the lock short.
+- A half-written last line in the access log (after a crash) is cut off before the next record, and `memvault audit --verify` calls it an interrupted write, not tampering. A damaged line in the middle still fails the check.
+- Git capture saved the same commits again on every run and after every branch switch. Each commit is now stored with its hash and saved once. Every folder in `gitDirs` is scanned (before, only the first), and a repository found twice is read once.
+- `memvault vault diary` also wrote the note into a daily file that deleting or editing could not find, so a deleted note's words stayed on disk. The copy is now named with the memory's id like every other copy, so it goes when the note goes.
+- The daily digest and the daily brief use your local day, not the UTC date.
+- An owner connection that tries to acknowledge an agent's handoff is told it cannot, instead of being told it did.
+- Tools that take a limit refuse a fraction (such as 2.5) with a clear message instead of failing.
+
+**First run**
+- `memvault init`: pressing Enter at a capture question keeps it off. Git and VS Code used to default to "yes", although the wizard says everything is off unless you say yes. A second run keeps what was already on, and keeps storage settings it does not ask about, such as the backup passphrase file.
+- `memvault <command> --help` explains the command instead of running it.
+- `mcp-config`: a copy started by `npx` now points your AI app at `npx -y @mrchartist/memvault mcp` (on Windows `cmd /c npx …`) instead of npm's cache folder, which npm may clear at any time. A normal install points at the `node` found on your PATH (so a Homebrew upgrade of Node does not break it) and at the installed `mcp-server.mjs`. `--agent` with no name and `--all-agents` with no agents explain themselves, and the tip names an agent that setup really installs (`study-buddy`). A hint for Claude Code is listed.
+- A copy started by `npx` shows `npx -y @mrchartist/memvault …` in its messages, because npx adds no `memvault` command. Other messages name `memvault …` commands instead of internal scripts, and link to the docs on GitHub.
+- `memvault backup list`, `memvault backup restore <name>` and `memvault backup restore-encrypted <file>` work for every install, with plain usage messages. `restore-encrypted` takes the passphrase from Settings or `MEMVAULT_BACKUP_PASSPHRASE`. A restore says where your previous vault was kept (a `pre-restore-…` file in the backups folder). A mistyped backup command is refused.
+- Plain messages instead of error dumps for a missing or broken agent file and for a backup that does not exist. `memvault import` of a folder that does not exist now fails (exit code 1).
+- Stopping `memvault serve` (Ctrl+C, `kill`, a service manager) also stops the server it started.
+- The bridge client reports MemVault's real version to the servers it connects to.
+
+**Website**
+- A first draft of a product page in `site/`: one self-contained HTML page with the official logo, fonts and screenshots, loading nothing from other websites. `.github/workflows/pages.yml` publishes it to GitHub Pages once the owner switches Pages on. It is not part of the npm package. `npm run screenshots` retakes the README and site screenshots from a throwaway vault.
+
+**Documentation**
+- The README says plainly that MemVault is **not on npm yet**, and shows the install from the source code as the way to start today. After the first release: `npm install -g @mrchartist/memvault` (recommended) or `npx -y @mrchartist/memvault …` for every command. The same fix is in `docs/mcp-bridge.md`, `docs/google-drive.md`, `docs/release.md` and the bug report form.
+- GitHub's private vulnerability reporting is switched off (checked on 2026-10-11). SECURITY.md and the issue forms keep it as the intended route and give an interim one: open an issue titled "Security contact needed" with no details, and the owner replies with a private way to send them.
+- The README tools table gives `vault_secret_list` its own row (offered to an agent only with `memory.allowSecrets: true`), lists `agent_define` as owner-only, and lists `vault_weekly_digest` with the Gemini tools it depends on. It explains that Gemini needs `"enabled": true`, that revoking an agent ends its connection, that Antigravity capture exists (switched on only in the settings file), how to back up and restore with `memvault backup …`, and what the WSL2 scripts do.
+- SECURITY.md: CI passes on Windows and macOS but nobody has used them by hand; an agent writes to `shared`, its own space and any spaces its profile lists as writable.
+- `docs/agents.md`: the button is **Copy instructions**; the warning badge and when it appears; `agent_define` only on an app connected without an agent, and it keeps an existing agent's permissions. `docs/uninstall.md`: entry names use the agent's id, where npx keeps its copy (`npm cache clean` does not remove it), and `node setup-windows.mjs --remove`. `docs/google-drive.md`: `memvault backup …` commands and the Settings passphrase.
+- The npm package ships only the user guides from `docs/`, not the launch copy or the release checklist.
+- ROADMAP and `docs/review/REVIEW.md` have dated status notes (2026-10-11).
+
+**Upgrade notes**
+- **Gemini users:** add `"enabled": true` to the `"ai"` block of `~/.memvaultrc.json`, or the Gemini tools only answer that AI is off. (If you typed your key into `memvault init`, it is already set.)
+- **Git capture:** commits saved from now on no longer show the branch and the folder in their text (the branch is still in the tags). Commits saved before keep their text and are not saved a second time.
+- **Agents:** after you change an agent's access, restart each AI app tied to that agent.
+- **Older diary notes:** notes added with `memvault vault diary` before this change are also in a daily file (`entries/<year>/<month>/<date>.md` in the vault folder) that deleting the note does not remove. Delete those files by hand if you need to.
+- **Older titles:** a note saved earlier through an AI app may hold the first part of a key in its title. `memvault scrub` may not recognise a part of a key, so look for such notes yourself if you pasted keys into an AI app.
+
 ## 3.0.0
 
 ### Fixed or changed after the independent launch review (before release)
@@ -71,7 +124,7 @@ A safety, efficiency and accessibility release, and the introduction of agents.
 - **Cloud backups are refused without a passphrase.** Drive folder mirror now writes one encrypted file and no longer includes your local path in its manifest.
 - `POST /clear` needs an explicit confirmation phrase and takes a backup first.
 - Automatic capture is **off by default** and the browser scan works on Windows, macOS and Linux (not only WSL). Config files written by older versions keep working.
-- Sync engines, importers, the CLI and bridges write directly to the vault in one batched step: no server needed, and 200 imports take 0.13 s instead of 17 s.
+- Sync engines, importers, the CLI and bridges write directly to the vault in one batched step: no server needed, and 200 imports take well under a second instead of about 17 s.
 - Reads right after a write are about 50× faster; the database is no longer re-parsed on every write by a single writer.
 - Starter agents default to a general-purpose pack; project detection is user-configured (`projects`) instead of built in. Tag rules no longer treat everyday words ("rest", "go", "session") as code topics, and cover study, writing, planning, travel and food.
 - Dates and times use your own locale.

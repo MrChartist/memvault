@@ -3,7 +3,8 @@
 MemVault works in **both directions**:
 
 1. **Inbound** — MemVault is an MCP *server*, so Claude, Cursor, VS Code, and
-   Antigravity can read your vault. (See the main README → *MCP Integration*.)
+   Antigravity can read your vault. (See [Get started](../README.md#get-started)
+   in the main README.)
 2. **Outbound** — MemVault is also an MCP *client* (a "bridge"). It dials into
    **other** AI tools' MCP servers, pulls their context, and stores it in your
    vault. The result: every AI you use shares one brain.
@@ -16,10 +17,15 @@ MemVault ships a catalog of popular, **local, no-API-key** memory servers so
 bridging works out of the box. List them and enable one in a single command:
 
 ```bash
-npx -y @mrchartist/memvault bridge presets        # see the catalog
-npx -y @mrchartist/memvault bridge add memory     # enable the official knowledge-graph memory
-npx -y @mrchartist/memvault bridge sync memory    # pull its memories into your vault
+memvault bridge presets        # see the catalog
+memvault bridge add memory     # enable the official knowledge-graph memory
+memvault bridge sync memory    # pull its memories into your vault
 ```
+
+MemVault is not on npm yet, so there is no `memvault` command until you install it
+that way. From the source code, type `node cli.mjs` instead of `memvault` (for
+example `node cli.mjs bridge presets`). After the first npm release, a copy run
+with npx is started as `npx -y @mrchartist/memvault bridge presets`.
 
 | Preset | Package | Notes |
 |--------|---------|-------|
@@ -73,16 +79,16 @@ external MCP server to connect to:
 
 ```bash
 # Inspect what each connected server exposes (tools + resources)
-npx -y @mrchartist/memvault bridge list
+memvault bridge list
 
 # Pull data from all bridges into the vault
-npx -y @mrchartist/memvault bridge sync
+memvault bridge sync
 
 # Pull from just one bridge
-npx -y @mrchartist/memvault bridge sync openmemory
+memvault bridge sync openmemory
 
 # Call a specific tool on a bridge ad-hoc
-node mcp-bridge.mjs call openmemory search '{"query":"auth bug"}'
+memvault bridge call openmemory search '{"query":"auth bug"}'
 ```
 
 From an AI client, the same is available as MCP tools:

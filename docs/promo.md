@@ -6,11 +6,11 @@
 
 | Check | Status |
 |---|---|
-| The package is published to npm, and `npx @mrchartist/memvault setup` works on a computer that has never had MemVault (try it on Windows, macOS and Linux) | **Not done.** Nothing has been published. |
+| The package is published to npm, and both `npm install -g @mrchartist/memvault` + `memvault setup` and `npx -y @mrchartist/memvault setup` work on a computer that has never had MemVault (try it on Windows, macOS and Linux) | **Not done.** Nothing has been published (`npm view @mrchartist/memvault` answered "404 Not Found" on 2026-10-11). |
 | The MCP registry entry (`server.json`) is published and a registry install starts the server | **Not done.** The entry now validates against the published schema; publishing has not been tried. |
-| Private vulnerability reporting is switched on for the repository | **Needs verification** by the owner. |
+| Private vulnerability reporting is switched on for the repository | **Not done.** Verified **off** on 2026-10-11 (GitHub API). The owner must switch it on (in the repository's Settings, security section). Until then SECURITY.md asks people to open an issue titled "Security contact needed" with no details. |
 | A short demo (screen recording) exists | **Not found in files.** No demo asset exists yet. Record it from a clean install. |
-| The CI jobs for Windows and macOS are green, or the post says plainly that they are untried | **Done in CI.** Tests and the install check pass. No person has tried them by hand yet, so keep saying so. |
+| The CI jobs for Windows and macOS are green, or the post says plainly that they are untried | **Done in CI.** On `main` (commit `5a708ee`) the unit tests, the install check and the browser tests pass on Linux, Windows and macOS. No person has tried Windows or macOS by hand yet, so keep saying so. |
 | Every number in the post is one you measured | See "Numbers you may use" below. |
 
 ## What to say, in one paragraph
@@ -33,7 +33,7 @@ MemVault is a notebook on your own computer that your AI apps (Claude, Cursor, A
 | Tools offered to an AI | 29 for you, 23 for an agent with default settings |
 | Space those tool descriptions use in each chat | about 4,400 tokens (an estimate: characters ÷ 4) |
 | Writes lost when 8 programs save at once | 0 of 7,200 (three runs) |
-| Time to import 200 conversations | about 0.06 seconds in one batch |
+| Time to import 200 conversations | well under a second in one batch (earlier docs gave 0.06 s and 0.13 s, and it is not recorded which was measured last; re-measure before you quote an exact number) |
 | Notes before saving becomes noticeably slow | around 10,000 feels instant; 100,000 takes 0.7 to 1.9 seconds per save |
 | Tests | see the latest CI run; do not quote a number from this file |
 
@@ -53,10 +53,10 @@ There is a dashboard to write, search, correct, pin and delete notes (with Undo)
 
 **Post 5**
 Free and open source (MIT). It needs Node.js today and was built on Linux; Windows and macOS pass the automated tests but nobody has used them by hand, so tell me what breaks.
-`npx @mrchartist/memvault setup`
+`npm install -g @mrchartist/memvault` then `memvault setup` (or `npx -y @mrchartist/memvault setup`)
 https://github.com/MrChartist/memvault
 
-*(Post only after the package is published and the command above works.)*
+*(Post only after the package is published and the commands above work.)*
 
 ## 2. Reddit (r/selfhosted, r/ClaudeAI, r/LocalLLaMA)
 
@@ -72,7 +72,7 @@ I use more than one AI app and was tired of explaining the same things to each. 
 - Importers for ChatGPT, Claude, Gemini (Google Takeout) and Perplexity exports. Export formats change, so tell me if a file does not import.
 - Optional capture (git commits, VS Code projects, file names, browser page titles, clipboard) is all off by default.
 
-Limits, so you do not find them the hard way: it needs Node 20+ and a terminal, it is only tested on Linux, the dashboard is English only, search is by word not meaning, and it slows down past a few tens of thousands of notes. What an AI reads from your notes goes to that AI's company; see SECURITY.md.
+Limits, so you do not find them the hard way: it needs Node 20+ and a terminal, it was built on Linux (the automated tests pass on Windows and macOS too, but nobody has used it there by hand yet), the dashboard is English only, search is by word not meaning, and it slows down past a few tens of thousands of notes. What an AI reads from your notes goes to that AI's company; see SECURITY.md.
 
 Repo: https://github.com/MrChartist/memvault
 
@@ -86,6 +86,6 @@ MemVault is a local-first memory for AI assistants. Your AI apps connect to it o
 
 Design points I would like feedback on: agent isolation is enforced by giving a bound process a filtered copy of the database rather than trusting each query; every write goes through one function that masks secrets and writes a hash-chained audit record; cloud backups are encrypted or refused; the server listens on loopback only and needs a key on every data route.
 
-What it does not do: it cannot stop an AI you allowed from sending what it read to its provider; masking is regexes; it uses sql.js, so every save rewrites the file and it gets slow past tens of thousands of notes (a native SQLite engine is the first roadmap item); and it has only been run on Linux.
+What it does not do: it cannot stop an AI you allowed from sending what it read to its provider; masking is regexes; it uses sql.js, so every save rewrites the file and it gets slow past tens of thousands of notes (a native SQLite engine is the first item under "Next" on the roadmap); and only Linux has been used by hand (CI passes on Windows and macOS).
 
 https://github.com/MrChartist/memvault

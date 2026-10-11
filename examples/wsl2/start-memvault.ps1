@@ -1,5 +1,6 @@
 # Start MemVault inside WSL2 from Windows.
 # Edit the two variables below, then run:  powershell -ExecutionPolicy Bypass -File start-memvault.ps1
+# What this does and when to use it: the "WSL2" section of the README, https://github.com/MrChartist/memvault#wsl2
 $distro  = "Ubuntu"                      # `wsl -l -v` shows your distro name
 $repoDir = "/home/you/memvault"          # folder inside WSL that contains server.mjs
 

@@ -2,4 +2,7 @@ blank_issues_enabled: true
 contact_links:
   - name: Report a security vulnerability (private)
     url: https://github.com/MrChartist/memvault/security/advisories/new
-    about: Please report vulnerabilities privately instead of opening a public issue.
+    about: The intended private route. It is switched off for now. Until it works, open an issue titled "Security contact needed" with no details, and the owner will reply with a private way to send them.
+  - name: How to report a security problem
+    url: https://github.com/MrChartist/memvault/blob/main/SECURITY.md#reporting-a-problem
+    about: Never put the details of a security problem in a public issue.
