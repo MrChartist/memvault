@@ -19,6 +19,12 @@ One-time setup by the repository owner: **Settings → Pages → Build and deplo
 
 After that, `.github/workflows/pages.yml` publishes `site/` to `https://mrchartist.github.io/memvault/` whenever `site/` changes on `main`. You can also run it by hand from the **Actions** tab. Until Pages is switched on, that workflow fails with "Get Pages site failed".
 
+## Vercel
+
+The repository is also connected to a Vercel project. To make Vercel publish the product page, open the project in Vercel, find its build settings (under **Settings**), and set **Framework Preset** to **Other** and **Output Directory** to `site`. Leave the build command empty. Without that, Vercel guesses what to publish from the repository. The dashboard in `public/` only works with MemVault running on your own computer, so online it could only ask for a key.
+
+*Needs verification:* adding these settings as a `vercel.json` file made the preview deployment fail within seconds (the logs need a Vercel sign-in), so set them in Vercel's own settings instead.
+
 ## Choose one main address
 
 When the page is on both addresses, tell search engines which one is the main one. Add these two lines inside `<head>` in `site/index.html` (shown here for MrChartist.com):
