@@ -17,6 +17,8 @@
     del: (k, area = 'localStorage') => { try { window[area].removeItem(k); } catch { /* storage blocked */ } },
   };
   const TOKEN_KEY = 'memvault-token';
+  // A phone or tablet signed in with a pairing code keeps its own key, so it stays signed in (device-keys.mjs).
+  const DEVICE_KEY = 'memvault-device-key';
   // The words on this page are English, so the page says so (a screen reader reads them with the right voice).
   // Notes written in other languages are marked on their own elements with dir="auto".
 
@@ -110,6 +112,8 @@
   };
 
   /* ───────── token + api ───────── */
+  const getToken = () => store.get(TOKEN_KEY, 'sessionStorage') || store.get(DEVICE_KEY);
+  const forgetToken = () => { store.del(TOKEN_KEY, 'sessionStorage'); store.del(DEVICE_KEY); };
   (function captureToken() {
     const m = location.hash.match(/token=([^&]+)/);
     if (m) {
@@ -125,7 +129,7 @@
 
   async function api(path, { method = 'GET', body } = {}) {
     const headers = {};
-    const token = store.get(TOKEN_KEY, 'sessionStorage');
+    const token = getToken();
     if (token) headers.authorization = `Bearer ${token}`;
     if (body !== undefined) headers['content-type'] = 'application/json';
     let res;
@@ -138,7 +142,7 @@
     setOnline(true);
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && res.headers.get('www-authenticate')) {
-      store.del(TOKEN_KEY, 'sessionStorage');
+      forgetToken();
       openConnect();
       throw new Error('Connect to your vault first.');
     }
@@ -173,7 +177,7 @@
   });
   $$('dialog[data-keep]').forEach((d) => d.addEventListener('cancel', (e) => {
     // Without a working key the page has nothing to show, so this window stays until a key is entered.
-    if (!store.get(TOKEN_KEY, 'sessionStorage')) e.preventDefault();
+    if (!getToken()) e.preventDefault();
   }));
 
   function focusSoon(el) { if (el) setTimeout(() => el.focus({ preventScroll: false }), 30); }
@@ -1040,7 +1044,7 @@
       settings = await api('/settings');
       renderCapture();
       renderProjects();
-      await Promise.all([loadBackupInfo(), loadTrash()]);
+      await Promise.all([loadBackupInfo(), loadTrash(), loadDevices()]);
     } catch (e) {
       $('#capture-list').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     }
@@ -1104,6 +1108,86 @@
     } catch (e) { fail(e.message); }
   }
 
+  /* ───────── your devices (device-sync.mjs) ───────── */
+  let devices = null;
+  async function loadDevices() {
+    try { devices = await api('/devices'); } catch (e) { $('#devices-info').innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
+    const d = devices;
+    $('#dv-name').value = d.device.name;
+    $('#dv-folder').value = d.folder || '';
+    $('#dv-on').checked = d.enabled;
+    const last = d.last
+      ? `Last sync ${esc(ago(d.last.at))}: ${d.last.ok ? 'it went well' : 'there was a problem'}${d.last.added || d.last.changed || d.last.deleted ? ` (${plural(d.last.added, 'new memory', 'new memories')}, ${d.last.changed} changed, ${d.last.deleted} deleted)` : ''}.`
+      : 'It has not synced yet.';
+    const problems = (d.last?.problems || []).map((p) => `<li class="error-text">${esc(p)}</li>`).join('');
+    const peers = d.peers.length
+      ? `<ul class="devices-peers">${d.peers.map((p) => `<li><b dir="auto">${esc(p.name || p.id)}</b> <span class="muted small">· ${p.error ? esc(p.error) : `${plural(p.items ?? 0, 'memory', 'memories')}, saved ${esc(ago(p.exported_at))}`}${p.inFolder ? '' : ' · its file is no longer in the folder'}</span></li>`).join('')}</ul>`
+      : '<p class="muted small">No other computers seen yet. Set up the same shared folder and passphrase on them.</p>';
+    $('#devices-info').innerHTML = `<p><b>${d.enabled ? 'Syncing is on' : 'Syncing is off'}</b>${d.enabled ? `, every ${esc(d.intervalMinutes)} minutes while MemVault is open` : ''}. ${d.passphraseSet ? 'The sync passphrase is set.' : '<b>No sync passphrase yet.</b>'} ${last}</p>${problems ? `<ul class="plain">${problems}</ul>` : ''}<h4>Other computers</h4>${peers}`;
+    $('#phones-list').innerHTML = d.phones.length
+      ? `<ul class="plain">${d.phones.map((k) => `<li><span dir="auto"><b>${esc(k.name)}</b> <span class="muted small">· added ${esc(fmtDay(k.created_at))}${k.last_used_at ? `, last used ${esc(ago(k.last_used_at))}` : ''}</span></span> <button type="button" class="btn sm ghost" data-action="forget-phone" data-id="${esc(k.id)}" aria-label="Sign out: ${esc(k.name)}">Sign out</button></li>`).join('')}</ul>`
+      : '<p class="muted small">No phones or tablets are signed in.</p>';
+  }
+
+  async function saveDevices(ev) {
+    ev.preventDefault();
+    const err = $('#dv-error');
+    try {
+      await api('/devices', { method: 'PUT', body: { name: $('#dv-name').value.trim(), folder: $('#dv-folder').value.trim(), enabled: $('#dv-on').checked } });
+      err.hidden = true;
+      toast($('#dv-on').checked ? 'Saved. This computer will keep in step with your others.' : 'Saved. Syncing is off on this computer.');
+      await loadDevices();
+    } catch (e) { err.textContent = e.message; err.hidden = false; }
+  }
+
+  async function saveSyncPassphrase(ev) {
+    ev.preventDefault();
+    const err = $('#dp-error');
+    const fail = (m) => { err.textContent = m; err.hidden = false; };
+    const a = $('#dp-1').value, b = $('#dp-2').value;
+    if (a.length < 10) return fail('Use at least 10 characters.');
+    if (a !== b) return fail('The two passphrases are not the same. Type the second one again.');
+    try {
+      await api('/devices/passphrase', { method: 'PUT', body: { passphrase: a, confirm: b } });
+      err.hidden = true; $('#dp-1').value = ''; $('#dp-2').value = '';
+      toast('Sync passphrase saved. Use the same one on your other computers, and write it down.');
+      await loadDevices();
+    } catch (e) { fail(e.message); }
+  }
+
+  async function devicesSync(btn) {
+    btn.disabled = true;
+    $('#devices-status').textContent = 'Syncing…';
+    try {
+      const r = await api('/devices/sync', { method: 'POST' });
+      $('#devices-status').textContent = r.ok
+        ? `Done: ${plural(r.added, 'new memory', 'new memories')}, ${r.changed} changed, ${r.deleted} deleted.${r.backup ? ' A backup was made first.' : ''}`
+        : r.problems.join(' ');
+      await loadDevices();
+    } catch (e) { $('#devices-status').textContent = ''; toast(e.message, true); } finally { btn.disabled = false; }
+  }
+
+  async function pairPhone() {
+    try {
+      const r = await api('/devices/pair-code', { method: 'POST', body: { name: 'Phone or tablet' } });
+      const where = devices?.addresses?.length
+        ? `On the phone or tablet, open <b>${devices.addresses.map(esc).join('</b> or <b>')}</b>, choose “Use a pairing code” and type:`
+        : 'On the phone or tablet, open this dashboard’s private address, choose “Use a pairing code” and type the code below. This dashboard has no private address yet: on this computer run <code>memvault devices hub --address https://…</code> first (see the guide).';
+      const box = $('#pair-code');
+      box.innerHTML = `<p>${where}</p><p class="big">${esc(r.code)}</p><p class="muted small">It works once, until ${esc(new Date(r.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}.</p>`;
+      box.hidden = false;
+      box.setAttribute('tabindex', '-1');
+      focusSoon(box);
+    } catch (e) { toast(e.message, true); }
+  }
+
+  async function forgetPhone(id) {
+    const k = devices?.phones?.find((p) => p.id === id);
+    if (!window.confirm(`Sign out ${k ? `“${k.name}”` : 'this phone or tablet'}? It will no longer be able to open this dashboard.`)) return;
+    try { await api(`/devices/phones/${encodeURIComponent(id)}`, { method: 'DELETE' }); toast('Signed out.'); await loadDevices(); }
+    catch (e) { toast(e.message, true); }
+  }
+
   function renderProjects() {
     const list = settings.projects || [];
     $('#project-list').innerHTML = list.length
@@ -1138,7 +1222,7 @@
 
   async function exportAll() {
     try {
-      const token = store.get(TOKEN_KEY, 'sessionStorage');
+      const token = getToken();
       const res = await fetch('/export', { headers: token ? { authorization: `Bearer ${token}` } : {} });
       if (!res.ok) throw new Error('Could not prepare the download.');
       download(`memvault-export-${new Date().toISOString().slice(0, 10)}.json`, await res.text());
@@ -1252,6 +1336,9 @@
     'bulk-go': bulkGo,
     /* settings */
     'sync-now': syncNow,
+    'devices-sync': devicesSync,
+    'pair-phone': () => pairPhone(),
+    'forget-phone': (el) => forgetPhone(el.dataset.id),
     'export-all': exportAll,
     'wipe-all': () => { $('#wipe-confirm').value = ''; $('#wipe-go').disabled = true; $('#wipe-error').hidden = true; dlg('dlg-wipe').showModal(); focusSoon($('#wipe-confirm')); },
     'wipe-go': wipeGo,
@@ -1282,6 +1369,27 @@
   $('#agent-json').addEventListener('input', () => { jsonDirty = true; });
   $('#secret-form').addEventListener('submit', saveSecret);
   $('#pass-form').addEventListener('submit', savePassphrase);
+  $('#devices-form').addEventListener('submit', saveDevices);
+  $('#dv-pass-form').addEventListener('submit', saveSyncPassphrase);
+  // A phone or tablet: trade the one-time code for a key of its own, which stays on this device.
+  $('#pair-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const err = $('#pair-error');
+    const code = $('#pair-input').value.trim();
+    if (!code) { err.textContent = 'Type the pairing code first.'; err.hidden = false; return; }
+    try {
+      const r = await fetch('/pair', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code, name: $('#pair-name').value.trim() || undefined }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.key) throw new Error(data.error || 'That code did not work.');
+      store.set(DEVICE_KEY, data.key);
+      if (!store.get(DEVICE_KEY)) store.set(TOKEN_KEY, data.key, 'sessionStorage'); // storage blocked: signed in for this visit only
+      err.hidden = true;
+      $('#pair-input').value = '';
+      dlg('dlg-connect').close();
+      toast(`Signed in as “${data.name}”. This device stays signed in until you sign it out on your computer.`);
+      showView($('.tab.is-active')?.dataset.view || 'memory');
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  });
   $('#bp-show').addEventListener('change', (e) => { $('#bp-1').type = e.target.checked ? 'text' : 'password'; $('#bp-2').type = e.target.checked ? 'text' : 'password'; });
   $('#project-form').addEventListener('submit', addProject);
   $('#capture-list').addEventListener('change', (e) => { const k = e.target.dataset?.capture; if (k) setCapture(k, e.target.checked, e.target); });
@@ -1315,6 +1423,6 @@
 
   fetch('/health').then((r) => setOnline(r.ok)).catch(() => setOnline(false));
   syncLookRadios();
-  if (!store.get(TOKEN_KEY, 'sessionStorage')) openConnect();
+  if (!getToken()) openConnect();
   showView('memory');
 })();

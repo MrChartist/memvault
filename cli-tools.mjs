@@ -255,7 +255,8 @@ export async function cmdDoctor() {
   }
   const bad = rows.filter((r) => r.level === "bad").length;
   const warn = rows.filter((r) => r.level === "warn").length;
-  console.log(`\n${bad ? `${bad} problem(s)` : "No problems"}${warn ? `, ${warn} warning(s)` : ""}.`);
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  console.log(`\n${bad ? n(bad, "problem", "problems") : "No problems"}${warn ? `, ${n(warn, "warning", "warnings")}` : ""}.`);
   console.log(`No tool can promise perfect safety. What is and is not protected: ${SECURITY_URL}`);
   process.exit(bad ? 1 : 0);
 }

@@ -12,6 +12,8 @@ import path from "path";
 import * as cfg from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
 import { listAgents, getAgent } from "./agents.mjs";
+import { deviceSettings, deviceStatus } from "./device-sync.mjs";
+import { listDeviceKeys } from "./device-keys.mjs";
 import { isLoopbackHost } from "./auth.mjs";
 import { verifyAudit } from "./audit.mjs";
 import { cloudPolicy, listLocalBackups } from "./storage.mjs";
@@ -123,6 +125,20 @@ export async function collectDiagnostics({ vdb, deep = false, checkServer = true
     if (p?.memory.allowSecrets) add("warn", `Agent “${nameOf(a)}” can see the names of Secure Vault items`, `Turn this off under Agents → Edit, or run memvault agent edit ${a.id}.`);
     if (p?.memory.readScopes.some((s) => s.startsWith("agent:"))) add("warn", `Agent “${nameOf(a)}” can read other agents’ private memories`, "This is meant only for a coordinator agent.");
   }
+
+  // Your other computers and phones (device-sync.mjs, device-keys.mjs)
+  const dev = deviceSettings();
+  if (!dev.enabled) add("info", "Syncing with your other computers is off");
+  else {
+    const st = deviceStatus({ vdb: db, settings: dev });
+    const others = st.peers.filter((x) => x.inFolder);
+    if (!st.passphraseSet) add("bad", "Device sync is on, but there is no sync passphrase", "Run memvault devices passphrase, or set it in Settings → Your devices.");
+    else if (!st.folderExists) add("warn", `Device sync is on, but the shared folder is missing: ${st.folder}`, "Start your sync app or connect the drive, or choose another folder in Settings → Your devices.");
+    else if (st.last && !st.last.ok) add("warn", `The last device sync had a problem: ${st.last.problems[0] || "unknown"}`, "Run memvault devices to see more.");
+    else add("ok", `Syncing with ${plural(others.length, "other computer", "other computers")}${st.last ? `, last ${new Date(st.last.at).toLocaleString()}` : ", not synced yet"}`);
+  }
+  const phones = listDeviceKeys();
+  if (phones.length) add("info", `${plural(phones.length, "phone or tablet", "phones or tablets")} can open this dashboard: ${phones.map((k) => k.name).join(", ")}`, "Sign out the ones you no longer use in Settings → Your devices.");
 
   if (deep) {
     const sample = db.query("SELECT title, content FROM items ORDER BY created_at DESC LIMIT 2000");

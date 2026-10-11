@@ -253,6 +253,34 @@
         </form>
       </div>
 
+      <div class="card" aria-labelledby="s-devices">
+        <h3 id="s-devices">Your devices</h3>
+        <p class="muted">Use one memory on all your computers. Each one keeps its own copy, and they keep each other up to date through a folder you share between them (Syncthing, iCloud Drive, Dropbox, OneDrive, Google Drive or your own server). Everything in that folder is locked with your sync passphrase. <a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md" target="_blank" rel="noopener noreferrer">How to set it up<span class="sr-only"> (opens in a new tab)</span></a></p>
+        <div id="devices-info"></div>
+        <form id="devices-form" class="form-grid" novalidate>
+          <div><label for="dv-name" class="label">This computer’s name</label><input id="dv-name" type="text" dir="auto" maxlength="60" /></div>
+          <div><label for="dv-folder" class="label">Shared folder</label><input id="dv-folder" type="text" dir="auto" placeholder="For example: ~/Sync/MemVault Sync" aria-describedby="dv-error" /></div>
+          <div class="full"><label class="check"><input type="checkbox" id="dv-on" /> Keep this computer in step with my other computers</label></div>
+          <div class="full"><p class="error" id="dv-error" role="alert" hidden></p>
+            <div class="row gap wrap"><button class="btn" type="submit">Save</button><button class="btn" type="button" data-action="devices-sync" id="devices-sync">Sync now</button><span id="devices-status" class="muted small" role="status" aria-live="polite"></span></div></div>
+        </form>
+        <form id="dv-pass-form" class="stack" novalidate>
+          <h4>Sync passphrase</h4>
+          <p class="muted small">Use the <strong>same passphrase on every computer</strong>. Anyone who has the shared folder and this passphrase can read your memories, so keep it private. <strong>It cannot be recovered.</strong> It is kept in a private file on this computer, outside your vault.</p>
+          <label for="dp-1" class="label">Passphrase (at least 10 characters)</label>
+          <input id="dp-1" type="password" autocomplete="new-password" aria-describedby="dp-error" />
+          <label for="dp-2" class="label">Type it again</label>
+          <input id="dp-2" type="password" autocomplete="new-password" aria-describedby="dp-error" />
+          <p class="error" id="dp-error" role="alert" hidden></p>
+          <div><button class="btn primary" type="submit">Save sync passphrase</button></div>
+        </form>
+        <h4>Phones and tablets</h4>
+        <p class="muted small">A phone or tablet can open this dashboard through a private address that only your own devices can reach (for example Tailscale). Each one signs in with a one-time code and gets a key of its own.</p>
+        <div id="phones-list"></div>
+        <div class="row gap wrap"><button class="btn" data-action="pair-phone">Add a phone or tablet</button></div>
+        <div id="pair-code" class="pair-code" hidden></div>
+      </div>
+
       <div class="card" aria-labelledby="s-data">
         <h3 id="s-data">Your data</h3>
         <div class="row gap wrap">
@@ -274,14 +302,26 @@
 
   <!-- ═════════ DIALOGS ═════════ -->
   <dialog id="dlg-connect" aria-labelledby="connect-title" data-keep>
-    <form method="dialog" class="dlg" id="connect-form">
-      <h3 id="connect-title">Connect the dashboard to your vault</h3>
-      <p class="muted">Open the dashboard with the command <code>memvault open</code> and it connects by itself. Or paste your dashboard key here. Get it by running <code>memvault token</code> in a terminal.</p>
-      <label class="label" for="token-input">Dashboard key</label>
-      <input id="token-input" type="password" autocomplete="off" aria-describedby="token-error" />
-      <p class="error" id="token-error" role="alert" hidden></p>
-      <div class="row end gap"><button class="btn primary" type="submit">Connect</button></div>
-    </form>
+    <div class="dlg">
+      <form method="dialog" id="connect-form">
+        <h3 id="connect-title">Connect the dashboard to your vault</h3>
+        <p class="muted">Open the dashboard with the command <code>memvault open</code> and it connects by itself. Or paste your dashboard key here. Get it by running <code>memvault token</code> in a terminal.</p>
+        <label class="label" for="token-input">Dashboard key</label>
+        <input id="token-input" type="password" autocomplete="off" aria-describedby="token-error" />
+        <p class="error" id="token-error" role="alert" hidden></p>
+        <div class="row end gap"><button class="btn primary" type="submit">Connect</button></div>
+      </form>
+      <form id="pair-form" class="pair-form" novalidate>
+        <h4>On a phone or tablet? Use a pairing code</h4>
+        <p class="muted small">On the computer that runs MemVault, open Settings → Your devices → Add a phone or tablet (or run <code>memvault devices pair</code>), then type the code here. This device then stays signed in until you sign it out on that computer.</p>
+        <label class="label" for="pair-input">Pairing code</label>
+        <input id="pair-input" type="text" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" placeholder="ABCD-EFGH" aria-describedby="pair-error" />
+        <label class="label" for="pair-name">A name for this device (optional)</label>
+        <input id="pair-name" type="text" dir="auto" maxlength="40" placeholder="For example: iPhone" />
+        <p class="error" id="pair-error" role="alert" hidden></p>
+        <div class="row end gap"><button class="btn" type="submit">Use a pairing code</button></div>
+      </form>
+    </div>
   </dialog>
 
   <dialog id="dlg-apps" aria-labelledby="apps-title" class="closable">

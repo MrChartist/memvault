@@ -462,6 +462,38 @@ check("the empty vault made no third-party requests and had no errors", E.bad.ex
 eserver.close();
 fs.rmSync(emptyRoot, { recursive: true, force: true });
 
+// ═════ K. your devices: the settings card, and a phone signing in with a one-time code ═════
+const DV = await open();
+const kp = DV.page;
+await kp.goto(`${base}/#token=${token}`); await kp.waitForSelector("article.entry");
+await kp.click('.tab[data-view="settings"]'); await kp.waitForSelector("#devices-info p");
+check("Settings shows 'Your devices', off until it is switched on", /Syncing is off/.test(await kp.locator("#devices-info").innerText()) && !(await kp.locator("#dv-on").isChecked()));
+await kp.click('[data-action="pair-phone"]'); await kp.waitForSelector("#pair-code:not([hidden]) .big");
+const pairCode = (await kp.locator("#pair-code .big").innerText()).trim();
+check("'Add a phone or tablet' shows a one-time code", /^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(pairCode), pairCode);
+await axe(kp, "Settings with a pairing code");
+await kp.locator("#s-devices").scrollIntoViewIfNeeded(); await shot(kp, "settings-devices.png");
+const PH = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+await PH.page.goto(`${base}/`); await PH.page.waitForSelector("#dlg-connect[open]");
+await axe(PH.page, "Connect window on a phone (pairing code)");
+await shot(PH.page, "phone-pairing.png", { fullPage: true });
+await PH.page.fill("#pair-input", pairCode.toLowerCase()); await PH.page.fill("#pair-name", "Test phone");
+await PH.page.click('#pair-form button[type="submit"]');
+await PH.page.waitForSelector("article.entry");
+check("a phone signs in with the code and sees the memories", (await PH.page.locator("#dlg-connect[open]").count()) === 0);
+await PH.page.reload(); await PH.page.waitForSelector("article.entry");
+check("and stays signed in after a reload, with a key of its own", (await PH.page.locator("#dlg-connect[open]").count()) === 0 && await PH.page.evaluate(() => (localStorage.getItem("memvault-device-key") || "").startsWith("mvd_")));
+check("the same code does not work twice", (await (await fetch(`${base}/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: pairCode }) })).status) === 401);
+await kp.click('.tab[data-view="memory"]'); await kp.click('.tab[data-view="settings"]');
+await kp.waitForFunction(() => /Test phone/.test(document.querySelector("#phones-list")?.innerText || ""));
+check("the phone is listed under 'Phones and tablets' with a way to sign it out", (await kp.locator('#phones-list [data-action="forget-phone"]').count()) === 1);
+await kp.click('#phones-list [data-action="forget-phone"]'); // the confirm() is accepted by the test
+await kp.waitForFunction(() => !document.querySelector('#phones-list [data-action="forget-phone"]'));
+await PH.page.reload(); await PH.page.waitForSelector("#dlg-connect[open]");
+check("once signed out, the phone is asked to connect again", (await PH.page.locator("#dlg-connect[open]").count()) === 1);
+check("devices and pairing made no third-party requests and had no errors", [DV, PH].every((x) => x.bad.external.length === 0 && x.bad.errors.length === 0 && x.bad.csp.length === 0), [...DV.bad.errors, ...PH.bad.errors, ...DV.bad.csp, ...PH.bad.csp].join("|"));
+await PH.ctx.close(); await DV.ctx.close();
+
 const { makeOpenPage } = await load("cli-tools.mjs");
 const O = await open();
 await O.page.goto(pathToFileURL(makeOpenPage({ url: `${base}/#token=${token}`, dir: path.join(vaultRoot, "opendir") })).href);
