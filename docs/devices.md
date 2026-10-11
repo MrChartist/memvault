@@ -93,6 +93,8 @@ The phone opens the dashboard of an always-on computer (the VPS, or a Mac that s
 
 To sign out a lost or old phone, go to **Settings → Your devices** and choose **Sign out**, or run `memvault devices keys`, then `memvault devices forget <id>`.
 
+A phone can read, search, write and delete memories, and run **Sync now**. Adding phones, signing them out, and changing a passphrase or the shared folder are done on a computer, so a stolen phone cannot give itself a second key.
+
 **Claude on the iPhone** cannot read MemVault yet. That would need the vault on a public internet address with a login, and its requests would pass through Anthropic's servers. It is a bigger security change and is listed on the [roadmap](../ROADMAP.md). For now, the iPhone uses the dashboard: read, search, write and correct notes.
 
 ## What is shared, and what stays on each computer
@@ -102,18 +104,20 @@ To sign out a lost or old phone, go to **Settings → Your devices** and choose 
 | Notes, conversations and work logs, in every memory space (shared, agent-private, project) | The **Secure Vault**. Each computer has its own, locked with its own master password |
 | Agents (their job, rules and memory limits), and deleting an agent | Uploaded files (the note about the file is not shared either) |
 | Edits and deletions | The access log: each computer records who used *its* memory, and every sync appears in it as `device-sync` |
+| Notes that describe one computer (its system details, its VS Code details, its watched folders): each computer's are kept side by side, and each computer replaces only its own | |
 | | Settings, the dashboard key, phone keys, and the readable Markdown copies (they are made where a note was written) |
 
 ## When the same note changes in two places
 
 - **The newer change wins on every computer.** "Newer" uses each computer's clock, so keep the clocks right (all systems set them automatically by default).
 - **A deletion wins over older changes.** A change made after the deletion wins over the deletion, and the note comes back everywhere.
+- **A deletion is remembered for 180 days.** A computer that has not synced for longer than that can bring back notes deleted before then. Delete them again, or remove that computer's file from the shared folder before you switch it on.
 - **Many deletions at once take a backup first.** If a sync would delete more than 20 memories and more than a tenth of them (for example after "delete everything" on another computer), this computer makes a local backup before it applies them. If that backup fails, nothing is deleted.
 
 ## Safety
 
-- **The sync passphrase protects everything in the shared folder.** Anyone who has both the folder and the passphrase can read your memories and add to them, so keep the passphrase private.
-- **Each computer writes only its own file.** The sharing tool never has two versions of one file to choose between. Copies that a sync app makes when it is unsure ("conflict copies") are ignored.
+- **The sync passphrase protects everything in the shared folder.** Anyone who has both the folder and the passphrase can read your memories, change or delete any of them, and change what your agents may do, on every computer. Keep the passphrase private.
+- **Each computer writes only its own file.** The sharing tool never has two versions of one file to choose between. Copies that a sync app makes when it is unsure ("conflict copies") are ignored, and so are links and files that are far too large to be a MemVault file.
 - **What comes in is treated like any other write.** It is masked for secrets, saved in one step, and recorded in the access log.
 - **The same limits still apply.** What an AI app reads from MemVault is sent to that AI's company, on every computer. See [SECURITY.md](../SECURITY.md).
 
@@ -125,7 +129,9 @@ To sign out a lost or old phone, go to **Settings → Your devices** and choose 
 | "The shared folder … does not exist" | Start your sync app, or check that the drive is connected. |
 | "Another sync is running on this computer" | Try again in a minute. |
 | A computer you no longer use is still listed | Delete its `memvault-….mvsync` file from the shared folder. Its notes stay on the others. |
-| You restored a backup on one computer | On the next sync, the newer changes from your other computers come back, and deletions made after the backup are applied again. |
+| You restored a backup on one computer | On the next sync, it reads every other computer's file again: the newer changes from your other computers come back, and deletions made after the backup are applied again. |
+| "Another computer was using this computer's id" | The MemVault settings folder (`~/.memvault`) was copied from another computer. This computer has taken a new id by itself. Sync again. |
+| A file that could not be read is reported on every sync | MemVault tries it again when it changes, or after 30 minutes. |
 
 ## Limits
 
