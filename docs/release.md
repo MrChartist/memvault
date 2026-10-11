@@ -7,7 +7,7 @@ Do these in order. Stop at the first step that fails.
 1. CI is green on the release commit, including Windows and macOS, or the launch post says they are untried.
 2. `npx vitest run` and `npm run test:e2e` pass.
 3. `npm audit --omit=dev` shows nothing.
-4. `npm pack --dry-run` lists only what you expect (about 82 files; no `db/`, no `.env`, no screenshots).
+4. `npm pack --dry-run` lists only what you expect (about 88 files; no `db/`, no `.env`, no screenshots).
 5. CHANGELOG, `package.json` version and `server.json` version are the same.
 6. Private vulnerability reporting is on (Settings → Security in the GitHub repo).
 

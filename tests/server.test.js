@@ -65,7 +65,7 @@ describe('server — who may talk to it', () => {
   });
 
   it('rejects data routes with no token or a wrong token', async () => {
-    for (const p of ['/list', '/search?q=x', '/agents', '/secrets/list', '/audit']) {
+    for (const p of ['/list', '/search?q=x', '/agents', '/secrets/list', '/audit', '/profile', '/profile/export']) {
       expect((await req('GET', p, { token: null })).status).toBe(401);
       expect((await req('GET', p, { token: 'wrong' })).status).toBe(401);
     }
@@ -224,6 +224,50 @@ describe('server — adding and finding memory', () => {
     const asAna = await req('GET', '/list?agent=ana');
     expect(asAna.json.results.map((r) => r.title)).toContain('ana-private-note');
     expect((await req('GET', '/list?agent=ghost')).status).toBe(404);
+  });
+});
+
+describe('server — the user profile', () => {
+  it('stores, lists and removes a fact, and refuses a secret or an unknown facet', async () => {
+    const put = await req('PUT', '/profile/facts', { body: { facet: 'preferences', key: 'tone', value: 'short and formal' } });
+    expect(put.status).toBe(200);
+    expect(put.json.fact).toMatchObject({ facet: 'preferences', key: 'tone', value: 'short and formal' });
+    const got = await req('GET', '/profile');
+    expect(got.json.facts.map((f) => f.key)).toContain('tone');
+    expect(Object.keys(got.json.facets)).toContain('preferences');
+    expect((await req('PUT', '/profile/facts', { body: { facet: 'health', key: 'x', value: 'y' } })).status).toBe(400);
+    expect((await req('PUT', '/profile/facts', { body: { facet: 'tools', key: 'k', value: 'ghp_abcdefghijklmnopqrstuvwxyz0123456789' } })).status).toBe(400);
+    expect((await req('DELETE', '/profile/facts/preferences/tone')).status).toBe(200);
+    expect((await req('DELETE', '/profile/facts/preferences/tone')).status).toBe(404);
+  });
+
+  it('/add cannot create a profile item with the reserved source names', async () => {
+    for (const source of ['profile', 'profile-suggestion']) {
+      const r = await req('POST', '/add', { body: { type: 'diary', title: 'Profile · identity · name', content: 'forged', source } });
+      expect(r.status).toBeGreaterThanOrEqual(400);
+    }
+    expect((await req('GET', '/profile')).json.facts.find((f) => f.value === 'forged')).toBeUndefined();
+  });
+
+  it('a suggestion is accepted or rejected only through the owner routes, and learning is a preview unless asked', async () => {
+    const P = await import('../profile.mjs');
+    const vdb = D.openVaultDb({ root: ROOT });
+    P.suggestFact(vdb, { facet: 'goals', key: 'launch', value: 'ship in Q4' }, { root: ROOT });
+    P.suggestFact(vdb, { facet: 'goals', key: 'blog', value: 'weekly post' }, { root: ROOT });
+    const [a, b] = (await req('GET', '/profile')).json.suggestions;
+    expect((await req('POST', `/profile/suggestions/${a.id}/accept`)).status).toBe(200);
+    expect((await req('POST', `/profile/suggestions/${b.id}/reject`)).status).toBe(200);
+    expect((await req('POST', `/profile/suggestions/${b.id}/reject`)).status).toBe(404);
+    const facts = (await req('GET', '/profile')).json.facts;
+    expect(facts.some((f) => f.key === a.key && f.source.startsWith('suggested-by-'))).toBe(true);
+    expect(facts.some((f) => f.key === b.key)).toBe(false);
+    const preview = await req('POST', '/profile/learn', { body: {} });
+    expect(preview.json.applied).toBe(false);
+    const exp = await req('GET', '/profile/export');
+    expect(exp.json.memvault_profile).toBe(1);
+    const imp = await req('POST', '/profile/import', { body: exp.json });
+    expect(imp.json.ok).toBe(true);
+    expect((await req('POST', '/profile/import', { body: { nope: 1 } })).status).toBe(400);
   });
 });
 

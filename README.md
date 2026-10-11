@@ -122,6 +122,7 @@ MemVault is built so that your data stays with you, and it can check itself: run
 | Cloud backups are encrypted first | Without your passphrase, a cloud backup refuses to run. It never uploads plain text by default. You can set the passphrase in **Settings**. |
 | You can see who used your memory | A tamper-evident log records which agent called what, and when. It never records the content. |
 | Automatic capture is opt-in | Git, files, browser, computer info, VS Code and clipboard capture are all off until you turn them on in Settings. Running a capture script directly does nothing unless it is on (or you add `--force`). |
+| One profile that only you can change | Your profile (how you like things written, what you work on) is offered to every AI app you connect. An AI can read a reduced view and *suggest* a fact; nothing is saved until you accept it. Health, money, ID numbers and passwords are not kept. See [docs/profile.md](docs/profile.md). |
 | Deleting really deletes | Deleting a memory also removes its readable Markdown copy. Backups you made earlier still contain it. |
 | No tracking | No analytics, no telemetry, and the dashboard makes no requests to other websites. |
 
@@ -129,7 +130,7 @@ MemVault is built so that your data stays with you, and it can check itself: run
 
 ## What your AI can do with it
 
-29 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (about 23 by default, fewer if you restrict it), which also keeps each chat lighter.
+31 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (about 25 by default, fewer if you restrict it), which also keeps each chat lighter.
 
 | Group | Tools |
 |---|---|
@@ -138,6 +139,7 @@ MemVault is built so that your data stays with you, and it can check itself: run
 | Captured data | `vault_git_log`, `vault_recent_files`, `vault_system_info` |
 | Conversation logs | `vault_capture_prompt`, `vault_log_conversation` |
 | Agents | `agent_list`, `agent_activate`, `agent_define`, `agent_handoff`, `agent_inbox` |
+| Your profile | `profile_get`, `profile_suggest` (an AI can only suggest; you accept. See [docs/profile.md](docs/profile.md)) |
 | With your own Gemini key (optional) | `vault_ai_summarize`, `vault_ai_insights` |
 | Owner only | `vault_backup`, `vault_backups`, `vault_bridge_list`, `vault_bridge_sync`, `vault_secret_list` |
 
@@ -193,6 +195,8 @@ memvault open            open the dashboard
 memvault doctor          check how your vault is set up
 memvault scrub           preview masking of secrets already stored   (--apply to do it)
 memvault agent …         list | create | edit | brief | export | import | delete | starter | packs
+memvault profile …       show | set | learn | review | accept | export | prompt   (docs/profile.md)
+memvault wispr <path>    import Wispr Flow notes (vocabulary for your profile)
 memvault audit           who used your memory   (--verify checks the log is untampered)
 memvault token           show the dashboard key   (--rotate to replace it)
 memvault backup          back up now

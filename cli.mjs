@@ -22,6 +22,7 @@ const tools = {
   scrub:      { fn: "cmdScrub",     desc: "Mask credentials already stored in your vault (preview first)" },
   agent:      { fn: "cmdAgent",     desc: "Manage agent profiles (list|create|edit|brief|export|…)" },
   audit:      { fn: "cmdAudit",     desc: "Show who accessed the vault; verify the log is untampered" },
+  profile:    { fn: "cmdProfile",  desc: "Your central profile: show|set|learn|review|export|prompt (local only)" },
   token:      { fn: "cmdToken",     desc: "Print the dashboard/API token (--rotate to replace it)" },
   "mcp-config": { fn: "cmdMcpConfig", desc: "Print ready-to-paste MCP config for your AI clients" },
 };
@@ -33,6 +34,7 @@ const commands = {
   mcp:     { script: "mcp-server.mjs", desc: "Start the MCP stdio server" },
   sync:    { script: "sync-all.mjs",   desc: "Run all enabled sync engines" },
   import:  { script: "import-all.mjs", desc: "Import AI conversations (ChatGPT, Claude, Gemini, Perplexity)" },
+  wispr:   { script: "import-wispr.mjs", desc: "Import Wispr Flow notes and meeting summaries (dictation vocabulary)" },
   backup:  { script: "storage.mjs",    desc: "Back up the vault to local + Google Drive" },
   bridge:  { script: "mcp-bridge.mjs", desc: "Connect other AI MCP servers (list|presets|add|sync|call)" },
   vault:   { script: "vault.mjs",      desc: "CLI tool to add/search items" },

@@ -406,3 +406,97 @@ export async function cmdAgent(argv) {
       process.exit(1);
   }
 }
+
+// ─── profile ────────────────────────────────────────────────────────────────
+
+export async function cmdProfile(argv) {
+  const [sub = "show", ...rest] = argv;
+  const { flags, pos } = parseArgs(rest);
+  const { dbm } = await loadAll();
+  const P = await import("./profile.mjs");
+  const db = dbm.openVaultDb();
+  const fail = (msg) => { console.error(`${BAD} ${msg}`); process.exit(1); };
+  const run = (fn) => { try { return fn(); } catch (e) { return fail(e.message); } };
+
+  switch (sub) {
+    case "show": {
+      const facts = P.listFacts(db, { facets: typeof flags.facet === "string" ? flags.facet.split(",").map((s) => s.trim()) : undefined });
+      if (flags.json) return console.log(JSON.stringify(P.exportProfile(db), null, 2));
+      if (!facts.length) return console.log("Your profile is empty. Add a fact:  memvault profile set preferences writing-tone \"short, formal, plain\"\nOr learn from your notes:  memvault profile learn");
+      let facet = null;
+      for (const f of facts) {
+        if (f.facet !== facet) { facet = f.facet; console.log(`\n${facet.toUpperCase()}`); }
+        console.log(`  ${f.key}: ${f.value}${f.confidence === "high" ? "" : `   (${f.confidence}, ${f.source})`}`);
+      }
+      const pending = P.listSuggestions(db).length;
+      if (pending) console.log(`\n${WARN} ${pending} suggestion(s) from your AI apps are waiting:  memvault profile review`);
+      return;
+    }
+    case "facets":
+      for (const [k, v] of Object.entries(P.FACETS)) console.log(`${k.padEnd(14)} ${v}`);
+      return console.log("\nNot kept on purpose: health, money, ID numbers, passwords, other people's details, beliefs.");
+    case "set": {
+      const [facet, key, ...value] = pos;
+      if (!facet || !key || !value.length) return fail('Usage: memvault profile set <facet> <key> "<value>"   (see: memvault profile facets)');
+      const r = run(() => P.setFact(db, { facet, key, value: value.join(" "), source: "manual", confidence: typeof flags.confidence === "string" ? flags.confidence : "high" }));
+      return console.log(r.changed ? `${OK} Saved ${r.fact.facet}/${r.fact.key}` : "Already up to date.");
+    }
+    case "remove": {
+      const [facet, key] = pos;
+      if (!facet || !key) return fail("Usage: memvault profile remove <facet> <key>");
+      return console.log(run(() => P.removeFact(db, facet, key)) ? `${OK} Removed` : "No such fact.");
+    }
+    case "learn": {
+      const r = P.learnFromVault(db, { apply: !!flags.apply });
+      if (!r.facts.length) return console.log("Nothing to learn yet: the vault needs more notes (about 30) from the kinds of source MemVault learns from. Device scans, the browser and the clipboard are never used.");
+      for (const f of r.facts) console.log(`${f.facet}/${f.key}\n   ${f.value}`);
+      if (!flags.apply) return console.log(`\nThis was a preview. Nothing was saved. To save these:  memvault profile learn --apply`);
+      console.log(`\n${OK} ${r.written} saved, ${r.unchanged} already up to date${r.skippedManual.length ? `, ${r.skippedManual.length} left alone because you set them yourself` : ""}.`);
+      return;
+    }
+    case "review": {
+      const list = P.listSuggestions(db);
+      if (!list.length) return console.log("No suggestions are waiting.");
+      for (const s of list) {
+        console.log(`${s.id}\n   ${s.facet}/${s.key}: ${s.value}\n   from: ${s.proposedBy || "an AI app"}${s.reason ? `   because: ${s.reason}` : ""}`);
+      }
+      return console.log("\nAccept one:  memvault profile accept <id>      Reject:  memvault profile reject <id>      (or: accept all / reject all)");
+    }
+    case "accept": case "reject": {
+      const target = pos[0];
+      if (!target) return fail(`Usage: memvault profile ${sub} <id|all>`);
+      const ids = target === "all" ? P.listSuggestions(db).map((s) => s.id) : [target];
+      let n = 0;
+      for (const id of ids) {
+        if (sub === "accept") { run(() => P.acceptSuggestion(db, id)); n++; }
+        else if (P.rejectSuggestion(db, id)) n++;
+      }
+      return console.log(`${OK} ${n} ${sub === "accept" ? "accepted" : "rejected"}`);
+    }
+    case "export": {
+      const json = JSON.stringify(P.exportProfile(db), null, 2);
+      if (pos[0]) { fs.writeFileSync(pos[0], json, { mode: 0o600 }); return console.log(`${OK} Wrote ${pos[0]}`); }
+      return console.log(json);
+    }
+    case "import": {
+      if (!pos[0]) return fail("Usage: memvault profile import <file.json>");
+      const data = run(() => JSON.parse(fs.readFileSync(pos[0], "utf8")));
+      const r = run(() => P.importProfile(db, data));
+      console.log(`${OK} ${r.added} added, ${r.changed} changed, ${r.unchanged} unchanged`);
+      for (const x of r.rejected) console.log(`${WARN} skipped ${x.facet}/${x.key}: ${x.reason}`);
+      return;
+    }
+    case "prompt": {
+      const text = typeof flags.file === "string" ? fs.readFileSync(flags.file, "utf8") : pos.join(" ");
+      if (!text.trim()) return fail('Usage: memvault profile prompt "<what you want to ask>"   (or --file dictated.txt)');
+      const facets = typeof flags.facets === "string" ? flags.facets.split(",").map((s) => s.trim()) : undefined;
+      return console.log(P.buildPrompt(P.listFacts(db), text, { facets }));
+    }
+    case "clear": {
+      if (!flags.yes) return fail("This deletes your whole profile and waiting suggestions. Re-run with --yes to confirm.");
+      return console.log(`${OK} Removed ${P.clearProfile(db)} item(s)`);
+    }
+    default:
+      return fail("Usage: memvault profile <show|facets|set|remove|learn|review|accept|reject|export|import|prompt|clear> …");
+  }
+}

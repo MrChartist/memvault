@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **A central profile of you** (`memvault profile`, [docs/profile.md](docs/profile.md)): short facts about how you like things written, what you work on and the tools you use, offered to every connected AI app. Ten fixed headings; passwords, keys, ID numbers, health and money are refused. Learns from your own notes when you ask (preview first), and wraps a dictated request with your background (`memvault profile prompt`).
+- Two MCP tools: `profile_get` (a bound agent gets a reduced view) and `profile_suggest` (an AI can only suggest; you accept with `memvault profile accept`). Owner routes for the same under `/profile`.
+- **Wispr Flow import** (`memvault wispr <file-or-folder>`): notes and meeting summaries; attendee names, e-mail addresses and share links are left out.
+- **Final security check**: `docs/review/final-security-check.md` is a brief for Claude Opus or Fable that lists all 14 connections and the threat model, and `npm run security-review` (`scripts/security-review.mjs`) runs it through the Anthropic API. `--dry-run` shows the plan and a rough cost first. Reports go to `.security-review/` (ignored by git). The script is a maintainer tool: it is not in the npm package, and the SDK it uses is a development dependency.
+
+### Security
+- The source names `profile` and `profile-suggestion` are reserved in `ingest`, so only the profile module can write profile items.
+
+
 ## 3.0.0
 
 ### Fixed or changed after the independent launch review (before release)

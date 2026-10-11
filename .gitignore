@@ -59,3 +59,6 @@ test.sh
 
 # generated per machine
 run-sync-silent.vbs
+
+# Security-review reports describe vulnerabilities: never commit them
+.security-review/

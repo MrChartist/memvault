@@ -28,6 +28,7 @@ const toList = (m) => [...m].map(([type, count]) => ({ type, count }));
  * @param {object} [opts]
  * @param {object} [opts.vdb]      database handle (default: this process's owner handle)
  * @param {string} [opts.actor]    who is writing, for the audit log
+ * @param {boolean} [opts.allowReserved] only profile.mjs: may write the reserved profile sources
  * @returns {{ ids: string[], items: object[], redacted: Array<{type:string,count:number}> }}
  *          `items` are the items AS STORED (secrets already masked). Anything that
  *          mirrors an entry to a flat file must write from `items`, never from the
@@ -43,9 +44,23 @@ export function cleanDate(v) {
   return d.toISOString();
 }
 
-export function ingest(items, { vdb = getVaultDb(), actor = "api", security = SECURITY_CONFIG, root = VAULT_ROOT } = {}) {
+/**
+ * Source names that only profile.mjs may write. The user profile is injected into AI conversations, so
+ * nothing an AI (or a request body) can say may create one: tools and the API fail here, and profile.mjs
+ * opts in with `allowReserved`.
+ */
+export const RESERVED_SOURCES = new Set(["profile", "profile-suggestion"]);
+
+export function ingest(items, { vdb = getVaultDb(), actor = "api", security = SECURITY_CONFIG, root = VAULT_ROOT, allowReserved = false } = {}) {
   const list = Array.isArray(items) ? items : [items];
   if (list.length === 0) return { ids: [], items: [], redacted: [] };
+  if (!allowReserved) {
+    for (const it of list) {
+      if (RESERVED_SOURCES.has(String(it?.source ?? "").trim().toLowerCase())) {
+        throw new Error(`The source name "${String(it.source).trim()}" is reserved for the user profile. Use the profile commands instead.`);
+      }
+    }
+  }
 
   const totals = new Map();
   const prepared =
