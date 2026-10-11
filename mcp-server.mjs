@@ -33,6 +33,7 @@ import { ingest, clipText } from "./ingest.mjs";
 import { redact } from "./redact.mjs";
 import { writeMirror } from "./mirror.mjs";
 import { audit } from "./audit.mjs";
+import { recordApp } from "./connected-apps.mjs";
 import {
   getAgent, listAgents, saveAgent, buildBriefing, scopesFor, listInbox, slugify, AGENT_ID_RE,
 } from "./agents.mjs";
@@ -1459,6 +1460,12 @@ server.tool(
 // ═══════════════════════════════════════════════════════════════════════════
 //  START SERVER
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Note which app connected (its own name for itself), so the Getting started list can say "Connected: Claude".
+server.server.oninitialized = () => {
+  const app = server.server.getClientVersion();
+  recordApp({ name: app?.name, version: app?.version, agent: AGENT_ID || null });
+};
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -98,6 +98,18 @@ check("first-run guide is shown to a new visitor", await p.locator("#guide").isV
 check("page language is English (the words on the page are English)", (await p.getAttribute("html", "lang")) === "en");
 await shot(p, 'memory-light.png');
 await axe(p, "Memory (light, with guide)");
+check("Getting started ticks what is already done (installed, an AI saved memories) and leaves the rest", await p.evaluate(() => {
+  const li = [...document.querySelectorAll("#setup-steps li")];
+  return li.length === 5 && li[0].classList.contains("is-done") && li[1].classList.contains("is-todo") && li[2].classList.contains("is-done") && /: not done yet/.test(li[1].innerText);
+}), await p.locator("#setup-count").innerText());
+const { recordApp } = await load("connected-apps.mjs");
+recordApp({ name: "claude-ai", version: "1.0", dir: vaultRoot }); // what the MCP server writes when Claude Desktop connects
+await p.evaluate(() => window.dispatchEvent(new Event("focus")));
+check("when an app connects, coming back to the page ticks 'Connect your AI app'",
+  await p.waitForFunction(() => /Connected: Claude Desktop/.test(document.querySelector("#setup-steps").innerText), null, { timeout: 5000 }).then(() => true, () => false));
+await p.click('#setup-steps [data-action="setup-go"]'); await p.waitForSelector("#view-settings:not([hidden])");
+check("'Set a passphrase' opens Settings at the passphrase box", await p.waitForFunction(() => document.activeElement?.id === "bp-1", null, { timeout: 3000 }).then(() => true, () => false));
+await p.click('.tab[data-view="memory"]'); await p.waitForSelector(".entry");
 
 const fs0 = await p.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
 await p.click('[data-action="text-larger"]'); await p.click('[data-action="text-larger"]');
@@ -377,7 +389,8 @@ await M.page.evaluate(() => { document.querySelector(".tabs").scrollLeft = 0; do
 check("the chosen tab is scrolled fully into sight", await M.page.evaluate(() => { const r = document.querySelector(".tab.is-active").getBoundingClientRect(); return r.left >= 0 && r.right <= document.documentElement.clientWidth; }));
 await M.page.click('.tab[data-view="memory"]'); await M.page.waitForSelector("article.entry");
 await M.page.click("#select-toggle"); await M.page.waitForSelector("#selbar:not([hidden])");
-await M.page.evaluate(() => window.scrollTo(0, 1400)); await M.page.waitForTimeout(300);
+// Scroll well past where the bar sits on the page, whatever is above it (the Getting started list, for one).
+await M.page.evaluate(() => window.scrollTo(0, document.querySelector("#selbar").getBoundingClientRect().top + scrollY + 700)); await M.page.waitForTimeout(300);
 const bar = await M.page.evaluate(() => { const s = document.querySelector("#selbar").getBoundingClientRect(); const t = document.querySelector(".top").getBoundingClientRect(); return { top: s.top, bottom: s.bottom, head: t.bottom, vh: innerHeight, y: scrollY }; });
 check("on a phone the select bar stays in sight below the header when scrolled", bar.y > 600 && bar.top >= bar.head - 1 && bar.bottom <= bar.vh, JSON.stringify(bar));
 await M.page.evaluate(() => window.scrollTo(0, 0)); await M.page.click("#select-toggle");
@@ -483,6 +496,7 @@ await PH.page.click('#pair-form button[type="submit"]');
 await PH.page.waitForSelector("article.entry");
 check("a phone signs in with the code and sees the memories", (await PH.page.locator("#dlg-connect[open]").count()) === 0);
 await PH.page.reload(); await PH.page.waitForSelector("article.entry");
+check("on a phone the Getting started list is not shown (its steps are done on a computer)", !(await PH.page.locator("#guide").isVisible()));
 check("and stays signed in after a reload, with a key of its own", (await PH.page.locator("#dlg-connect[open]").count()) === 0 && await PH.page.evaluate(() => (localStorage.getItem("memvault-device-key") || "").startsWith("mvd_")));
 check("the same code does not work twice", (await (await fetch(`${base}/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: pairCode }) })).status) === 401);
 await PH.page.click('.tab[data-view="settings"]'); await PH.page.waitForSelector("#devices-info p");

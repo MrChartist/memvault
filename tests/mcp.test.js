@@ -52,6 +52,14 @@ describe('mcp — owner mode', () => {
     }
   });
 
+  it('notes which app connected, by the name the app gives, for the Getting started list', async () => {
+    const file = path.join(ROOT, 'apps', 'test.json');
+    for (let i = 0; i < 50 && !fs.existsSync(file); i++) await new Promise((r) => setTimeout(r, 100));
+    const rec = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(rec).toMatchObject({ name: 'test', version: '1', agent: null });
+    expect(Object.keys(rec).sort()).toEqual(['agent', 'first_seen', 'last_seen', 'name', 'version']); // nothing else
+  });
+
   it('lists the starter agents', async () => {
     const out = await call(owner, 'agent_list');
     expect(out).toMatch(/market-analyst/);

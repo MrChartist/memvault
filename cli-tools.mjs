@@ -17,6 +17,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OK = "✅", WARN = "⚠️ ", BAD = "❌";
 const PKG_NAME = "@mrchartist/memvault";
 const SECURITY_URL = "https://github.com/MrChartist/memvault/blob/main/SECURITY.md";
+const DOCS_URL = "https://github.com/MrChartist/memvault/blob/main/docs";
 
 /** True when this copy was started by `npx` (it lives in npm's private cache, which npm may clear at any time). */
 export const runFromNpx = (dir = HERE) => /[\\/]_npx[\\/]/.test(dir);
@@ -256,12 +257,40 @@ export async function cmdDoctor() {
     console.log(`${icon[r.level]} ${r.title}`);
     if (r.fix) console.log(`     → ${r.fix}`);
   }
+  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  await printSetupSteps(n);
   const bad = rows.filter((r) => r.level === "bad").length;
   const warn = rows.filter((r) => r.level === "warn").length;
-  const n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
   console.log(`\n${bad ? n(bad, "problem", "problems") : "No problems"}${warn ? `, ${n(warn, "warning", "warnings")}` : ""}.`);
   console.log(`No tool can promise perfect safety. What is and is not protected: ${SECURITY_URL}`);
   process.exit(bad ? 1 : 0);
+}
+
+/** The same Getting started list as the dashboard, for a computer without a browser (a VPS). */
+async function printSetupSteps(n) {
+  let s;
+  try {
+    const { setupStatus } = await import("./setup-status.mjs");
+    const { openVaultDb } = await import("./db.mjs");
+    s = setupStatus({ vdb: openVaultDb() });
+  } catch { return; } // the checks above already report a vault that cannot be opened
+  const text = {
+    install: [() => "MemVault is installed"],
+    connect: [(x) => `AI app connected: ${x.apps.map((a) => a.label).join(", ")}`, "Connect an AI app", `Run ${mv("mcp-config")}, paste the block into your AI app's settings, then restart the app.`],
+    try: [(x) => `Your AI apps have saved ${n(x.saved, "memory", "memories")}`, "Ask your AI app to remember something", 'In the app, say: "Remember that I prefer short answers."'],
+    backup: [() => "First backup made", "Make a first backup", `Run ${mv("backup")}`],
+    passphrase: [() => "Backups are locked with a passphrase", "Lock your backups with a passphrase", "Set it in the dashboard (Settings → Backups), or set MEMVAULT_BACKUP_PASSPHRASE."],
+    agents: [(x) => `${x.apps.map((a) => `${a.label} works as ${a.agent}`).join(", ")}`, "Give an app its own helper (optional)", `Run ${mv("mcp-config --agent study-buddy")}`],
+    devices: [(x) => `In step with ${n(x.others, "other computer", "other computers")}`, "Use it on your other computers (optional)", `Run ${mv("devices setup")}. Guide: ${DOCS_URL}/devices.md`],
+    phone: [(x) => `${n(x.phones, "phone or tablet", "phones or tablets")} signed in`, "Open it on your phone (optional)", `Run ${mv("devices pair")}. Guide: ${DOCS_URL}/devices.md`],
+  };
+  console.log(`\nGetting started: ${s.done} of ${s.total} steps done`);
+  for (const st of s.steps) {
+    const [done, todo, how] = text[st.id] || [];
+    if (!done) continue;
+    console.log(st.done ? `${OK} ${done(st)}` : `⬜ ${todo}`);
+    if (!st.done && how) console.log(`     → ${how}`);
+  }
 }
 
 // ─── scrub: mask secrets already stored ─────────────────────────────────────

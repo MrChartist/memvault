@@ -253,16 +253,108 @@
 
   async function loadMemory() {
     try {
-      const [stats, agents] = await Promise.all([api('/stats'), api('/agents')]);
+      const [stats, agents] = await Promise.all([api('/stats'), api('/agents'), loadSetup()]);
       rememberAgents(agents.agents);
       renderStats(stats);
       fillViewAs(agents.agents);
-      $('#guide').hidden = store.get('memvault-guide') === 'hidden';
       await loadEntries();
     } catch (e) {
       $('#entries').innerHTML = `<div class="empty">${esc(e.message)}${/not running/.test(e.message) ? '' : ''}</div>`;
       $('#results-status').textContent = '';
     }
+  }
+
+  /* ───────── Getting started (setup-status.mjs): the list ticks itself from what is really there ───────── */
+  const SAMPLE = 'Remember that I prefer short answers.';
+  const SETUP_STEPS = {
+    install: { title: 'Install MemVault', done: () => 'Done. It runs on this computer, and your notes stay here.' },
+    connect: {
+      title: 'Connect your AI app',
+      todo: () => 'Works with Claude, Cursor, Antigravity, VS Code and other AI apps that can connect to tools. After you paste the settings, restart the app.',
+      action: ['connect-apps', 'Show me how', { primary: true }],
+      done: (s) => `Connected: ${s.apps.map((a) => esc(a.label)).join(', ')}.`,
+      doneAction: ['connect-apps', 'Connect another app'],
+    },
+    try: {
+      title: 'Ask it to remember something',
+      todo: () => `In your AI app, say: <span class="sample" dir="auto">${esc(SAMPLE)}</span>`,
+      action: ['copy-sample', 'Copy sentence'],
+      done: (s) => `Your AI apps have saved ${plural(s.saved, 'memory', 'memories')} here.`,
+    },
+    backup: {
+      title: 'Make your first backup',
+      todo: () => 'A copy of your whole memory, kept in the backups folder on this computer.',
+      action: ['backup-now', 'Back up now'],
+      done: (s) => `Last backup ${esc(ago(s.last))}.`,
+    },
+    passphrase: {
+      title: 'Lock your backups with a passphrase',
+      todo: () => 'Needed before a backup can be copied to Google Drive. Write it down: nobody can recover it for you.',
+      action: ['setup-go', 'Set a passphrase', { target: '#bp-1' }],
+      done: () => 'Your backups are locked with your passphrase.',
+    },
+    agents: {
+      title: 'Give an app its own helper',
+      todo: () => 'Tie an app to one agent, such as Study Buddy, so it sees only that agent’s memory.',
+      action: ['view', 'See the agents', { view: 'agents' }],
+      done: (s) => `${s.apps.map((a) => `${esc(a.label)} works as ${esc(agentName(a.agent))}`).join(', ')}.`,
+    },
+    devices: {
+      title: 'Use it on your other computers',
+      todo: (s) => s.enabled ? 'Syncing is on, but no other computer has been seen yet. Use the same shared folder and sync passphrase on the others.' : 'Keep your Mac, Windows PC and server in step through a folder you share between them.',
+      action: ['setup-go', 'Set up', { target: '#dv-folder' }],
+      done: (s) => `In step with ${plural(s.others, 'other computer', 'other computers')}.`,
+    },
+    phone: {
+      title: 'Open it on your phone',
+      todo: () => 'Read and write notes on your iPhone or iPad, through a private address only your devices can reach.',
+      action: ['setup-go', 'Set up', { target: '[data-action="pair-phone"]' }],
+      done: (s) => `${plural(s.phones, 'phone or tablet', 'phones or tablets')} signed in.`,
+    },
+  };
+  const setupButton = ([action, label, o = {}]) => `<div class="row"><button type="button" class="btn${o.primary ? ' primary' : ''}" data-action="${esc(action)}"${o.target ? ` data-target="${esc(o.target)}"` : ''}${o.view ? ` data-view="${esc(o.view)}"` : ''}>${esc(label)}</button></div>`;
+
+  function renderSetup(s) {
+    const item = (st) => {
+      const d = SETUP_STEPS[st.id];
+      if (!d) return '';
+      const act = st.done ? d.doneAction : d.action;
+      return `<li class="${st.done ? 'is-done' : 'is-todo'}"><div><b>${esc(d.title)}<span class="sr-only">${st.done ? ': done' : ': not done yet'}</span></b>
+        <span class="muted">${st.done ? d.done(st) : d.todo(st)}</span>${act ? setupButton(act) : ''}</div></li>`;
+    };
+    $('#setup-steps').innerHTML = s.steps.filter((x) => !x.optional).map(item).join('');
+    const extra = s.steps.filter((x) => x.optional);
+    $('#setup-optional').innerHTML = extra.map(item).join('');
+    $('#setup-optional-count').textContent = `(${extra.filter((x) => x.done).length} of ${extra.length} optional steps done)`;
+    const all = s.done === s.total;
+    $('#setup-bar').max = s.total;
+    $('#setup-bar').value = s.done;
+    $('#setup-count').textContent = all ? `All ${s.total} steps done` : `${s.done} of ${s.total} steps done`;
+    $('#guide-title').textContent = all ? 'You are all set' : 'Getting started';
+  }
+
+  async function loadSetup() {
+    const card = $('#guide');
+    if (store.get('memvault-guide') === 'hidden') { card.hidden = true; return; }
+    try {
+      const s = await api('/setup');
+      if (s.onPhone) { card.hidden = true; return; } // every step is done on a computer
+      renderSetup(s);
+      card.hidden = false;
+    } catch {
+      card.hidden = true; // the memory list below still loads and shows the problem
+    }
+  }
+
+  // You paste the settings into your AI app and come back: the list is checked again then.
+  window.addEventListener('focus', () => { if (!$('#view-memory').hidden && !$('#guide').hidden && getToken()) loadSetup(); });
+
+  function setupGo(el) {
+    showView('settings');
+    const target = $(el.dataset.target);
+    if (!target) return;
+    target.closest('.card')?.scrollIntoView({ block: 'start' });
+    focusSoon(target);
   }
 
   function renderStats(s) {
@@ -1018,6 +1110,7 @@
       toast(`${results.map((r) => `${r.backend === 'local' ? 'On this computer' : r.backend === 'gdriveFolder' ? 'Google Drive folder' : 'Google Drive'}: ${r.ok ? (r.encrypted ? 'done, locked with your passphrase' : 'done') : String(r.error || 'it did not work').replace(/\.$/, '')}`).join(' · ')}.`, bad);
       if (!$('#view-security').hidden) await loadSecurity();
       if (!$('#view-settings').hidden) await loadBackupInfo();
+      if (!$('#view-memory').hidden) await loadSetup();
     } catch (e) { toast(e.message, true); } finally { btn.disabled = false; }
   }
 
@@ -1252,11 +1345,12 @@
     theme: toggleTheme,
     'text-smaller': () => { textLevel = setTextSize(textLevel - 1); toast(`Text size: ${SIZE_NAMES[textLevel]}.`); syncLookRadios(); },
     'text-larger': () => { textLevel = setTextSize(textLevel + 1); toast(`Text size: ${SIZE_NAMES[textLevel]}.`); syncLookRadios(); },
-    help: () => { showView('memory', { focus: true }); store.del('memvault-guide'); $('#guide').hidden = false; },
+    help: () => { store.del('memvault-guide'); $('#guide').hidden = false; showView('memory', { focus: true }); },
+    'setup-go': (el) => setupGo(el),
     'dismiss-guide': () => { store.set('memvault-guide', 'hidden'); $('#guide').hidden = true; focusSoon($('#diary-input')); },
     'connect-apps': openApps,
     'pick-app': (el) => pickApp(el.dataset.app),
-    'copy-sample': () => copyText('Remember that I prefer short answers.', 'Copied. Paste it into your AI app.'),
+    'copy-sample': () => copyText(SAMPLE, 'Copied. Paste it into your AI app.'),
     view: (el) => showView(el.dataset.view, { focus: true }),
     filter: (el) => {
       mem.type = el.dataset.type;

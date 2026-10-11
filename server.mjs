@@ -29,6 +29,7 @@ import { collectDiagnostics } from "./diagnostics.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
 import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
+import { setupStatus, backupPassphraseState } from "./setup-status.mjs";
 import { resolveUserPath } from "./paths.mjs";
 import {
   FACETS, listFacts, setFact, removeFact, listSuggestions, acceptSuggestion, rejectSuggestion, learnFromVault, importProfile, exportProfile,
@@ -765,12 +766,6 @@ export function createApp({
   // Lets the dashboard check a typed key without reading any data.
   app.get("/whoami", (_req, res) => res.json({ ok: true }));
 
-  const passphraseState = (uc) => {
-    if (process.env.MEMVAULT_BACKUP_PASSPHRASE) return { set: true, via: "env" };
-    const f = uc.storage?.passphraseFile;
-    if (f) { try { if (fs.readFileSync(f, "utf8").split(/\r?\n/)[0].trim()) return { set: true, via: "file" }; } catch { /* missing file */ } }
-    return { set: false, via: null };
-  };
 
   app.get("/settings", (_req, res) => {
     const uc = config.load();
@@ -785,7 +780,7 @@ export function createApp({
       capture,
       projects: Array.isArray(uc.projects) ? uc.projects : [],
       backup: {
-        passphrase: passphraseState(uc),
+        passphrase: backupPassphraseState(uc),
         cloud: { folder: !!st.gdriveFolder.enabled, api: !!st.gdriveApi.enabled },
         keep: st.keepLocalBackups,
       },
@@ -895,6 +890,15 @@ export function createApp({
     if (!forgetDeviceKey(req.params.id)) return res.status(404).json({ ok: false, error: "Not found" });
     log("device-forgotten", { device: req.params.id });
     res.json({ ok: true });
+  });
+
+  // The Getting started list on the Memory screen (setup-status.mjs): it ticks itself from what is really there.
+  app.get("/setup", (req, res) => {
+    try {
+      res.json({ ok: true, onPhone: Boolean(req.deviceKeyId), ...setupStatus({ vdb, userConfig: config.load(), dir: devicesDir }) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   // One round of every switched-on capture engine (the clipboard watcher runs separately, by design).
