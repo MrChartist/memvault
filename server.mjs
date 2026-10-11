@@ -95,7 +95,8 @@ const SecretAddSchema = z.object({
 const SENTINEL_ID = "__sentinel__";
 const SENTINEL_VALUE = "memvault-ok";
 
-const ITEM_COLS = "id,type,source,title,substr(content,1,300) as snippet,file_path,tags,created_at,agent_id,scope";
+// Lists carry a 300-character preview; a preview that was cut ends with "…" so it does not look like the whole text.
+const ITEM_COLS = "id,type,source,title,CASE WHEN length(content) > 300 THEN substr(content,1,300) || '…' ELSE content END as snippet,file_path,tags,created_at,agent_id,scope";
 
 function isoDate() {
   const d = new Date();
@@ -205,7 +206,8 @@ export function createApp({
     const parsed = AddSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
-      const { ids, redacted } = ingest(parsed.data, { vdb, security, root, actor: parsed.data.agent_id || "api" });
+      // A note from the dashboard is the owner's own write: logged as "owner", like every other owner action here.
+      const { ids, redacted } = ingest(parsed.data, { vdb, security, root, actor: parsed.data.agent_id || "owner" });
       res.json({ ok: true, id: ids[0], redacted });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message });

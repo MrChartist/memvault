@@ -113,6 +113,9 @@ await p.click('[data-action="text-smaller"]'); await p.click('[data-action="text
 await p.click('[data-action="connect-apps"]');
 await p.waitForSelector("#dlg-apps[open]");
 check("connect dialog shows the exact config with real paths", /mcp-server\.mjs/.test(await p.locator("#apps-body").innerText()));
+const appsText = await p.locator("#apps-body").innerText();
+check("connect dialog says when to paste all of the block and when only the memvault part (the block already holds \"mcpServers\")",
+  appsText.includes("If the file is empty, paste all of this. If it already has “mcpServers”, copy only the “memvault” part into it.") && !/inside "mcpServers"/.test(appsText) && /"mcpServers"/.test(appsText), appsText.slice(0, 200).replace(/\s+/g, " "));
 await p.click('[data-app="claude-code"]');
 const claudeCmd = await p.locator("#apps-body .code").first().innerText();
 check("Claude Code gets a ready-to-run command (options first, then --transport, then the name: --env must not touch the name)", /^claude mcp add (--env \S+ )*--transport stdio memvault -- /.test(claudeCmd), claudeCmd.slice(0, 120));
@@ -130,7 +133,10 @@ await p.waitForTimeout(300);
 check("hostile entries did NOT execute script", !(await p.evaluate(() => window.__pwned === 1 || document.title === "PWNED")));
 check("hostile markup rendered as text", (await p.evaluate(() => document.querySelectorAll("#entries img, #entries svg, #entries script, #entries b").length)) === 0);
 const body = await p.locator("#entries").innerText();
-check("secrets in old clipboard entry show masked", /REDACTED/.test(body) && !body.includes("correcthorsebattery"));
+check("secrets in old clipboard entry show masked, in plain words", /\[hidden password or key\]/.test(body) && /\[hidden access key\]/.test(body) && !/REDACTED/.test(body) && !body.includes("correcthorsebattery") && !body.includes("ghp_abcdefghij"));
+const byAgent = await p.locator("#entries .badge.by-agent").allInnerTexts();
+const sources = await p.locator("#entries .entry-head > span:not(.badge)").allInnerTexts();
+check("memory cards use plain words for sources and agent names", byAgent.includes("Market Analyst") && !byAgent.some((t) => /^[a-z]+(-[a-z]+)+$/.test(t)) && sources.includes("You") && sources.includes("Copied text") && sources.includes("Saved by an AI") && !sources.some((t) => /^(manual|ai-memory|clipboard)$/.test(t)), `${byAgent.join(",")} / ${sources.join(",")}`);
 await p.selectOption("#viewas", "market-analyst"); await p.waitForTimeout(300);
 check("'see what this agent can see' hides another agent's private note", !(await p.locator("#entries").innerText()).includes("Private style note"));
 await p.selectOption("#viewas", ""); await p.waitForTimeout(200);
@@ -199,7 +205,13 @@ await p.click('#secret-form button[type="submit"]'); await p.waitForSelector(".s
 check("secret name shown as text, not markup", (await p.locator(".secret b").first().innerText()) === "<b>Email</b> password");
 await axe(p, "Secure Vault (unlocked)");
 await p.click('[data-view="security"]'); await p.waitForSelector(".check-row"); await p.waitForTimeout(500);
-check("security page reports loopback, masking and an intact log", /binds to 127\.0\.0\.1/.test(await p.locator("#posture").innerText()) && /masking is ON/.test(await p.locator("#posture").innerText()) && (await p.locator("#chain-pill").getAttribute("class")).includes("good"));
+check("security page reports loopback, masking and an intact log", /only listens on this computer \(127\.0\.0\.1\)/.test(await p.locator("#posture").innerText()) && /masking is ON/.test(await p.locator("#posture").innerText()) && (await p.locator("#chain-pill").getAttribute("class")).includes("good"));
+const posture = await p.locator("#posture").innerText();
+check("check rows are plain sentences (no \"(s)\" plurals, no backticks)", !/\(s\)|`/.test(posture) && /Node\.js \S+ \(supported\)/.test(posture), posture.match(/.*(\(s\)|`).*/)?.[0] || "");
+const auditWho = await p.locator("#audit tbody td:nth-child(2)").allInnerTexts();
+const auditText = await p.locator("#audit").innerText();
+check("the activity list says who in plain words (You, agent names) and shows no raw key=value text", auditWho.length > 0 && auditWho.includes("You") && !auditWho.some((w) => /^(api|owner)$/.test(w)) && !/\b\w+=\S/.test(auditText), auditWho.slice(0, 6).join(","));
+check("backups lead with the time, the file name comes second", await p.evaluate(() => { const r = document.querySelector("#backups .check-row div"); return !r || (r.querySelector("b") && r.firstElementChild.tagName === "B" && /\.sqlite|\.db|backup/i.test(r.querySelector(".backup-name")?.textContent || "")); }));
 check("security page says plainly what leaves the computer", /sent to the company behind that AI/.test(await p.locator("#view-security").innerText()));
 await axe(p, "Security (light)");
 await shot(p, 'security-light.png', { fullPage: true });
@@ -219,6 +231,12 @@ await card("Maya's exam").locator(".linklike").click();
 await p.waitForSelector("#dlg-memory[open]");
 check("opening a memory shows its full text", /study with pictures/.test(await p.locator("#mem-full").innerText()));
 await axe(p, "Memory window (read)");
+check("in the memory window, Close is a plain button and Delete sits apart at the far start", await p.evaluate(() => {
+  const del = document.querySelector('#mem-view-step [data-action="mem-delete"]').getBoundingClientRect();
+  const close = document.querySelector('#mem-view-step [data-action="close-dialog"]');
+  const others = [...document.querySelectorAll('#mem-view-step .dlg-actions .btn:not([data-action="mem-delete"])')].map((b) => b.getBoundingClientRect().left);
+  return !close.classList.contains("primary") && others.every((x) => x > del.right + 8);
+}));
 await shot(p, "after-memory-open.png");
 await p.click('[data-action="mem-pin"]'); await p.waitForFunction(() => document.querySelector("#mem-pin")?.textContent === "Unpin");
 const toastTop = await p.evaluate(() => { const t = document.querySelector("#toast"); return t.matches(":popover-open") && getComputedStyle(t).opacity === "1" && document.querySelector("#dlg-memory").open; });
@@ -235,11 +253,13 @@ check("closing an edit with typing in it asks first", p.asked.length === askedBe
 await p.waitForSelector("#dlg-memory:not([open])", { state: "attached" });
 await card("Maya's exam").locator('[data-action="edit-item"]').click();
 await p.waitForFunction(() => document.querySelector("#dlg-memory").open && document.querySelector("#m-content").value.includes("study with pictures"));
+check("the edit box hides the labels MemVault adds itself (pinned, diary, manual)", !/pinned|diary|manual/.test(await p.inputValue("#m-tags")), await p.inputValue("#m-tags"));
 await p.fill("#m-content", "Maya's exam is on 14 June. API_KEY=abcd1234efgh5678");
 await p.click('[data-action="mem-save"]'); await p.waitForSelector("#dlg-memory:not([open])", { state: "attached" });
 check("saving an edit hides secrets and says so in plain words", /hid 1 password or key/.test(await p.locator("#toast").innerText()));
 const saved = await (await fetch(`${base}/search?q=14%20June`, { headers: { authorization: `Bearer ${token}` } })).json();
 check("the stored text is the edited, masked text", saved.results.length === 1 && !JSON.stringify(saved).includes("abcd1234efgh5678") && /14 June/.test(saved.results[0].snippet));
+check("saving an edit keeps the hidden labels and the pin", ["diary", "manual", "pinned"].every((t) => saved.results[0].tags.split(",").includes(t)), saved.results[0].tags);
 await p.waitForFunction(() => document.querySelector("article.entry")?.classList.contains("is-pinned"));
 check("a pinned memory moves to the top and says 'Pinned' in words", /Pinned/.test(await p.locator("article.entry.is-pinned").first().innerText()));
 
@@ -262,6 +282,7 @@ await axe(p, "Memory (choosing several)");
 await shot(p, "after-select.png");
 await p.click("#delete-selected"); await p.waitForSelector("#dlg-bulk[open]");
 check("bulk delete cannot be done by accident (button waits for the typed words)", await p.locator("#bulk-go").isDisabled());
+check("the words to type are shown as they must be typed, not run together in capitals", (await p.locator("#bulk-label code").innerText()) === "DELETE 2" && (await p.locator("#bulk-label").evaluate((e) => getComputedStyle(e).textTransform)) === "none");
 await p.fill("#bulk-confirm", "DELETE 1");
 check("the wrong number does not unlock it", await p.locator("#bulk-go").isDisabled());
 await axe(p, "Delete several (confirm)");
@@ -281,6 +302,7 @@ await p.click('[data-action="clear-search"]'); await p.waitForTimeout(300);
 // ═════ H. Settings ═════
 await p.click('[data-view="settings"]'); await p.waitForSelector("#capture-list .switch");
 check("switching screens moves focus to the new heading", await p.evaluate(() => document.activeElement?.id === "h-settings"));
+check("text size choices go from small to big: Normal, Large, Larger, Largest", (await p.locator('input[name="textsize"]').evaluateAll((l) => l.map((r) => `${r.value}:${r.parentElement.textContent.trim()}`))).join("|") === "0:Normal|1:Large|2:Larger|3:Largest");
 check("every kind of automatic saving starts switched off", (await p.locator('[data-capture]:checked').count()) === 0);
 await axe(p, "Settings (light)");
 await shot(p, "after-settings-light.png", { fullPage: true });
@@ -347,6 +369,17 @@ await M.page.goto(`${base}/#token=${token}`); await M.page.waitForSelector(".ent
 check("no sideways scrolling on a phone", !(await M.page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
 const small = await M.page.evaluate(() => [...document.querySelectorAll("button, a:not(p a), input, select, textarea, summary")].filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { t: (e.textContent || e.id || e.className).trim().slice(0, 24), h: Math.round(r.height), w: Math.round(r.width) }; }).filter((x) => x.h < 44 || x.w < 44));
 check("every button and field is at least 44px tall on a phone", small.length === 0, JSON.stringify(small.slice(0, 5)));
+const headH = await M.page.evaluate(() => document.querySelector(".top").getBoundingClientRect().height);
+check("the phone header is short (one row of buttons, one row of tabs)", headH < 140, `${Math.round(headH)}px`);
+check("the tabs stay on one row that scrolls sideways on a phone", await M.page.evaluate(() => { const t = [...document.querySelectorAll(".tab")].map((b) => Math.round(b.getBoundingClientRect().top)); return new Set(t).size === 1; }));
+await M.page.evaluate(() => { document.querySelector(".tabs").scrollLeft = 0; document.querySelector('.tab[data-view="settings"]').click(); }); await M.page.waitForTimeout(300);
+check("the chosen tab is scrolled fully into sight", await M.page.evaluate(() => { const r = document.querySelector(".tab.is-active").getBoundingClientRect(); return r.left >= 0 && r.right <= document.documentElement.clientWidth; }));
+await M.page.click('.tab[data-view="memory"]'); await M.page.waitForSelector("article.entry");
+await M.page.click("#select-toggle"); await M.page.waitForSelector("#selbar:not([hidden])");
+await M.page.evaluate(() => window.scrollTo(0, 1400)); await M.page.waitForTimeout(300);
+const bar = await M.page.evaluate(() => { const s = document.querySelector("#selbar").getBoundingClientRect(); const t = document.querySelector(".top").getBoundingClientRect(); return { top: s.top, bottom: s.bottom, head: t.bottom, vh: innerHeight, y: scrollY }; });
+check("on a phone the select bar stays in sight below the header when scrolled", bar.y > 600 && bar.top >= bar.head - 1 && bar.bottom <= bar.vh, JSON.stringify(bar));
+await M.page.evaluate(() => window.scrollTo(0, 0)); await M.page.click("#select-toggle");
 await shot(M.page, 'memory-mobile.png');
 await axe(M.page, "Memory (phone)");
 
@@ -361,6 +394,18 @@ await D.page.click('[data-view="memory"]'); await D.page.waitForSelector("articl
 await D.page.click("#select-toggle"); await D.page.waitForSelector("#selbar:not([hidden])");
 await shot(D.page, "after-select-dark.png");
 await axe(D.page, "Memory choosing several (dark)");
+
+const X = await open({ viewport: { width: 390, height: 844 }, hasTouch: true });
+await X.ctx.addInitScript(() => { try { localStorage.setItem("memvault-text", "3"); } catch { /* storage blocked */ } });
+await X.page.goto(`${base}/#token=${token}`); await X.page.waitForSelector(".entry"); await X.page.waitForTimeout(300);
+const wide = [];
+for (const v of ["memory", "agents", "vault", "security", "settings"]) {
+  await X.page.click(`.tab[data-view="${v}"]`); await X.page.waitForTimeout(700);
+  const r = await X.page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+  if (r.sw > r.cw) wide.push(`${v}: ${r.sw}>${r.cw}`);
+}
+check("no sideways scrolling on any screen at 390px with the largest text", wide.length === 0, wide.join(", "));
+check("largest text really is on in that check", (await X.page.getAttribute("html", "data-text")) === "xl");
 
 const F = await open({ forcedColors: "active" });
 await F.page.goto(`${base}/#token=${token}`); await F.page.waitForSelector(".entry");
@@ -393,6 +438,29 @@ check("Escape cannot dismiss it while there is no working key", await N.page.loc
 await N.page.fill("#token-input", token); await N.page.click('#connect-form button[type="submit"]');
 await N.page.waitForSelector("article.entry");
 check("the right key opens the dashboard", (await N.page.locator("#dlg-connect[open]").count()) === 0);
+
+// ═════ J. a new, empty vault: one clear next step ═════
+const emptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), "memvault-e2e-empty-"));
+const evdb = openVaultDb({ root: emptyRoot });
+const ecfg = path.join(emptyRoot, "rc.json"); fs.writeFileSync(ecfg, "{}");
+const eport = await new Promise((res) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const q = s.address().port; s.close(() => res(q)); }); });
+const eserver = await new Promise((res) => { const s = createApp({ vdb: evdb, token, port: eport, root: emptyRoot, config: { load: () => JSON.parse(fs.readFileSync(ecfg, "utf8")), save: (c) => fs.writeFileSync(ecfg, JSON.stringify(c)), passphraseFile: path.join(emptyRoot, "outside", "pp") } }).listen(eport, "127.0.0.1", () => res(s)); });
+const E = await open();
+await E.page.goto(`http://127.0.0.1:${eport}/#token=${token}`); await E.page.waitForSelector("#empty-state:not([hidden])");
+const shown = async (sel) => E.page.locator(sel).first().isVisible();
+check("an empty vault shows one friendly next step", /Your memory is empty/.test(await E.page.locator("#empty-state").innerText()) && (await E.page.locator("#empty-state [data-action=\"connect-apps\"]").count()) === 1 && await shown("#diary-input"));
+check("an empty vault hides the zero tiles, filters, search and select controls", !(await shown("#stats")) && !(await shown(".toolbar")) && !(await shown("#search-form")) && !(await shown("#select-toggle")) && (await E.page.locator("#entries .empty").count()) === 0);
+await axe(E.page, "Memory (empty vault)");
+await shot(E.page, "memory-empty.png", { fullPage: true });
+await E.page.click('.tab[data-view="agents"]'); await E.page.waitForSelector("#agents .empty");
+check("with no agents, the message spans the whole grid", await E.page.evaluate(() => { const g = document.querySelector("#agents").getBoundingClientRect(); const e = document.querySelector("#agents > .empty").getBoundingClientRect(); return Math.abs(g.width - e.width) < 2; }));
+await E.page.click('.tab[data-view="memory"]'); await E.page.waitForSelector("#diary-input");
+await E.page.fill("#diary-input", "My first note"); await E.page.click("#save-btn");
+await E.page.waitForSelector("article.entry");
+check("after the first note, the tiles, search and list come back", await shown("#stats") && await shown("#search-form") && !(await shown("#empty-state")));
+check("the empty vault made no third-party requests and had no errors", E.bad.external.length === 0 && E.bad.errors.length === 0 && E.bad.csp.length === 0, [...E.bad.external, ...E.bad.errors, ...E.bad.csp].join("|"));
+eserver.close();
+fs.rmSync(emptyRoot, { recursive: true, force: true });
 
 const { makeOpenPage } = await load("cli-tools.mjs");
 const O = await open();

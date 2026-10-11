@@ -45,19 +45,21 @@ async function serverUp(url) {
 export async function collectDiagnostics({ vdb, deep = false, checkServer = true } = {}) {
   const rows = [];
   const add = (level, title, fix = "") => rows.push({ level, title, fix });
+  // Plain words for people (the dashboard and `memvault doctor` show these as they are): sentence case, real plurals.
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const db = vdb || openVaultDb();
   const sec = cfg.SECURITY_CONFIG;
 
   const major = Number(process.versions.node.split(".")[0]);
-  add(major >= 20 ? "ok" : "bad", `Node.js ${process.versions.node}`, major >= 20 ? "" : "MemVault needs Node 20 or newer.");
+  add(major >= 20 ? "ok" : "bad", `Node.js ${process.versions.node} (${major >= 20 ? "supported" : "too old"})`, major >= 20 ? "" : "MemVault needs Node.js 20 or newer.");
 
   const total = db.query("SELECT COUNT(*) AS n FROM items")[0].n;
-  add("ok", `Vault: ${tildify(cfg.VAULT_ROOT)} — ${total} items, ${(fs.statSync(db.path).size / 1048576).toFixed(1)} MB`);
+  add("ok", `Vault folder: ${tildify(cfg.VAULT_ROOT)} (${plural(total, "memory", "memories")}, ${(fs.statSync(db.path).size / 1048576).toFixed(1)} MB)`);
   if (isPosix) {
-    for (const [label, p, want] of [["vault folder", cfg.VAULT_ROOT, 0o700], ["database", db.path, 0o600]]) {
+    for (const [label, p, want] of [["Vault folder", cfg.VAULT_ROOT, 0o700], ["Database file", db.path, 0o600]]) {
       const m = modeOf(p);
-      if (m !== null && (m & 0o077) !== 0) add("warn", `${label} is readable by other users (mode ${m.toString(8)})`, `chmod ${want.toString(8)} "${p}"`);
-      else add("ok", `${label} permissions are private`);
+      if (m !== null && (m & 0o077) !== 0) add("warn", `${label} can be read by other users on this computer (mode ${m.toString(8)})`, `Run: chmod ${want.toString(8)} "${p}"`);
+      else add("ok", `${label} is private to you`);
     }
   } else {
     add("info", "Windows: file permissions follow your user profile. Keep the vault inside your user folder.");
@@ -65,65 +67,69 @@ export async function collectDiagnostics({ vdb, deep = false, checkServer = true
 
   const tokenPath = cfg.TOKEN_FILE;
   if (!fs.existsSync(tokenPath) && !process.env.MEMVAULT_TOKEN) {
-    add("info", "No API token yet (created the first time the server or `memvault setup` runs)");
+    add("info", "No dashboard key yet. One is made the first time MemVault starts, or when you run memvault setup.");
   } else {
     const m = modeOf(tokenPath);
-    if (isPosix && m !== null && (m & 0o077) !== 0) add("warn", `API token file is readable by other users (mode ${m.toString(8)})`, `chmod 600 "${tokenPath}"`);
-    else add("ok", "API token present and private");
+    if (isPosix && m !== null && (m & 0o077) !== 0) add("warn", `Dashboard key file can be read by other users on this computer (mode ${m.toString(8)})`, `Run: chmod 600 "${tokenPath}"`);
+    else add("ok", "Dashboard key is set and private to you");
     if (path.resolve(tokenPath).startsWith(path.resolve(cfg.VAULT_ROOT))) {
-      add("warn", "API token is stored inside the vault folder, so backups would include it", "set MEMVAULT_TOKEN_FILE to a path outside the vault");
+      add("warn", "Dashboard key is kept inside the vault folder, so backups would include it", "Set MEMVAULT_TOKEN_FILE to a place outside the vault folder.");
     }
   }
 
-  if (isLoopbackHost(sec.host)) add("ok", `Server binds to ${sec.host} (this machine only)`);
-  else add(sec.allowRemote ? "warn" : "bad", `Server is set to listen on ${sec.host}`, 'set "security": { "host": "127.0.0.1" } in ~/.memvaultrc.json unless you truly need this');
+  if (isLoopbackHost(sec.host)) add("ok", `Server only listens on this computer (${sec.host})`);
+  else add(sec.allowRemote ? "warn" : "bad", `Server listens on ${sec.host}, so other devices may reach it`, 'Set "security": { "host": "127.0.0.1" } in ~/.memvaultrc.json, unless you really need this.');
   if (checkServer) {
     const base = `http://127.0.0.1:${cfg.PORT}`;
-    add("info", (await serverUp(base)) ? `Server is running at ${base}` : "Server is not running (fine — only the dashboard needs it)");
+    add("info", (await serverUp(base)) ? `Server is running at ${base}` : "Server is not running. That is fine: only the dashboard needs it.");
   }
 
-  add(sec.redact !== false ? "ok" : "warn", sec.redact !== false ? "Secret masking is ON" : "Secret masking is OFF", sec.redact !== false ? "" : 'remove "redact": false from the security config');
-  if (sec.audit === false) add("warn", "Audit log is OFF", 'remove "audit": false from the security config');
+  // "ON" / "OFF" stay in capitals here: tests/server.test.js looks for "Secret masking is ON".
+  add(sec.redact !== false ? "ok" : "warn", sec.redact !== false ? "Secret masking is ON: passwords and keys are hidden before anything is saved" : "Secret masking is OFF", sec.redact !== false ? "" : 'Remove "redact": false from the security settings.');
+  if (sec.audit === false) add("warn", "Audit log is off", 'Remove "audit": false from the security settings.');
   else {
     const v = verifyAudit(cfg.VAULT_ROOT);
-    add(v.ok ? "ok" : "bad", v.ok ? `Audit log intact (${v.entries} records)` : `Audit log was altered at line ${v.brokenAtLine}: ${v.reason}`, v.ok ? "" : "Investigate — someone edited or removed records.");
+    add(v.ok ? "ok" : "bad", v.ok ? `Audit log intact (${plural(v.entries, "record", "records")})` : `Audit log was changed at line ${v.brokenAtLine}: ${v.reason}`, v.ok ? "" : "Someone edited or removed records. Check who can use this computer.");
   }
 
   const secrets = db.query("SELECT encrypted FROM secrets WHERE id != '__sentinel__'");
   const legacy = secrets.filter((s) => isLegacyBlob(s.encrypted)).length;
-  add("ok", `${secrets.length} encrypted secret(s)`);
-  if (legacy) add("warn", `${legacy} secret(s) still use the old static-salt encryption`, "open each once in the dashboard (Secure Vault) and it upgrades automatically");
+  add("ok", secrets.length ? `${plural(secrets.length, "secret", "secrets")} locked in the Secure Vault` : "No secrets in the Secure Vault yet");
+  if (legacy) add("warn", `${plural(legacy, "secret still uses", "secrets still use")} the older, weaker lock`, "Open each one once in the dashboard (Secure Vault) and it is upgraded by itself.");
 
   const st = cfg.STORAGE_CONFIG;
   if (!(st.gdriveFolder?.enabled || st.gdriveApi?.enabled)) {
-    add("ok", "No cloud backup configured — your data never leaves this machine");
+    add("ok", "No cloud backup is set up, so your data never leaves this computer");
   } else {
     const pol = cloudPolicy(st);
-    if (pol.mode === "encrypted") add("ok", "Cloud backups are encrypted before upload");
-    else if (pol.mode === "plaintext") add("bad", "Cloud backups are uploaded WITHOUT encryption", "unset allowPlaintextCloud and set MEMVAULT_BACKUP_PASSPHRASE");
-    else add("bad", "Cloud backup is enabled but blocked", pol.error);
+    if (pol.mode === "encrypted") add("ok", "Cloud backups are locked (encrypted) before they are uploaded");
+    else if (pol.mode === "plaintext") add("bad", "Cloud backups are uploaded without encryption", "Remove allowPlaintextCloud and set MEMVAULT_BACKUP_PASSPHRASE.");
+    else add("bad", "Cloud backup is switched on but blocked", pol.error);
   }
   const backups = listLocalBackups();
-  if (!backups.length) add("warn", "No local backup yet", "run `memvault backup`");
+  const backupFix = "Run memvault backup, or choose “Back up now” in the dashboard.";
+  // "Latest local backup is from today" is what tests/cli.test.js looks for.
+  if (!backups.length) add("warn", "No local backup yet", backupFix);
   else {
     const ageDays = (Date.now() - new Date(backups[0].modified).getTime()) / 86400000;
-    add(ageDays > 14 ? "warn" : "ok", `Latest local backup is ${ageDays < 1 ? "from today" : `${Math.floor(ageDays)} day(s) old`}`, ageDays > 14 ? "run `memvault backup`" : "");
+    add(ageDays > 14 ? "warn" : "ok", `Latest local backup is ${ageDays < 1 ? "from today" : `${plural(Math.floor(ageDays), "day", "days")} old`}`, ageDays > 14 ? backupFix : "");
   }
 
   const list = listAgents(db);
-  add(list.length ? "ok" : "info", list.length ? `${list.length} agent profile(s): ${list.map((a) => a.id).join(", ")}` : "No agent profiles yet (try `memvault agent starter`)");
+  const nameOf = (a) => a.name || a.id;
+  add(list.length ? "ok" : "info", list.length ? `${plural(list.length, "agent", "agents")}: ${list.map(nameOf).join(", ")}` : "No agents yet. Add the starter agents on the Agents screen, or run memvault agent starter.");
   for (const a of list) {
     const p = getAgent(db, a.id);
-    if (p?.memory.allowSecrets) add("warn", `Agent "${a.id}" can read the secrets table`, `memvault agent edit ${a.id}`);
-    if (p?.memory.readScopes.some((s) => s.startsWith("agent:"))) add("warn", `Agent "${a.id}" can read other agents' private memory`, "intended for coordinators only");
+    if (p?.memory.allowSecrets) add("warn", `Agent “${nameOf(a)}” can see the names of Secure Vault items`, `Turn this off under Agents → Edit, or run memvault agent edit ${a.id}.`);
+    if (p?.memory.readScopes.some((s) => s.startsWith("agent:"))) add("warn", `Agent “${nameOf(a)}” can read other agents’ private memories`, "This is meant only for a coordinator agent.");
   }
 
   if (deep) {
     const sample = db.query("SELECT title, content FROM items ORDER BY created_at DESC LIMIT 2000");
     let hits = 0;
     for (const r of sample) if (redact(`${r.title || ""}\n${r.content || ""}`, { disable: sec.redactDisable }).findings.length) hits++;
-    if (hits) add("warn", `${hits} of your latest ${sample.length} items contain credential-like text stored before masking`, "preview with `memvault scrub`, then `memvault scrub --apply`");
-    else add("ok", "No credential-like text found in recent items");
+    if (hits) add("warn", `${hits} of your latest ${plural(sample.length, "memory", "memories")} ${hits === 1 ? "has" : "have"} password-like text saved before masking was on`, "See them with memvault scrub, then hide them with memvault scrub --apply.");
+    else add("ok", "No password-like text found in recent memories");
   }
 
   return {
