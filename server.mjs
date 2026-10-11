@@ -693,7 +693,9 @@ export function createApp({
   app.put("/settings", (req, res) => {
     const parsed = SettingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: "Those settings are not allowed. Only automatic saving and projects can be changed here." });
-    const uc = config.load();
+    let uc;
+    // A settings file with a mistake reads as {} (so MemVault still starts); saving that back would erase it. Refuse instead.
+    try { uc = config.load({ forUpdate: true }); } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
     const changed = [];
     if (parsed.data.capture) {
       uc.sync = { ...(uc.sync || {}) };
@@ -714,11 +716,13 @@ export function createApp({
     const parsed = PassphraseSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
     if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
+    let uc;
+    // Before the passphrase file is touched, so a refusal changes nothing.
+    try { uc = config.load({ forUpdate: true }); } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
     const file = config.passphraseFile;
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     fs.writeFileSync(file, parsed.data.passphrase + "\n", { mode: 0o600 });
     try { fs.chmodSync(file, 0o600); } catch { /* not POSIX */ }
-    const uc = config.load();
     uc.storage = { ...(uc.storage || {}), passphraseFile: file };
     config.save(uc);
     log("settings", { changed: ["backup-passphrase"] });

@@ -183,7 +183,12 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
 
   const loadFull = () => {
     const db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database();
-    migrate(db);
+    try {
+      migrate(db);
+    } catch (e) {
+      db.close(); // e.g. a file from a newer MemVault: every retry would otherwise keep another copy in memory
+      throw e;
+    }
     return db;
   };
 
@@ -226,7 +231,6 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
   const refresh = () => {
     const now = signature();
     if (read && now === sig) return;
-    if (read) read.close();
     if (!now) {
       // First run: create the file with the current schema, under the lock.
       lock.acquire();
@@ -236,8 +240,20 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
         lock.release();
       }
     }
-    sig = signature();
-    read = build(loadFull());
+    // Build the new copy before letting go of the old one: if loading fails (file busy, out of memory, a newer
+    // MemVault's file) the handle keeps its old copy and old signature, so the next call simply tries again.
+    const nextSig = signature();
+    const full = loadFull();
+    let next;
+    try {
+      next = build(full);
+    } catch (e) {
+      full.close();
+      throw e;
+    }
+    if (read) read.close();
+    read = next;
+    sig = nextSig;
   };
 
   /**
@@ -268,7 +284,14 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
         lost.code = "LOCK_LOST";
         throw lost;
       }
-      persist(fresh);
+      try {
+        persist(fresh);
+      } catch (e) {
+        // The change is in our copy but not (or not surely) on disk, e.g. the disk is full. Keeping the copy would
+        // show it to later reads and publish it with the next write, so drop it and read the file again next time.
+        if (reuse) { read.close(); read = null; sig = null; } else fresh.close();
+        throw e;
+      }
       if (reuse) {
         sig = signature();
       } else {

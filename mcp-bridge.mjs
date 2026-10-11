@@ -68,7 +68,7 @@ export const PRESET_BRIDGES = [
 export function addPreset(name) {
   const preset = PRESET_BRIDGES.find((p) => p.name === name);
   if (!preset) throw new Error(`Unknown preset "${name}". Available: ${PRESET_BRIDGES.map((p) => p.name).join(", ")}`);
-  const cfg = loadUserConfig();
+  const cfg = loadUserConfig({ forUpdate: true }); // a settings file with a mistake is refused, not replaced
   cfg.mcpBridges = cfg.mcpBridges || [];
   if (cfg.mcpBridges.some((b) => b.name === name)) {
     return { added: false, name, reason: "already configured" };

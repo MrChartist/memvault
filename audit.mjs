@@ -84,6 +84,27 @@ function endsMidLine(file) {
 }
 
 /**
+ * A crash or power cut can leave the last line half-written. Kept, it would end up in the middle of the log
+ * once the next record is added, and verifyAudit would call it tampering for ever. It never became a record
+ * (lastHash already skips it), so cut it off, unless it is a whole record that only lacks its line break.
+ * Call with the lock held. @returns {string} what to write before the next record
+ */
+function repairTail(file) {
+  if (!endsMidLine(file)) return "";
+  const buf = fs.readFileSync(file);
+  const cut = buf.lastIndexOf(10) + 1;
+  try {
+    if (typeof JSON.parse(buf.subarray(cut).toString("utf8")).hash === "string") return "\n";
+  } catch { /* half a record */ }
+  try {
+    fs.truncateSync(file, cut);
+    return "";
+  } catch {
+    return "\n"; // e.g. an append-only file: at least start the next record on its own line
+  }
+}
+
+/**
  * Append an audit record. Never throws: auditing must not break the tool call.
  * @returns {boolean} whether the record was written
  */
@@ -94,10 +115,11 @@ export function audit({ actor = "owner", action, detail = {} }, root = VAULT_ROO
     fs.mkdirSync(path.dirname(file), { recursive: true });
     lock.acquire();
     try {
+      const sep = repairTail(file);
       const prev = lastHash(file);
       const rec = { ts: new Date().toISOString(), actor, action, detail: clean(detail), prev };
       rec.hash = sha(prev + JSON.stringify({ ts: rec.ts, actor, action, detail: rec.detail }));
-      fs.appendFileSync(file, (endsMidLine(file) ? "\n" : "") + JSON.stringify(rec) + "\n", { mode: 0o600 });
+      fs.appendFileSync(file, sep + JSON.stringify(rec) + "\n", { mode: 0o600 });
     } finally {
       lock.release();
     }
@@ -109,18 +131,24 @@ export function audit({ actor = "owner", action, detail = {} }, root = VAULT_ROO
 
 /**
  * Verify the hash chain.
- * @returns {{ ok: boolean, entries: number, brokenAtLine?: number, reason?: string }}
+ * @returns {{ ok: boolean, entries: number, brokenAtLine?: number, reason?: string, torn?: string }}
  */
 export function verifyAudit(root = VAULT_ROOT) {
   const file = auditPath(root);
   if (!fs.existsSync(file)) return { ok: true, entries: 0 };
-  const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean);
+  const text = fs.readFileSync(file, "utf8");
+  const lines = text.split("\n").filter(Boolean);
   let prev = GENESIS;
   for (let i = 0; i < lines.length; i++) {
     let rec;
     try {
       rec = JSON.parse(lines[i]);
     } catch {
+      // A half-written LAST line is what a crash leaves behind, not an edit: every record before it checked out
+      // (and cutting records off the end is something no hash chain can detect anyway). The next record replaces it.
+      if (i === lines.length - 1 && !text.endsWith("\n")) {
+        return { ok: true, entries: i, torn: `line ${i + 1} was left half-written by an interrupted save (a crash or power cut); this is not tampering, and the next record replaces it` };
+      }
       return { ok: false, entries: lines.length, brokenAtLine: i + 1, reason: "unparseable line" };
     }
     if (rec.prev !== prev) {

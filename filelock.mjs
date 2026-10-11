@@ -57,6 +57,8 @@ export class FileLock {
           if (!["EBUSY", "EPERM", "EACCES"].includes(e.code)) throw e;
           busySince ??= Date.now();
           if (Date.now() - busySince > 3000) throw e;
+        } else {
+          busySince = null; // back to ordinary waiting: a later blip gets its own 3 s
         }
         this.#breakIfStale();
         if (Date.now() > deadline) {
