@@ -30,6 +30,9 @@ import { mcpEntry } from "./cli-tools.mjs";
 import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
 import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
 import { resolveUserPath } from "./paths.mjs";
+import {
+  FACETS, listFacts, setFact, removeFact, listSuggestions, acceptSuggestion, rejectSuggestion, learnFromVault, importProfile, exportProfile,
+} from "./profile.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
@@ -660,6 +663,64 @@ export function createApp({
     deleteAgent(vdb, req.params.id, { purge });
     log("agent-delete", { id: req.params.id, purge });
     res.json({ ok: true, backup: backup?.location ? path.basename(backup.location) : null });
+  });
+
+  // ── user profile ─────────────────────────────────────────────────────────
+  // Owner-only like every route here (access key). AI apps never reach these: they use profile_get and
+  // profile_suggest over MCP, and a suggestion changes nothing until it is accepted below.
+
+  app.get("/profile", (_req, res) =>
+    res.json({ ok: true, facets: FACETS, facts: listFacts(vdb), suggestions: listSuggestions(vdb) }));
+
+  app.put("/profile/facts", (req, res) => {
+    try {
+      const { facet, key, value, confidence } = req.body || {};
+      const r = setFact(vdb, { facet, key, value, source: "manual", confidence }, { actor: "owner", root });
+      res.json({ ok: true, changed: r.changed, fact: r.fact });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.delete("/profile/facts/:facet/:key", (req, res) => {
+    try {
+      if (!removeFact(vdb, req.params.facet, req.params.key, { actor: "owner", root })) return res.status(404).json({ ok: false, error: "Not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.post("/profile/suggestions/:id/accept", (req, res) => {
+    try {
+      res.json({ ok: true, fact: acceptSuggestion(vdb, req.params.id, { actor: "owner", root }) });
+    } catch (e) {
+      res.status(404).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.post("/profile/suggestions/:id/reject", (req, res) => {
+    if (!rejectSuggestion(vdb, req.params.id, { actor: "owner", root })) return res.status(404).json({ ok: false, error: "Not found" });
+    res.json({ ok: true });
+  });
+
+  // Preview by default; nothing is saved unless the body says {"apply": true}.
+  app.post("/profile/learn", (req, res) => {
+    const r = learnFromVault(vdb, { apply: req.body?.apply === true, actor: "owner", root });
+    res.json({ ok: true, applied: req.body?.apply === true, ...r });
+  });
+
+  app.get("/profile/export", (_req, res) => {
+    res.set("Content-Disposition", `attachment; filename="memvault-profile-${isoDate()}.json"`);
+    res.json(exportProfile(vdb));
+  });
+
+  app.post("/profile/import", (req, res) => {
+    try {
+      res.json({ ok: true, ...importProfile(vdb, req.body, { actor: "owner", root }) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message });
+    }
   });
 
   // Ready-to-paste MCP client config for the owner (full access). Per-agent versions: /agents/:id/mcp-config

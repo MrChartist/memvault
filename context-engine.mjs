@@ -16,7 +16,7 @@ import { PROJECTS } from "./config.mjs";
 
 // ─── Auto-Tagging ───────────────────────────────────────────────────────────
 
-const TECH_PATTERNS = [
+export const TECH_PATTERNS = [
   // Frontend
   { pattern: /\b(react|jsx|tsx|next\.?js|nextjs)\b/i, tag: "react" },
   { pattern: /\b(vue|nuxt|vuex)\b/i, tag: "vue" },
@@ -49,7 +49,7 @@ const TECH_PATTERNS = [
   { pattern: /\b(invest(?:ing|ment|ments|or)?|portfolio|dividends?|mutual\sfunds?|retirement|savings?|budget|loan|mortgage|tax(?:es)?)\b/i, tag: "finance" },
 ];
 
-const TOPIC_PATTERNS = [
+export const TOPIC_PATTERNS = [
   { pattern: /\b(bugs?|bugfix|crash(?:es|ed)?|debug(?:ging)?|exception|stack\strace|regression)\b/i, tag: "bugfix" },
   { pattern: /\b(deploy|hosting|hostinger|vercel|netlify)\b/i, tag: "deployment" },
   { pattern: /\b(design|ui|ux|layout|responsive)\b/i, tag: "design" },

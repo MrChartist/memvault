@@ -18,6 +18,13 @@ Fixes found by installing the packed package and by testing each part again, plu
   - A phone's key can no longer make pairing codes, change a passphrase or the shared folder, or sign phones out, and the dashboard on a phone hides those controls.
   - Background sync runs in a separate process (hidden on Windows), so the dashboard does not pause while it works. Deletion records older than 180 days are removed.
 
+**Your profile, Wispr Flow import and a security check (new)**
+- **A central profile of you** (`memvault profile`, [docs/profile.md](docs/profile.md)): short facts about how you like things written, what you work on and the tools you use, offered to every connected AI app. Ten fixed headings; passwords, keys, ID numbers, health and money are refused. Learns from your own notes when you ask (preview first), and wraps a dictated request with your background (`memvault profile prompt`).
+- Two MCP tools: `profile_get` (a bound agent gets a reduced view) and `profile_suggest` (an AI can only suggest; you accept with `memvault profile accept`). Owner routes for the same under `/profile`.
+- **Wispr Flow import** (`memvault wispr <file-or-folder>`): notes and meeting summaries; attendee names, e-mail addresses and share links are left out.
+- **Final security check**: `docs/review/final-security-check.md` is a brief for Claude Opus or Fable that lists all 14 connections and the threat model, and `npm run security-review` (`scripts/security-review.mjs`) runs it through the Anthropic API. `--dry-run` shows the plan and a rough cost first. Reports go to `.security-review/` (ignored by git). The script is a maintainer tool: it is not in the npm package, and the SDK it uses is a development dependency.
+- The source names `profile` and `profile-suggestion` are reserved in `ingest`, so only the profile module can write profile items.
+
 **Security and privacy**
 - A key or password that crossed the 80-character cut of a title was stored half-masked: its first part stayed in the title, and search returned it. This affected `vault_remember`, `vault_capture_prompt`, `vault_log_conversation`, git capture, the Gemini and Perplexity importers and Antigravity capture. Secrets are now masked first, and the title is shortened after that.
 - Taking access away now works at once. An AI app tied to an agent checks the agent's profile again on every request. If you delete the agent, or change what it may read, write or use, the request is refused and that connection ends. Restart the app to connect with the new access. (Before, it kept the old access until the app was restarted.)
