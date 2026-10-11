@@ -8,6 +8,6 @@ import { SYNC_CONFIG } from "./config.mjs";
 export function requireEnabled(flag, what) {
   if (process.argv.includes("--force") || SYNC_CONFIG[flag] === true) return;
   console.log(`${what} is switched off, so nothing was saved. That is the safe default.`);
-  console.log("Switch it on in the dashboard (Settings → Automatic saving), or run this script once with --force.");
+  console.log("Switch it on in the dashboard (Settings → What MemVault saves for you), or run this command once with --force.");
   process.exit(0);
 }

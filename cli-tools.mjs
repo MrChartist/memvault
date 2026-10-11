@@ -15,6 +15,31 @@ import { fileURLToPath } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OK = "✅", WARN = "⚠️ ", BAD = "❌";
+const PKG_NAME = "@mrchartist/memvault";
+const SECURITY_URL = "https://github.com/MrChartist/memvault/blob/main/SECURITY.md";
+
+/** True when this copy was started by `npx` (it lives in npm's private cache, which npm may clear at any time). */
+export const runFromNpx = (dir = HERE) => /[\\/]_npx[\\/]/.test(dir);
+/** How to run a MemVault command in the messages we print: `memvault …`, or `npx -y … …` when there is no `memvault` command. */
+export const mv = (args, dir = HERE) => `${runFromNpx(dir) ? `npx -y ${PKG_NAME}` : "memvault"} ${args}`;
+
+/**
+ * The node program to write into an AI app's config. process.execPath has symlinks resolved, which for
+ * Homebrew is a versioned folder that disappears on the next upgrade. Prefer the same program as found
+ * on PATH (for example /opt/homebrew/bin/node), which keeps working after an upgrade.
+ */
+export function stableNodePath({ execPath = process.execPath, envPath = process.env.PATH || "", platform = process.platform } = {}) {
+  let real;
+  try { real = fs.realpathSync(execPath); } catch { return execPath; }
+  const names = platform === "win32" ? ["node.exe"] : ["node"];
+  for (const dir of envPath.split(path.delimiter).filter(Boolean)) {
+    for (const n of names) {
+      const candidate = path.join(dir, n);
+      try { if (fs.realpathSync(candidate) === real) return candidate; } catch { /* not here */ }
+    }
+  }
+  return execPath;
+}
 
 // ─── tiny argv parser:  --key value  |  --flag  |  positional ───────────────
 
@@ -45,21 +70,27 @@ const loadAll = async () => ({
 
 const CLIENT_HINTS = [
   ["Claude Desktop", process.platform === "win32" ? "%APPDATA%\\Claude\\claude_desktop_config.json" : process.platform === "darwin" ? "~/Library/Application Support/Claude/claude_desktop_config.json" : "~/.config/Claude/claude_desktop_config.json"],
+  ["Claude Code", "the `claude mcp add …` command shown in the dashboard (Connect an AI app)"],
   ["Cursor", "~/.cursor/mcp.json"],
   ["Antigravity", "~/.gemini/antigravity/mcp_config.json"],
   ["VS Code (Cline / Roo)", "the extension's MCP settings file"],
 ];
 
-/** Build the `mcpServers` entry for one connection. Absolute paths: works from a clone or a global install. */
-export function mcpEntry({ agent, vaultRoot } = {}) {
+/**
+ * Build the `mcpServers` entry for one connection. Absolute paths: works from a clone or a global install.
+ * A copy started by npx lives in npm's cache, which can be cleared at any time, so then the entry starts
+ * MemVault through npx too (the same way the MCP registry entry in server.json does).
+ */
+export function mcpEntry({ agent, vaultRoot, dir = HERE, platform = process.platform } = {}) {
   const env = {};
   if (vaultRoot) env.VAULT_ROOT = vaultRoot;
   if (agent) env.MEMVAULT_AGENT = agent;
-  return {
-    command: process.execPath,
-    args: [path.join(HERE, "mcp-server.mjs")],
-    ...(Object.keys(env).length ? { env } : {}),
-  };
+  const npx = ["-y", PKG_NAME, "mcp"];
+  const run = !runFromNpx(dir)
+    ? { command: stableNodePath(), args: [path.join(dir, "mcp-server.mjs")] }
+    : platform === "win32" ? { command: "cmd", args: ["/c", "npx", ...npx] } // npx is a .cmd file on Windows
+    : { command: "npx", args: npx };
+  return { ...run, ...(Object.keys(env).length ? { env } : {}) };
 }
 
 export async function cmdMcpConfig(argv) {
@@ -67,13 +98,21 @@ export async function cmdMcpConfig(argv) {
   const { cfg, dbm, agents } = await loadAll();
   const vaultRoot = cfg.VAULT_ROOT;
   const servers = {};
+  if (flags.agent === true) {
+    console.error(`${BAD} Say which agent: ${mv("mcp-config --agent <id>")}   (see ${mv("agent list")})`);
+    process.exit(1);
+  }
   if (flags["all-agents"]) {
     const db = dbm.openVaultDb();
     for (const a of agents.listAgents(db)) servers[`memvault-${a.id}`] = mcpEntry({ agent: a.id, vaultRoot });
+    if (!Object.keys(servers).length) {
+      console.error(`${BAD} There are no agents yet. Run ${mv("setup")} first, or add some with ${mv("agent starter")}.`);
+      process.exit(1);
+    }
   } else if (flags.agent) {
     const db = dbm.openVaultDb();
     if (!agents.getAgent(db, flags.agent)) {
-      console.error(`${BAD} No agent "${flags.agent}". Run \`memvault agent list\`.`);
+      console.error(`${BAD} No agent "${flags.agent}". Run \`${mv("agent list")}\`.`);
       process.exit(1);
     }
     servers[`memvault-${flags.agent}`] = mcpEntry({ agent: flags.agent, vaultRoot });
@@ -81,10 +120,12 @@ export async function cmdMcpConfig(argv) {
     servers.memvault = mcpEntry({ vaultRoot });
   }
   console.log(JSON.stringify({ mcpServers: servers }, null, 2));
-  console.error(`\nPaste the block above into your AI client's MCP config (merge it into "mcpServers"):`);
+  console.error(`\nPaste the block above into your AI app's MCP settings file. If the file already has "mcpServers",\ncopy only the entries inside it. Then restart the app.`);
   for (const [name, where] of CLIENT_HINTS) console.error(`  • ${name.padEnd(22)} ${where}`);
+  if (runFromNpx()) console.error(`\nThis starts MemVault through npx, so the app needs Node.js on its PATH. For a fixed install:\n  npm install -g ${PKG_NAME}   and then run   memvault mcp-config`);
+  else console.error(`\nIf you upgrade Node.js or move the MemVault folder, run this again and paste the new block.`);
   if (!flags.agent && !flags["all-agents"]) {
-    console.error(`\nTip: bind a client to ONE agent so it only sees that agent's memory:\n  memvault mcp-config --agent market-analyst`);
+    console.error(`\nTip: tie an app to ONE agent so it only sees that agent's memory:\n  ${mv("mcp-config --agent study-buddy")}`);
   }
 }
 
@@ -103,13 +144,21 @@ export async function cmdToken(argv) {
 
 // ─── open ───────────────────────────────────────────────────────────────────
 
-async function healthy(url) {
+/** Is MemVault (and not some other program that happens to use the port) answering at this address? */
+export async function healthy(url) {
   try {
     const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1200) });
-    return r.ok;
+    if (!r.ok) return false;
+    const body = await r.json().catch(() => null);
+    return body?.name === "memvault";
   } catch {
     return false;
   }
+}
+
+/** Something answers on the port, but it is not MemVault: never hand it the dashboard key. */
+async function portTakenByOther(url) {
+  try { await fetch(url, { signal: AbortSignal.timeout(1200) }); return true; } catch { return false; }
 }
 
 /** Open a file or address in the default program (here: the redirect page, so no key is on the command line). */
@@ -153,17 +202,24 @@ export function makeOpenPage({ url, dir }) {
 export async function cmdOpen() {
   const { cfg, auth } = await loadAll();
   const base = `http://${cfg.SECURITY_CONFIG.host === "0.0.0.0" ? "127.0.0.1" : cfg.SECURITY_CONFIG.host}:${cfg.PORT}`;
+  if (!(await healthy(base)) && (await portTakenByOther(base))) {
+    console.error(`${BAD} Another program is using port ${cfg.PORT}, so MemVault cannot start there.\n   Choose another port in ~/.memvaultrc.json ("port": 7800) or close that program, then try again.`);
+    process.exit(1);
+  }
   if (!(await healthy(base))) {
     console.log("Starting MemVault server in the background…");
     spawn(process.execPath, [path.join(HERE, "server.mjs")], { detached: true, stdio: "ignore" }).unref();
     for (let i = 0; i < 25 && !(await healthy(base)); i++) await new Promise((r) => setTimeout(r, 200));
-    if (!(await healthy(base))) { console.error(`${BAD} The server did not start. Try \`memvault serve\` to see why.`); process.exit(1); }
+    if (!(await healthy(base))) { console.error(`${BAD} The server did not start. Try \`${mv("serve")}\` to see why.`); process.exit(1); }
   }
   // The token travels in the URL FRAGMENT: browsers never send it to the server or in Referer headers.
   const url = `${base}/#token=${auth.ensureToken()}`;
   const page = makeOpenPage({ url, dir: path.dirname(cfg.TOKEN_FILE) });
   if (openBrowser(page)) console.log(`${OK} Opened ${base}`);
-  else console.log(`Could not open a browser automatically. Open this link yourself:\n${url}`);
+  else {
+    fs.rmSync(page, { force: true }); // not needed: the link is printed instead, so do not leave the key on disk
+    console.log(`Could not open a browser automatically. Open this link yourself:\n${url}`);
+  }
 }
 
 // ─── setup ──────────────────────────────────────────────────────────────────
@@ -171,17 +227,19 @@ export async function cmdOpen() {
 export async function cmdSetup() {
   const { cfg, dbm, agents, auth } = await loadAll();
   const db = dbm.openVaultDb();
+  const hadToken = fs.existsSync(cfg.TOKEN_FILE);
   auth.ensureToken();
   const starter = agents.installStarterPack(db);
   console.log(`${OK} Vault ready at ${cfg.VAULT_ROOT}`);
-  console.log(`${OK} API token created (${cfg.TOKEN_FILE}) — kept outside the vault, never backed up`);
+  console.log(`${OK} Dashboard key ${hadToken ? "already in place" : "created"} (${cfg.TOKEN_FILE}), kept outside the vault and never backed up`);
   console.log(`${OK} Helpers (agents): ${starter.installed.length ? `installed ${starter.installed.join(", ")}` : "already installed"}`);
+  const step = (cmd, what) => `  ${mv(cmd).padEnd(runFromNpx() ? 52 : 34)}${what}`;
   console.log(`\nNext steps:`);
-  console.log(`  1. memvault mcp-config            → paste into Claude / Cursor / Antigravity`);
-  console.log(`     memvault mcp-config --agent study-buddy      (give one app its own helper)`);
-  console.log(`  2. memvault open                  → the dashboard`);
-  console.log(`  3. memvault doctor                → check your setup`);
-  console.log(`  4. memvault scrub                 → preview masking of secrets already in your vault`);
+  console.log(step("mcp-config", "→ paste into Claude, Cursor or Antigravity"));
+  console.log(step("mcp-config --agent study-buddy", "→ give one app its own helper"));
+  console.log(step("open", "→ the dashboard"));
+  console.log(step("doctor", "→ check your setup"));
+  if (runFromNpx()) console.log(`\nTip: install it once with  npm install -g ${PKG_NAME}  and the commands become just  memvault …`);
 }
 
 // ─── doctor ─────────────────────────────────────────────────────────────────
@@ -198,7 +256,7 @@ export async function cmdDoctor() {
   const bad = rows.filter((r) => r.level === "bad").length;
   const warn = rows.filter((r) => r.level === "warn").length;
   console.log(`\n${bad ? `${bad} problem(s)` : "No problems"}${warn ? `, ${warn} warning(s)` : ""}.`);
-  console.log("No tool can promise perfect safety — see SECURITY.md for exactly what is and is not protected.");
+  console.log(`No tool can promise perfect safety. What is and is not protected: ${SECURITY_URL}`);
   process.exit(bad ? 1 : 0);
 }
 
@@ -352,7 +410,10 @@ export async function cmdAgent(argv) {
     }
     case "create": {
       let text = typeof flags["from-prompt"] === "string" ? flags["from-prompt"] : null;
-      if (typeof flags["from-file"] === "string") text = fs.readFileSync(flags["from-file"], "utf8");
+      if (typeof flags["from-file"] === "string") {
+        try { text = fs.readFileSync(flags["from-file"], "utf8"); }
+        catch (e) { console.error(`${BAD} Could not read "${flags["from-file"]}": ${e.code === "ENOENT" ? "no such file" : e.message}`); process.exit(1); }
+      }
       if (!text) { console.error(`${BAD} Give the description with --from-prompt "…" or --from-file prompt.txt`); process.exit(1); }
       const { profile, notes } = A.draftProfileFromPrompt(text, { name: typeof flags.name === "string" ? flags.name : undefined, id: typeof flags.id === "string" ? flags.id : undefined });
       console.log(summary(profile));
@@ -385,8 +446,14 @@ export async function cmdAgent(argv) {
     }
     case "import": {
       if (!pos[0]) { console.error(`${BAD} Usage: memvault agent import <file.json>`); process.exit(1); }
-      const saved = A.saveAgent(db, JSON.parse(fs.readFileSync(pos[0], "utf8")));
-      console.log(`${OK} Imported ${saved.id}`);
+      let profile;
+      try { profile = JSON.parse(fs.readFileSync(pos[0], "utf8")); }
+      catch (e) {
+        console.error(`${BAD} Could not import "${pos[0]}": ${e.code === "ENOENT" ? "no such file" : e instanceof SyntaxError ? "it is not a valid JSON file" : e.message}`);
+        process.exit(1);
+      }
+      try { console.log(`${OK} Imported ${A.saveAgent(db, profile).id}`); }
+      catch (e) { console.error(`${BAD} Not imported: ${e.message}`); process.exit(1); }
       return;
     }
     case "delete": {

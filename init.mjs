@@ -53,12 +53,15 @@ async function main() {
   // ── 2. Capture engines ─────────────────────────────────────────────────────
   console.log("\n2. Optional automatic capture. Everything here is OFF unless you say yes, and you can change it any time.");
   console.log("   (Your AI assistants can always save memories themselves; this is only about MemVault noting things for you.)\n");
-  const gitOn = yes(await ask("   - Git commits (messages and dates from folders you pick)?           (y/n) [y]: "));
-  const vscodeOn = yes(await ask("   - VS Code: recent projects and installed extensions?                (y/n) [y]: "));
-  const sysOn = yes(await ask("   - Computer info: OS, memory, which developer tools are installed?  (y/n) [n]: "), false);
-  const filesOn = yes(await ask("   - Names of files you changed recently (file contents are NOT read)? (y/n) [n]: "), false);
-  const browserOn = yes(await ask("   - Browser history and bookmarks (Chrome, Edge, Brave, Chromium)?    (y/n) [n]: "), false);
-  const clipOn = yes(await ask("   - Clipboard history (passwords you copy are masked)?                (y/n) [n]: "), false);
+  // Pressing Enter keeps what is set now, and for a new setup that is always "no".
+  const cur = existing.sync || {};
+  const capture = async (question, key) => yes(await ask(`   - ${question.padEnd(67)} (y/n) [${cur[key] === true ? "y" : "n"}]: `), cur[key] === true);
+  const gitOn = await capture("Git commits (messages and dates from folders you pick)?", "gitEnabled");
+  const vscodeOn = await capture("VS Code: recent projects and installed extensions?", "vscodeEnabled");
+  const sysOn = await capture("Computer info: OS, memory, which developer tools are installed?", "systemEnabled");
+  const filesOn = await capture("Names of files you changed recently (file contents are NOT read)?", "filesEnabled");
+  const browserOn = await capture("Browser history and bookmarks (Chrome, Edge, Brave, Chromium)?", "browserEnabled");
+  const clipOn = await capture("Clipboard history (passwords you copy are masked)?", "clipboardEnabled");
 
   let gitDirs = existing.sync?.gitDirs || [HOME];
   if (gitOn) {
@@ -82,7 +85,7 @@ async function main() {
   const gdriveApiOn = yes(await ask("   - Upload backups via the Google Drive API (OAuth)? (y/n) [n]: "), false);
   let gdriveApi = existing.storage?.gdriveApi || {};
   if (gdriveApiOn) {
-    console.log("   (See docs/google-drive.md to create OAuth credentials.)");
+    console.log("   (How to create OAuth credentials: https://github.com/MrChartist/memvault/blob/main/docs/google-drive.md)");
     gdriveApi = {
       clientId: (await ask("   OAuth Client ID: ")).trim() || gdriveApi.clientId || "",
       clientSecret: (await ask("   OAuth Client Secret: ")).trim() || gdriveApi.clientSecret || "",
@@ -107,7 +110,7 @@ async function main() {
       }
     }
   }
-  console.log("   (Add or edit more later under \"mcpBridges\" in ~/.memvaultrc.json — see docs/mcp-bridge.md)");
+  console.log("   (Add or edit more later under \"mcpBridges\" in ~/.memvaultrc.json. Guide: https://github.com/MrChartist/memvault/blob/main/docs/mcp-bridge.md)");
 
   // ── Build config ───────────────────────────────────────────────────────────
   const config = {

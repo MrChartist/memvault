@@ -14,9 +14,11 @@ function isoDate() {
 function usage() {
     console.log(`
 Usage:
-  node vault.mjs diary "text..."
-  node vault.mjs convo "<source>" "<title>" "<content...>"
-  node vault.mjs worklog "<title>" "<content...>" "<tags(optional)>"
+  memvault vault diary "text..."
+  memvault vault convo "<source>" "<title>" "<content...>"
+  memvault vault worklog "<title>" "<content...>" "<tags(optional)>"
+
+To search, use the dashboard (memvault open) or ask your AI app.
 
 Env:
   VAULT_ROOT=/path/to/vault/data    (default: ~/.memvault/data)

@@ -129,7 +129,7 @@ export function restoreLocal(backupName) {
 
 /** Restore from an encrypted .mvbak file (e.g. downloaded back from Google Drive). */
 export function restoreEncrypted(file, passphrase = resolvePassphrase()) {
-  if (!passphrase) throw new Error("No passphrase: set MEMVAULT_BACKUP_PASSPHRASE or pass one.");
+  if (!passphrase) throw new Error("No backup passphrase. Set it in the dashboard (Settings → Backups) or in MEMVAULT_BACKUP_PASSPHRASE.");
   const blob = fs.readFileSync(file);
   if (!isEncryptedBackup(blob)) throw new Error("That file is not a MemVault encrypted backup.");
   let plain;
@@ -365,15 +365,24 @@ if (isMain(import.meta.url)) {
     const backups = listLocalBackups();
     console.log(`📦 ${backups.length} local backup(s) in ${BACKUP_DIR}:`);
     for (const b of backups) console.log(`  - ${b.name}  (${(b.size / 1024).toFixed(1)} KB, ${b.modified})`);
-  } else if (cmd === "restore-encrypted") {
-    const file = process.argv[3];
-    if (!file) { console.error("Usage: node storage.mjs restore-encrypted <file.mvbak>  (needs MEMVAULT_BACKUP_PASSPHRASE)"); process.exit(1); }
-    try { console.log(JSON.stringify(restoreEncrypted(file), null, 2)); }
-    catch (e) { console.error(`❌ ${e.message}`); process.exit(1); }
-  } else if (cmd === "restore") {
-    const name = process.argv[3];
-    if (!name) { console.error("Usage: node storage.mjs restore <backup-name>"); process.exit(1); }
-    console.log(JSON.stringify(restoreLocal(name), null, 2));
+  } else if (cmd === "restore-encrypted" || cmd === "restore") {
+    const what = process.argv[3];
+    if (!what) {
+      console.error(cmd === "restore"
+        ? "Usage: memvault backup restore <backup-name>     (see the names with: memvault backup list)"
+        : "Usage: memvault backup restore-encrypted <file.mvbak>     (uses the passphrase from Settings or MEMVAULT_BACKUP_PASSPHRASE)");
+      process.exit(1);
+    }
+    try {
+      const r = cmd === "restore" ? restoreLocal(what) : restoreEncrypted(what);
+      console.log(`✅ Restored ${r.restored}. Your vault as it was just before is kept in ${BACKUP_DIR} (the newest "pre-restore-…" file).`);
+    } catch (e) {
+      console.error(`❌ ${e.message}`);
+      process.exit(1);
+    }
+  } else if (cmd !== "backup") {
+    console.error(`❌ Unknown backup command "${cmd}". Use: memvault backup | memvault backup list | memvault backup restore <name> | memvault backup restore-encrypted <file>`);
+    process.exit(1);
   } else {
     console.log(`💾 Backing up vault → ${enabledBackends().join(", ")}\n`);
     const results = await backupVault();

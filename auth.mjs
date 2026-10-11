@@ -68,8 +68,7 @@ export function apiFetch(url, init = {}) {
   const headers = authHeaders(init.headers || {});
   if (!headers.authorization && /\/health\b/.test(String(url)) === false) {
     throw new Error(
-      "MemVault API token not found. Start the server once (`npm start`) to create it, " +
-        "or run `memvault token`."
+      "MemVault access key not found. Run `memvault setup` (or `memvault token`) to create it."
     );
   }
   return fetch(url, { ...init, headers });

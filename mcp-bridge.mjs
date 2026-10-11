@@ -28,11 +28,14 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import fs from "fs";
 import { isMain } from "./is-main.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
 import { ingest } from "./ingest.mjs";
+
+const PKG_VERSION = JSON.parse(fs.readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 const CONNECT_TIMEOUT_MS = 20000;
 
@@ -101,7 +104,7 @@ export async function connectBridge(bridge) {
   });
 
   const client = new Client(
-    { name: "memvault-bridge", version: "2.1.0" },
+    { name: "memvault-bridge", version: PKG_VERSION },
     { capabilities: {} }
   );
 
