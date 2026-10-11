@@ -28,7 +28,7 @@ import {
 
 import { VAULT_ROOT, ensureVaultDir } from "./config.mjs";
 import { openVaultDb } from "./db.mjs";
-import { ingest } from "./ingest.mjs";
+import { ingest, clipText } from "./ingest.mjs";
 import { redact } from "./redact.mjs";
 import { writeMirror } from "./mirror.mjs";
 import { audit } from "./audit.mjs";
@@ -687,7 +687,7 @@ server.tool(
       ...detectedTags,
     ].join(",");
 
-    const title = `[Memory:${cat}] ${what.slice(0, 80)}${what.length > 80 ? "..." : ""}`;
+    const title = `[Memory:${cat}] ${clipText(what, 80, { ellipsis: "..." })}`;
     const content = [
       `## 💾 AI Memory: ${cat.toUpperCase()}`,
       "",
@@ -1048,7 +1048,7 @@ server.tool(
     const now = new Date().toISOString();
     const source = aiTool || "unknown-ai";
     const tags = ["prompt-log", `ai:${tagSafe(source)}`, ...(project ? [`project:${tagSafe(project)}`] : [])].join(",");
-    const title = `[Prompt:${source}] ${userPrompt.slice(0, 80)}${userPrompt.length > 80 ? "..." : ""}`;
+    const title = `[Prompt:${source}] ${clipText(userPrompt, 80, { ellipsis: "..." })}`;
 
     const content = [
       `## 📝 Prompt Captured from ${source}`,
@@ -1080,7 +1080,7 @@ server.tool(
     const now = new Date().toISOString();
     const source = aiTool || "ai-conversation";
     const tags = ["conversation-log", `ai:${tagSafe(source)}`, ...(project ? [`project:${tagSafe(project)}`] : [])].join(",");
-    const title = `[Conv:${source}] ${summary.slice(0, 80)}`;
+    const title = `[Conv:${source}] ${clipText(summary, 80)}`;
 
     const content = [
       `## 💬 Conversation Log — ${source}`,

@@ -10,7 +10,7 @@
 
 import fs from "fs";
 import path from "path";
-import { createIngestQueue } from "./ingest.mjs";
+import { createIngestQueue, clipText } from "./ingest.mjs";
 import { runImport, toIso } from "./import-common.mjs";
 
 const queue = createIngestQueue({ actor: "perplexity-import" });
@@ -83,7 +83,7 @@ function formatPerplexityConversation(conv) {
   if (content.trim().length < 30) return null;
 
   return {
-    title: title.slice(0, 200),
+    title: clipText(title, 200),
     content,
     tags: ["import", "perplexity", "conversation", "ai-history", "search"].join(","),
     created_at: toIso(conv.created_at || conv.timestamp),

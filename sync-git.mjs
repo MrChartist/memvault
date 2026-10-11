@@ -18,7 +18,7 @@ import os from "os";
 import { execSync } from "child_process";
 import { SYNC_CONFIG } from "./config.mjs";
 import { resolveUserPath } from "./paths.mjs";
-import { createIngestQueue } from "./ingest.mjs";
+import { createIngestQueue, clipText } from "./ingest.mjs";
 import { getVaultDb } from "./db.mjs";
 import { readCommits } from "./git-log.mjs";
 import { requireEnabled } from "./sync-guard.mjs";
@@ -26,7 +26,7 @@ requireEnabled("gitEnabled", "Saving git commits");
 
 const queue = createIngestQueue({ actor: "git" });
 
-const titleOf = (repoName, c) => `[${repoName}] ${c.subject.slice(0, 100)}`;
+const titleOf = (repoName, c) => `[${repoName}] ${clipText(c.subject, 100)}`;
 // Commits already in the vault are skipped, so running this again does not add them twice.
 const alreadyStored = new Set();
 if (!process.argv.includes("--dry-run")) {

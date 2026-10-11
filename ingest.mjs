@@ -13,8 +13,18 @@
 
 import { VAULT_ROOT, SECURITY_CONFIG } from "./config.mjs";
 import { getVaultDb } from "./db.mjs";
-import { redactItem, summarizeFindings } from "./redact.mjs";
+import { redact, redactItem, summarizeFindings } from "./redact.mjs";
 import { audit } from "./audit.mjs";
+
+/**
+ * Shorten text that is about to be stored (a title, a capped body). Masks FIRST, then cuts:
+ * cutting first can leave part of a secret too short for its pattern, so ingest would keep it.
+ */
+export function clipText(text, max, { ellipsis = "", security = SECURITY_CONFIG } = {}) {
+  const s = String(text ?? "");
+  const t = security.redact === false ? s : redact(s, { disable: security.redactDisable }).text;
+  return t.length > max ? t.slice(0, max) + ellipsis : t;
+}
 
 function mergeFindings(into, findings) {
   for (const f of findings) into.set(f.type, (into.get(f.type) || 0) + f.count);
