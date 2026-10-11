@@ -123,6 +123,39 @@ describe('two computers share one memory through a folder', () => {
   });
 });
 
+describe('undo and odd input', () => {
+  it('putting a deleted note back (Undo) sticks on the other computers too', () => {
+    const id = dev.a.add('Oops', 'keep');
+    dev.a.run(); dev.b.run();
+    const row = dev.a.vdb.query('SELECT * FROM items WHERE id = ?', [id])[0];
+    dev.a.vdb.run('DELETE FROM items WHERE id = ?', [id]);
+    dev.a.run(); dev.b.run();
+    expect(dev.b.titles()).not.toContain('Oops');
+    // what the dashboard's Undo does: the same row back, stamped as a change made now
+    const cols = Object.keys(row).filter((c) => c !== 'updated_at');
+    dev.a.vdb.run(`INSERT INTO items (${cols.join(',')}, updated_at) VALUES (${cols.map(() => '?').join(',')}, ?)`, [...cols.map((c) => row[c]), new Date(Date.now() + 1000).toISOString()]);
+    dev.a.run(); dev.b.run(); dev.a.run();
+    expect(dev.b.titles()).toContain('Oops');
+    expect(dev.a.titles()).toContain('Oops');
+  });
+
+  it('entries in shapes the dashboard would never accept are ignored', () => {
+    const snap = sync.snapshot(dev.a.vdb, dev.a.identity);
+    const base = { source: 'x', title: 't', content: 'c', created_at: '2026-10-02T00:00:00.000Z', scope: 'shared' };
+    snap.items.push(
+      { ...base, id: 'f1', type: 'file', file_path: '/etc/passwd' },
+      { ...base, id: 'bad-scope', type: 'diary', scope: 'everyone' },
+      { ...base, id: 'bad date', type: 'diary', created_at: 'yesterday' },
+      { ...base, id: 'ok1', type: 'diary' },
+    );
+    snap.agents.push({ id: 'Bad Id!', name: 'x', profile: '{}', updated_at: '2026-10-02T00:00:00.000Z' });
+    sync.writeOwnFile(shared, dev.a.identity, sync.encodeSnapshot(snap, PASS));
+    dev.b.run();
+    expect(dev.b.vdb.query('SELECT id FROM items ORDER BY id').map((r) => r.id)).toEqual(['ok1']);
+    expect(dev.b.vdb.query("SELECT COUNT(*) AS n FROM agents WHERE id = 'Bad Id!'")[0].n).toBe(0);
+  });
+});
+
 describe('three computers, and one that is switched off', () => {
   it('notes reach a third computer through the second, even when the first is gone', () => {
     dev.a.add('From the MacBook');

@@ -188,6 +188,18 @@ function newer(a, b) {
   return (a.key || "") >= (b.key || "") ? a : b;
 }
 
+// What another computer sends is checked before it can be offered: the same shapes the dashboard accepts.
+const TYPES = new Set(["diary", "conversation", "worklog"]);
+const SCOPE_RE = /^(?:shared|agent:[a-z][a-z0-9-]{1,39}|project:[a-z0-9][a-z0-9._-]{0,59})$/;
+const isDate = (v) => v === null || v === undefined || (typeof v === "string" && Number.isFinite(Date.parse(v)));
+const isText = (v, max) => v === null || v === undefined || (typeof v === "string" && v.length <= max);
+function validItem(r) {
+  return !!r && typeof r.id === "string" && /^[A-Za-z0-9_.-]{1,80}$/.test(r.id) && TYPES.has(r.type)
+    && typeof r.created_at === "string" && isDate(r.created_at) && isDate(r.updated_at)
+    && SCOPE_RE.test(r.scope ?? "shared") && (r.agent_id == null || /^[a-z][a-z0-9-]{1,39}$/.test(r.agent_id))
+    && isText(r.title, 2000) && isText(r.source, 500) && isText(r.tags, 5000) && isText(r.file_path, 2000) && isText(r.content, 20 * 1024 * 1024);
+}
+
 const itemKey = (r) => JSON.stringify(ITEM_COLS.filter((c) => c !== "updated_at").map((c) => r[c] ?? null));
 const agentKey = (r) => JSON.stringify([r.name, r.role, r.profile]);
 
@@ -206,15 +218,15 @@ export function planMerge(vdb, snapshots) {
 
   for (const snap of snapshots) {
     for (const r of snap.items) {
-      if (typeof r?.id !== "string" || !r.id || r.type === "file" || fileIds.has(r.id) || !r.created_at) continue;
+      if (!validItem(r) || fileIds.has(r.id)) continue;
       offer(`item:${r.id}`, { stamp: stampOf(r), gone: false, key: itemKey(r), row: r });
     }
     for (const r of snap.agents) {
-      if (typeof r?.id !== "string" || !r.id || !r.profile) continue;
+      if (typeof r?.id !== "string" || !/^[a-z][a-z0-9-]{1,39}$/.test(r.id) || typeof r.profile !== "string" || !isDate(r.updated_at)) continue;
       offer(`agent:${r.id}`, { stamp: stampOf(r), gone: false, key: agentKey(r), row: r });
     }
     for (const t of snap.tombstones) {
-      if (!["item", "agent"].includes(t?.kind) || typeof t.id !== "string" || !t.deleted_at) continue;
+      if (!["item", "agent"].includes(t?.kind) || typeof t.id !== "string" || t.id.length > 120 || typeof t.deleted_at !== "string" || !isDate(t.deleted_at)) continue;
       offer(`${t.kind}:${t.id}`, { stamp: String(t.deleted_at), gone: true });
     }
   }

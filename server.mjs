@@ -298,8 +298,11 @@ export function createApp({
     while (trash.size > TRASH_MAX) trash.delete(trash.keys().next().value);
   };
   const getItem = (id) => (ID_RE.test(id) ? vdb.query("SELECT * FROM items WHERE id = ?", [id])[0] : undefined);
-  const COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "agent_id", "scope"];
-  const reinsert = (row) => vdb.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => row[c] ?? null));
+  const COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "agent_id", "scope", "updated_at"];
+  // Putting a memory back counts as a change made now: otherwise your other computers, which already have the
+  // newer deletion, would delete it again on the next sync (device-sync.mjs).
+  const putBack = (row) => COLS.map((c) => (c === "updated_at" ? new Date().toISOString() : row[c] ?? null));
+  const reinsert = (row) => vdb.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, putBack(row));
 
   app.get("/items/:id", (req, res) => {
     const item = getItem(req.params.id);
@@ -377,7 +380,7 @@ export function createApp({
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     const held = ids.map((id) => trash.get(id)).filter(Boolean);
     vdb.transaction((tx) => {
-      for (const h of held) tx.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => h.row[c] ?? null));
+      for (const h of held) tx.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, putBack(h.row));
     });
     for (const h of held) trash.delete(h.row.id);
     log("restore", { count: held.length });
