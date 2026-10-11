@@ -60,6 +60,9 @@ Fixes found by installing the packed package and by testing each part again, plu
 - The npm package ships only the user guides from `docs/`, not the launch copy or the release checklist.
 - ROADMAP and `docs/review/REVIEW.md` have dated status notes (2026-10-11).
 
+**Dependencies**
+- sql.js 1.14.2 and zod 4.6.5. For development: vitest 5.0.3, and the CI workflows use `actions/checkout@v7` and `actions/setup-node@v6`.
+
 **Upgrade notes**
 - **Gemini users:** add `"enabled": true` to the `"ai"` block of `~/.memvaultrc.json`, or the Gemini tools only answer that AI is off. (If you typed your key into `memvault init`, it is already set.)
 - **Git capture:** commits saved from now on no longer show the branch and the folder in their text (the branch is still in the tags). Commits saved before keep their text and are not saved a second time.
