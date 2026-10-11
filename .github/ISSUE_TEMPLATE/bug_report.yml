@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! **Security problems:** please do not file them here — use the private report link in the next tab ("Security policy").
+        Thanks for reporting! **Security problems:** please do not describe them here. GitHub's private report form is switched off for now. Instead, open an issue titled "Security contact needed" with no details at all, and the owner will reply there with a private way to send them. See [SECURITY.md](https://github.com/MrChartist/memvault/blob/main/SECURITY.md#reporting-a-problem).
         **Never paste** API keys, your `~/.memvaultrc.json`, vault contents or secrets.
   - type: textarea
     id: what-happened
@@ -19,13 +19,13 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. memvault import chatgpt export.zip
+        1. memvault import ~/Downloads/chatgpt-export/   (the unzipped export folder)
         2. ...
   - type: input
     id: version
     attributes:
       label: MemVault version
-      description: Output of `memvault --version` (or `npx -y @mrchartist/memvault --version`)
+      description: Output of `memvault --version` (from the source code `node cli.mjs --version`; with npx `npx -y @mrchartist/memvault --version`)
     validations:
       required: true
   - type: dropdown

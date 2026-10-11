@@ -114,6 +114,11 @@ export function decryptBuffer(blob, passphrase) {
   const hStart = MAGIC.length + 4;
   const header = blob.subarray(hStart, hStart + len);
   const h = JSON.parse(header.toString("utf8"));
+  // The key settings come from the file itself, before anything is checked: someone who can only drop a file
+  // (a shared sync folder, a downloaded backup) must not be able to make deriving the key take hours.
+  if (h.kdf !== "scrypt" || !(h.N >= 2 && h.N <= 1 << 17) || !(h.r >= 1 && h.r <= 16) || !(h.p >= 1 && h.p <= 4)) {
+    throw new Error("This file asks for key settings MemVault does not use, so it was not opened.");
+  }
   const tag = blob.subarray(blob.length - 16);
   const ct = blob.subarray(hStart + len, blob.length - 16);
   const d = crypto.createDecipheriv(

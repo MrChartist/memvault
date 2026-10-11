@@ -18,7 +18,7 @@ import os from "os";
 import { execSync } from "child_process";
 import { SYNC_CONFIG } from "./config.mjs";
 import { resolveUserPath } from "./paths.mjs";
-import { createIngestQueue } from "./ingest.mjs";
+import { createIngestQueue, clipText } from "./ingest.mjs";
 import { getVaultDb } from "./db.mjs";
 import { readCommits } from "./git-log.mjs";
 import { requireEnabled } from "./sync-guard.mjs";
@@ -26,12 +26,21 @@ requireEnabled("gitEnabled", "Saving git commits");
 
 const queue = createIngestQueue({ actor: "git" });
 
-const titleOf = (repoName, c) => `[${repoName}] ${c.subject.slice(0, 100)}`;
-// Commits already in the vault are skipped, so running this again does not add them twice.
+const titleOf = (repoName, c) => `[${repoName}] ${clipText(c.subject, 100)}`;
+// Each commit is saved with its hash ("commit:<hash>" in file_path), compared as stored, i.e. masked like everything else.
+const markOf = (c) => (c.hash ? clipText(`commit:${c.hash}`, 200) : null);
+// git prints "+05:30", the vault stores "...Z": compare the same instant, not the same text.
+const isoOf = (v) => { const t = Date.parse(String(v)); return Number.isFinite(t) ? new Date(t).toISOString() : String(v); };
+// Commits already in the vault are skipped, so running this again (or on another branch) does not add them twice.
 const alreadyStored = new Set();
+const storedWithoutMark = new Set(); // saved by an older version, which kept no hash: matched by date + title
 if (!process.argv.includes("--dry-run")) {
-  for (const r of getVaultDb().query("SELECT title, created_at FROM items WHERE source = 'git'")) alreadyStored.add(`${r.created_at}|${r.title}`);
+  for (const r of getVaultDb().query("SELECT title, created_at, file_path FROM items WHERE source = 'git'")) {
+    if (String(r.file_path ?? "").startsWith("commit:")) alreadyStored.add(r.file_path);
+    else storedWithoutMark.add(`${isoOf(r.created_at)}|${r.title}`);
+  }
 }
+const isStored = (repoName, c) => alreadyStored.has(markOf(c)) || storedWithoutMark.has(`${isoOf(c.date)}|${titleOf(repoName, c)}`);
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes("--dry-run");
@@ -40,9 +49,9 @@ const DRY_RUN = args.includes("--dry-run");
 const daysIdx = args.indexOf("--days");
 const DAYS = daysIdx !== -1 ? Number(args[daysIdx + 1]) || 14 : 14;
 
-// Parse --path "..."
+// Parse --path "..." (otherwise every folder in gitDirs is scanned)
 const pathIdx = args.indexOf("--path");
-const SCAN_ROOT = pathIdx !== -1 ? resolveUserPath(args[pathIdx + 1]) : (process.env.GIT_SCAN_ROOT ? resolveUserPath(process.env.GIT_SCAN_ROOT) : (SYNC_CONFIG.gitDirs && SYNC_CONFIG.gitDirs[0]) || os.homedir());
+const SCAN_ROOTS = pathIdx !== -1 ? [resolveUserPath(args[pathIdx + 1])] : (process.env.GIT_SCAN_ROOT ? [resolveUserPath(process.env.GIT_SCAN_ROOT)] : (SYNC_CONFIG.gitDirs?.length ? SYNC_CONFIG.gitDirs : [os.homedir()]));
 
 // Max depth to search for .git directories
 const MAX_DEPTH = 3;
@@ -117,13 +126,21 @@ function getRepoBranch(repoPath) {
 async function main() {
   console.log("╔══════════════════════════════════════╗");
   console.log("║  Git → MemVault Sync                 ║");
-  console.log(`║  Scanning: ${SCAN_ROOT.slice(0, 24).padEnd(24)}║`);
+  console.log(`║  Scanning: ${(SCAN_ROOTS.length === 1 ? SCAN_ROOTS[0] : `${SCAN_ROOTS.length} folders`).slice(0, 24).padEnd(24)}║`);
   console.log(`║  Past ${String(DAYS).padEnd(3)} days | ${DRY_RUN ? "DRY RUN" : "LIVE   "}              ║`);
   console.log("╚══════════════════════════════════════╝\n");
 
-// Find repos
-  console.log(`🔍 Scanning for Git repos in: ${SCAN_ROOT}`);
-  const repos = findGitRepos(SCAN_ROOT);
+// Find repos (one found from two listed folders is read once)
+  const repos = [];
+  const seenRepos = new Set();
+  for (const root of SCAN_ROOTS) {
+    console.log(`🔍 Scanning for Git repos in: ${root}`);
+    for (const repo of findGitRepos(root)) {
+      let key = path.resolve(repo);
+      try { key = fs.realpathSync(repo); } catch { /* keep the resolved path */ }
+      if (!seenRepos.has(key)) { seenRepos.add(key); repos.push(repo); }
+    }
+  }
   console.log(`📁 Found ${repos.length} repositories\n`);
 
   let totalSynced = 0;
@@ -132,7 +149,7 @@ async function main() {
   for (const repoPath of repos) {
     const repoName = getRepoName(repoPath);
     const branch = getRepoBranch(repoPath);
-    const commits = readCommits(repoPath, DAYS).filter((c) => !alreadyStored.has(`${c.date}|${titleOf(repoName, c)}`));
+    const commits = readCommits(repoPath, DAYS).filter((c) => !isStored(repoName, c));
 
     if (commits.length === 0) continue;
 
@@ -140,12 +157,12 @@ async function main() {
     console.log(`\n── ${repoName} (${branch}) — ${commits.length} commits ──`);
 
     for (const commit of commits) {
+      // The text is part of a commit's id in the vault (db.mjs), so the branch checked out right now and the
+      // folder stay out of it; the branch is in the tags.
       const content = [
         `**Commit**: \`${commit.short}\``,
         `**Author**: ${commit.author} <${commit.email}>`,
-        `**Branch**: ${branch}`,
         `**Repo**: ${repoName}`,
-        `**Path**: ${repoPath}`,
         ``,
         `### Message`,
         commit.subject,
@@ -157,9 +174,11 @@ async function main() {
         source: "git",
         title: titleOf(repoName, commit),
         content,
+        file_path: commit.hash ? `commit:${commit.hash}` : undefined,
         tags: `git,commit,${repoName},${branch}`,
         created_at: commit.date,
       });
+      if (commit.hash) alreadyStored.add(markOf(commit)); // so a second copy of the same repository does not add it again
 
       if (synced) {
         totalSynced++;

@@ -7,7 +7,7 @@ Starting things automatically is only useful if you want to
 1. keep the **dashboard** available after you sign in, or
 2. run `memvault sync` on a timer, so the capture sources you switched on stay current.
 
-Running sync often is safe. Items that were already saved are skipped, and "current state" notes (computer info, VS Code extensions) are replaced, not added again. Sync only reads the sources you switched on in **Settings → Automatic saving**; with none on, it does nothing.
+Running sync often is safe. Items that were already saved are skipped, and "current state" notes (computer info, VS Code extensions) are replaced, not added again. Sync only reads the sources you switched on in **Settings → What MemVault saves for you**; with none on, it does nothing.
 
 Replace `/path/to/node` and `/path/to/memvault` below with your own paths. Find them with `which node` (Windows: `where node`) and `npm root -g` (the folder is `@mrchartist/memvault` inside it), or the folder you cloned.
 

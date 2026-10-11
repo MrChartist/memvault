@@ -10,7 +10,9 @@ Anything MemVault puts outside your computer is encrypted with **your passphrase
 before it leaves, using AES-256-GCM with a key made by scrypt. Google (or anyone
 who gets into your Drive) sees only scrambled bytes.
 
-Set a passphrase of 10 or more characters in your environment:
+Set a passphrase of 10 or more characters. The easiest way is the dashboard:
+**Settings → Backups**. It saves the passphrase in a private file
+(`~/.memvault/backup-passphrase`) outside the vault. Or set it in your environment:
 
 ```bash
 # macOS / Linux (add to your shell profile to keep it)
@@ -35,9 +37,12 @@ Not recommended.)
 Run a backup any time:
 
 ```bash
-memvault backup            # or: npm run backup
-npm run backup:list        # list local backups
+memvault backup            # back up now (local copy, plus Drive if you switched it on)
+memvault backup list       # list local backups
 ```
+
+(From the source code, without the `memvault` command: `node cli.mjs backup` and
+`node cli.mjs backup list`.)
 
 From an AI app you can also call the `vault_backup` tool (owner connections only).
 
@@ -111,20 +116,23 @@ on servers/headless machines. The same encryption rules apply.
 
 ## Auto-backup after sync
 
-When either Drive method is enabled, `npx -y @mrchartist/memvault sync` automatically runs a
+When either Drive method is enabled, `memvault sync` automatically runs a
 backup after capturing data, so your cloud copy stays current.
 
 ## Restore
 
 ```bash
-npm run backup:list                                   # local backups
-node storage.mjs restore index-<stamp>.sqlite         # restore a local backup (by name only)
-node storage.mjs restore-encrypted memvault-<stamp>.sqlite.mvbak   # restore a cloud copy
+memvault backup list                                              # local backups
+memvault backup restore index-<stamp>.sqlite                      # restore a local backup (by name only)
+memvault backup restore-encrypted memvault-<stamp>.sqlite.mvbak   # restore a cloud copy (a file you downloaded)
 ```
 
-`restore-encrypted` needs the same `MEMVAULT_BACKUP_PASSPHRASE`. A wrong passphrase
-or a damaged file is refused. A safety snapshot of the current vault is taken
-before any restore.
+`restore-encrypted` needs the same passphrase you backed up with. It uses the one
+saved in **Settings → Backups**, or `MEMVAULT_BACKUP_PASSPHRASE` if that is set
+(the environment variable wins). A wrong passphrase or a damaged file is refused.
+Before any restore, your current vault is kept as a `pre-restore-<stamp>.sqlite`
+file in `VAULT_ROOT/backups`, so you can go back with
+`memvault backup restore pre-restore-<stamp>.sqlite`.
 
 Backups contain the database only. Your API key (`~/.memvault/api-token`) is kept
 outside the vault on purpose and is never backed up.

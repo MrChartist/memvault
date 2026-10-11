@@ -7,15 +7,15 @@ Do these in order. Stop at the first step that fails.
 1. CI is green on the release commit, including Windows and macOS, or the launch post says they are untried.
 2. `npx vitest run` and `npm run test:e2e` pass.
 3. `npm audit --omit=dev` shows nothing.
-4. `npm pack --dry-run` lists only what you expect (about 82 files; no `db/`, no `.env`, no screenshots).
+4. `npm pack --dry-run` lists only what you expect: 85 files on 2026-10-11 (86 once `docs/devices.md` exists). The program, `public/`, `profiles/`, `examples/` and the user guides in `docs/`. No `db/`, no `.env`, no `tests/`, no `site/`, no screenshots, no `docs/review/`, and not `docs/promo.md` or this file. `tests/package.test.js` checks part of this.
 5. CHANGELOG, `package.json` version and `server.json` version are the same.
-6. Private vulnerability reporting is on (Settings → Security in the GitHub repo).
+6. Private vulnerability reporting is on (in the GitHub repository's Settings, security section). It was **off** when checked on 2026-10-11. Send yourself a test report once it is on.
 
 ## Publish
 
 1. Log in to npm with an account that owns the `@mrchartist` scope, with two-factor on.
 2. Easiest: add your npm token as the repository secret `NPM_TOKEN`, then push the tag (step 5). `.github/workflows/release.yml` runs the tests and the audit, checks the tag matches `package.json`, and publishes with provenance. Publishing by hand from your computer also works: `npm publish --access public` (leave `--provenance` out and say so).
-3. On a computer that has never had MemVault: `npx @mrchartist/memvault setup`, then `memvault doctor`. Try Windows, macOS and Linux.
+3. On a computer that has never had MemVault, try both ways. (a) `npm install -g @mrchartist/memvault`, then `memvault setup` and `memvault doctor`. (b) `npx -y @mrchartist/memvault setup`, then `npx -y @mrchartist/memvault doctor` (npx adds no `memvault` command). Try Windows, macOS and Linux.
 4. Publish `server.json` to the MCP registry, then install from the registry once.
 5. Tag the release: `git tag v3.0.0 && git push origin v3.0.0`.
 6. Only now post the launch copy in `docs/promo.md`.

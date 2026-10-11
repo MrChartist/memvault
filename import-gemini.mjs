@@ -14,7 +14,7 @@
 
 import fs from "fs";
 import path from "path";
-import { createIngestQueue } from "./ingest.mjs";
+import { createIngestQueue, clipText } from "./ingest.mjs";
 import { runImport, toIso } from "./import-common.mjs";
 
 const queue = createIngestQueue({ actor: "gemini-import" });
@@ -69,7 +69,7 @@ function formatGeminiActivity(activity) {
   ].map((x) => String(x || "").trim()).filter(Boolean);
   if (!prompt && !answers.length) return null; // nothing was said, only a header
 
-  const title = (prompt || "Gemini Conversation").slice(0, 200);
+  const title = clipText(prompt || "Gemini Conversation", 200);
   const lines = [`# ${title}`, ""];
   if (prompt) lines.push("### 👤 User", prompt, "");
   if (answers.length) lines.push("### 🤖 Gemini", answers.join("\n\n"), "");

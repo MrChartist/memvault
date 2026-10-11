@@ -64,6 +64,21 @@ describe('write-type tools mask secrets before storing and stay findable', () =>
       expect(r.text).not.toContain(KEY);
     });
   }
+  it('a key cut in half by a shortened title is still masked (mask first, then shorten)', async () => {
+    const pad = 'p'.repeat(60); // the key starts near the 80-character cut, so only its first part lands in the title
+    for (const [tool, args] of [
+      ['vault_remember', { what: `${pad} ${KEY}` }],
+      ['vault_capture_prompt', { prompt: `${pad} ${KEY}` }],
+      ['vault_log_conversation', { summary: `${pad} ${KEY}` }],
+    ]) {
+      const r = await run(tool, args);
+      expect(r.err, r.text).toBe(false);
+    }
+    const listed = await run('vault_list', { limit: 10 });
+    expect(listed.text).not.toContain(KEY.slice(0, 16));
+    const db = path.join(ROOT, 'db', 'index.sqlite');
+    expect(fs.readFileSync(db).includes(Buffer.from(KEY.slice(0, 16)))).toBe(false);
+  });
   it('nothing in the vault, nor the audit log, contains the raw key', async () => {
     const r = await run('vault_search', { query: 'REDACTED' });
     expect(r.text).not.toContain(KEY);

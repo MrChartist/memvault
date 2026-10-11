@@ -2,7 +2,7 @@
 
 Thank you for helping. This guide takes you from a clone to a pull request.
 
-By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems go through [SECURITY.md](SECURITY.md), **not** public issues.
+By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems go through [SECURITY.md](SECURITY.md). **Never put their details in a public issue.**
 
 ## Set up
 
@@ -12,7 +12,7 @@ You need Node.js 20 or newer and Git.
 git clone https://github.com/MrChartist/memvault.git
 cd memvault
 npm install
-npm test            # unit and integration tests (about 15 seconds)
+npm test            # unit and integration tests (about 20–25 seconds)
 npm run test:e2e    # dashboard tests in a real browser (needs Chrome or Chromium, see below)
 ```
 
@@ -51,7 +51,7 @@ Ground rules. Most of them exist because a review found a real bug.
 3. **No SQL built from text.** Use `?` placeholders. For user text inside `LIKE`, escape `%`, `_` and `\`.
 4. **Escape everything you put into the dashboard.** Use the existing `esc()` helper in `public/app.js`. The dashboard has a strict Content-Security-Policy, so no inline scripts or styles.
 5. **Paths from people go through `paths.mjs`.** JSON settings and environment variables do not expand `~`. Use `resolveUserPath()` for command-line arguments, environment variables and wizard answers (relative means "the folder you are in"), and `expandHome()` for values read from the settings file (relative means "under the home folder"). Build paths with `path.join`, never with a hard-coded `/` or `C:\`, and never hard-code a personal folder.
-6. **Do not add dependencies lightly.** MemVault installs with `npx` and has no native build step. That is a feature.
+6. **Do not add dependencies lightly.** MemVault is meant to install with `npm install -g` or `npx` (once it is on npm) and has no native build step. That is a feature.
 7. **Plain JavaScript modules for Node 20 or newer. No TypeScript build step.** Match the style of the file you are in.
 
 ## Adding or changing a capture engine

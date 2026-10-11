@@ -17,17 +17,32 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { expandHome, resolveUserPath } from "./paths.mjs";
+import { retryBusy } from "./retry.mjs";
 
 const HOME = os.homedir();
 export const CONFIG_FILE = path.join(HOME, ".memvaultrc.json");
 
-/** Read (and re-read) the user config file fresh from disk. */
-export function loadUserConfig() {
+/**
+ * Read (and re-read) the user config file fresh from disk. A missing file is an empty config.
+ * A file that is there but cannot be read (usually a JSON mistake from a hand edit) also gives {} so
+ * MemVault still starts with its defaults, unless `forUpdate` is set: whoever is about to save the
+ * config back gets an error instead, because saving {} would erase every setting in that file.
+ */
+export function loadUserConfig({ forUpdate = false } = {}) {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
     }
   } catch (e) {
+    if (forUpdate) {
+      const what = e instanceof SyntaxError ? "has a JSON mistake in it" : "could not be read";
+      const err = new Error(
+        `Nothing was saved: your settings file ${CONFIG_FILE} ${what} (${e.message}). ` +
+        "Saving now would erase the settings in it. Fix the file (or move it away to start over), then try again."
+      );
+      err.code = "CONFIG_UNREADABLE";
+      throw err;
+    }
     console.error(`⚠️ Could not read ${CONFIG_FILE}: ${e.message}`);
   }
   return {};
@@ -35,9 +50,25 @@ export function loadUserConfig() {
 
 /** Persist a config object back to ~/.memvaultrc.json (pretty-printed). */
 export function saveUserConfig(config) {
-  // May hold API keys and Drive credentials, so keep it private to this account.
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), { encoding: "utf8", mode: 0o600 });
-  try { fs.chmodSync(CONFIG_FILE, 0o600); } catch { /* non-POSIX */ }
+  // May hold API keys and Drive credentials, so keep it private to this account. Written to a temporary file
+  // and renamed over the old one, so a crash or a full disk never leaves half a settings file behind.
+  let target = CONFIG_FILE;
+  try { target = fs.realpathSync(CONFIG_FILE); } catch { /* not there yet */ } // a symlinked dotfile stays a symlink
+  const tmp = `${target}.${process.pid}.tmp`;
+  try {
+    const fd = fs.openSync(tmp, "w", 0o600);
+    try {
+      fs.writeFileSync(fd, JSON.stringify(config, null, 2), "utf8");
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    try { fs.chmodSync(tmp, 0o600); } catch { /* non-POSIX */ }
+    retryBusy(() => fs.renameSync(tmp, target)); // a scanner or sync client may hold the file for a moment
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+    throw e;
+  }
 }
 
 const userConfig = loadUserConfig();

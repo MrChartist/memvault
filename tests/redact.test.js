@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { redact, redactItem } from '../redact.mjs';
+import { clipText } from '../ingest.mjs';
 
 const types = (r) => r.findings.map((f) => f.type).sort();
 
@@ -181,8 +182,10 @@ describe('redact — behaviour', () => {
 });
 
 describe('redact — speed on hostile or unusual text', () => {
-  const ms = (text) => { const t = performance.now(); redact(text); return performance.now() - t; };
-  const LIMIT = 1500; // generous for slow CI; the old patterns needed 30+ seconds for the dotted case
+  // The faster of two runs: a busy CI machine can stall one run, but a pattern that backtracks is slow every time.
+  const once = (text) => { const t = performance.now(); redact(text); return performance.now() - t; };
+  const ms = (text) => Math.min(once(text), once(text));
+  const LIMIT = 3000; // well under a second normally; the old patterns needed 30+ seconds for the dotted case
 
   it.each([
     ['dotted identifiers', () => 'a.bc.def.node.value.x1.'.repeat(9000)],
@@ -283,5 +286,22 @@ describe('redact — formats seen in real notes (found by the review)', () => {
   it('is still idempotent on the new patterns', () => {
     const once = redact('{"password": "hunter2hunter2"} Authorization: Basic dXNlcjpwYXNzd29yZDEyMzQ= npm_aBc' + 'DeFgHiJkLmNoPqRsTuVwXyZ0123456789').text;
     expect(redact(once).text).toBe(once);
+  });
+});
+
+describe('clipText — shortening text before it is stored', () => {
+  const key = 'ghp_' + 'abcdefghijklmnopqrstuvwxyz0123456789';
+  it('masks before cutting, so half a key never survives', () => {
+    const text = 'x'.repeat(90) + ' ' + key;
+    const cut = clipText(text, 100);
+    expect(cut).not.toContain('ghp_abc');
+    expect(text.slice(0, 100)).toContain('ghp_abc'); // what a plain slice would have kept
+  });
+  it('adds the ellipsis only when something was cut', () => {
+    expect(clipText('short', 80, { ellipsis: '...' })).toBe('short');
+    expect(clipText('a'.repeat(81), 80, { ellipsis: '...' })).toBe('a'.repeat(80) + '...');
+  });
+  it('leaves text alone when masking is switched off', () => {
+    expect(clipText(key, 100, { security: { redact: false } })).toBe(key);
   });
 });

@@ -19,6 +19,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { TOKEN_FILE } from "./config.mjs";
+import { deviceKeyMatches } from "./device-keys.mjs";
 
 // ─── token storage ──────────────────────────────────────────────────────────
 
@@ -68,8 +69,7 @@ export function apiFetch(url, init = {}) {
   const headers = authHeaders(init.headers || {});
   if (!headers.authorization && /\/health\b/.test(String(url)) === false) {
     throw new Error(
-      "MemVault API token not found. Start the server once (`npm start`) to create it, " +
-        "or run `memvault token`."
+      "MemVault access key not found. Run `memvault setup` (or `memvault token`) to create it."
     );
   }
   return fetch(url, { ...init, headers });
@@ -121,8 +121,9 @@ export function createLimiter({ max = 5, windowMs = 60_000, lockMs = 60_000, now
  * @param {string} o.token
  * @param {string[]} [o.allowedHosts]
  * @param {string[]} [o.allowedOrigins]
+ * @param {(key: string) => string|null} [o.deviceKey]  accepts the own key of a paired phone or tablet (device-keys.mjs)
  */
-export function createGuards({ port, token, allowedHosts = [], allowedOrigins = [] }) {
+export function createGuards({ port, token, allowedHosts = [], allowedOrigins = [], deviceKey = deviceKeyMatches }) {
   const loopbackHosts = [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`];
   const hosts = new Set([...loopbackHosts, ...allowedHosts].map((h) => h.toLowerCase()));
   const origins = new Set(
@@ -148,10 +149,13 @@ export function createGuards({ port, token, allowedHosts = [], allowedOrigins = 
   const requireToken = (req, res, next) => {
     const h = String(req.headers.authorization || "");
     const candidate = h.startsWith("Bearer ") ? h.slice(7).trim() : req.headers["x-memvault-token"];
-    if (!tokenMatches(candidate, token)) {
+    if (tokenMatches(candidate, token)) return next();
+    const phone = deviceKey(candidate);
+    if (!phone) {
       res.set("WWW-Authenticate", 'Bearer realm="memvault"');
       return res.status(401).json({ ok: false, error: "Missing or invalid API token. Run `memvault token`." });
     }
+    req.deviceKeyId = phone; // a phone or tablet signed in with its own key (see ownerOnly in server.mjs)
     next();
   };
 

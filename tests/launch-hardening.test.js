@@ -193,6 +193,16 @@ describe('"~" and relative paths', () => {
     expect(cfg.sync.gitDirs).toEqual([path.join(HOME, 'wizard-code')]);
     expect(cfg.storage.gdriveApi.enabled).toBe(false);
   });
+
+  it('pressing Enter through the wizard leaves every kind of capture off, and keeps what was on', () => {
+    const { HOME, node } = fresh();
+    expect(node('init.mjs', [], { input: '' }).status).toBe(0);
+    const cfg = JSON.parse(fs.readFileSync(path.join(HOME, '.memvaultrc.json'), 'utf8'));
+    for (const k of ['gitEnabled', 'vscodeEnabled', 'systemEnabled', 'filesEnabled', 'browserEnabled', 'clipboardEnabled']) expect(cfg.sync[k], k).toBe(false);
+    fs.writeFileSync(path.join(HOME, '.memvaultrc.json'), JSON.stringify({ ...cfg, sync: { ...cfg.sync, clipboardEnabled: true } }));
+    expect(node('init.mjs', [], { input: '' }).status).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(HOME, '.memvaultrc.json'), 'utf8')).sync.clipboardEnabled).toBe(true);
+  });
 });
 
 describe('search words', () => {

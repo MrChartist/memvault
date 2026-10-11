@@ -67,10 +67,52 @@ describe('command line', () => {
     const r = run('mcp-config');
     const cfg = JSON.parse(r.stdout);
     expect(cfg.mcpServers.memvault.args[0]).toMatch(/mcp-server\.mjs$/);
-    expect(cfg.mcpServers.memvault.command).toBe(process.execPath);
+    expect(fs.realpathSync(cfg.mcpServers.memvault.command)).toBe(fs.realpathSync(process.execPath));
     const bound = JSON.parse(run('mcp-config', '--agent', 'study-buddy').stdout);
     expect(bound.mcpServers['memvault-study-buddy'].env.MEMVAULT_AGENT).toBe('study-buddy');
     expect(run('mcp-config', '--agent', 'nobody').status).toBe(1);
+    const noName = run('mcp-config', '--agent');
+    expect(noName.status).toBe(1);
+    expect(noName.stderr).toMatch(/Say which agent/);
+    expect(noName.stderr).not.toMatch(/"true"/);
+  });
+
+  it('every example in the help works straight after setup', () => {
+    const help = run('help').stdout;
+    const agent = help.match(/mcp-config --agent (\S+)/)[1];
+    expect(run('mcp-config', '--agent', agent).status).toBe(0);
+  });
+
+  it('`<command> --help` explains the command instead of running it', () => {
+    const r = run('backup', '--help');
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/memvault backup/);
+    expect(r.stdout).not.toMatch(/Backing up/);
+  });
+
+  it('a missing file or a bad agent file gets one plain sentence, not a stack trace', () => {
+    for (const args of [['agent', 'import', path.join(HOME, 'missing.json')], ['agent', 'create', '--from-file', path.join(HOME, 'missing.txt')]]) {
+      const r = run(...args);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/no such file/);
+      expect(r.stderr).not.toMatch(/node:fs|at .*\.js:\d+|ENOENT/);
+    }
+    const bad = path.join(HOME, 'bad.json');
+    fs.writeFileSync(bad, '{ not json');
+    const r = run('agent', 'import', bad);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/not a valid JSON file/);
+  });
+
+  it('restoring a backup that does not exist says so plainly', () => {
+    const r = run('backup', 'restore', 'no-such-backup.sqlite');
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/Backup not found/);
+    expect(r.stderr).not.toMatch(/at .*\.mjs:\d+/);
+  });
+
+  it('importing from a folder that does not exist fails', () => {
+    expect(run('import', path.join(HOME, 'no-such-export')).status).toBe(1);
   });
 
   it('agent commands list, show and export the starter agents', () => {
@@ -102,7 +144,68 @@ describe('command line', () => {
   });
 });
 
+describe('stopping the server', () => {
+  it.skipIf(process.platform === 'win32')('stopping `memvault serve` also stops the server it started', async () => {
+    const { spawn } = await import('child_process');
+    const http = await import('http');
+    const port = await new Promise((res) => { const s = http.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); });
+    const env = { ...process.env, HOME, USERPROFILE: HOME, VAULT_ROOT: '', MEMVAULT_TOKEN_FILE: '', MEMVAULT_AGENT: '', PORT: String(port) };
+    const cli = spawn(process.execPath, [CLI, 'serve'], { env, stdio: 'ignore' });
+    const up = async () => { try { return (await fetch(`http://127.0.0.1:${port}/health`)).ok; } catch { return false; } };
+    for (let i = 0; i < 100 && !(await up()); i++) await new Promise((r) => setTimeout(r, 100));
+    expect(await up()).toBe(true);
+    const exited = new Promise((res) => cli.on('exit', res));
+    cli.kill('SIGTERM');
+    await exited;
+    let stillUp = true;
+    for (let i = 0; i < 50 && (stillUp = await up()); i++) await new Promise((r) => setTimeout(r, 100));
+    expect(stillUp).toBe(false);
+  }, 30000);
+});
+
+describe('connecting AI apps', () => {
+  it('a copy started by npx tells apps to start it through npx, not from npm\'s cache folder', async () => {
+    const { mcpEntry, mv } = await import('../cli-tools.mjs');
+    const dir = path.join(os.homedir(), '.npm', '_npx', 'f3bc96e2557f9332', 'node_modules', '@mrchartist', 'memvault');
+    expect(mcpEntry({ agent: 'coder', dir, platform: 'linux' })).toEqual({ command: 'npx', args: ['-y', '@mrchartist/memvault', 'mcp'], env: { MEMVAULT_AGENT: 'coder' } });
+    expect(mcpEntry({ dir, platform: 'win32' })).toEqual({ command: 'cmd', args: ['/c', 'npx', '-y', '@mrchartist/memvault', 'mcp'] });
+    expect(mv('doctor', dir)).toBe('npx -y @mrchartist/memvault doctor');
+    expect(mv('doctor', '/usr/lib/node_modules/@mrchartist/memvault')).toBe('memvault doctor');
+  });
+
+  it.skipIf(process.platform === 'win32')('writes the node found on PATH, which survives a Node upgrade, not the versioned folder behind it', async () => {
+    const { stableNodePath } = await import('../cli-tools.mjs');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault node '));
+    try {
+      const cellar = path.join(tmp, 'Cellar', 'node', '22.1.0', 'bin');
+      const bin = path.join(tmp, 'bin');
+      fs.mkdirSync(cellar, { recursive: true }); fs.mkdirSync(bin);
+      fs.writeFileSync(path.join(cellar, 'node'), '');
+      fs.symlinkSync(path.join(cellar, 'node'), path.join(bin, 'node'));
+      const execPath = path.join(cellar, 'node'); // what process.execPath reports: symlinks already resolved
+      expect(stableNodePath({ execPath, envPath: ['/nowhere', bin].join(path.delimiter), platform: 'linux' })).toBe(path.join(bin, 'node'));
+      expect(stableNodePath({ execPath, envPath: '/nowhere', platform: 'linux' })).toBe(execPath);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('opening the dashboard', () => {
+  it('does not trust another program that happens to answer on the port', async () => {
+    const { healthy } = await import('../cli-tools.mjs');
+    const http = await import('http');
+    const serve = (body) => new Promise((res) => { const s = http.createServer((_q, r) => { r.setHeader('content-type', 'application/json'); r.end(body); }).listen(0, '127.0.0.1', () => res(s)); });
+    const other = await serve('{"ok":true}');
+    const real = await serve('{"ok":true,"name":"memvault","version":"3.0.0"}');
+    try {
+      expect(await healthy(`http://127.0.0.1:${other.address().port}`)).toBe(false);
+      expect(await healthy(`http://127.0.0.1:${real.address().port}`)).toBe(true);
+    } finally {
+      other.close(); real.close();
+    }
+  });
+
   it('keeps the key out of the browser\'s command line: it opens a private page that redirects', async () => {
     const { makeOpenPage } = await import('../cli-tools.mjs');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'memvault open '));

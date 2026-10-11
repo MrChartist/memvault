@@ -77,6 +77,44 @@ const BASE_SCHEMA = `
   );
 `;
 
+// Multi-device sync (device-sync.mjs) has to know when each memory last changed and which ones were deleted.
+// Triggers record both on every write path (the dashboard, the CLI, imports, older versions of MemVault too),
+// so no caller can forget. A new memory counts as a change made now.
+//
+// A change is always stamped later than the version it replaces, even when this computer's clock is behind
+// the one that made that version: otherwise the other computers would keep the older version, as "newer".
+const iso = (julianExpr) => `strftime('%Y-%m-%dT%H:%M:%fZ', ${julianExpr})`;
+const after = (stampSql) => iso(`MAX(julianday('now'), COALESCE(julianday(${stampSql}) + 1.0 / 86400000, 0))`);
+const ITEM_STAMP = "MAX(COALESCE(OLD.updated_at, ''), COALESCE(OLD.created_at, ''))";
+const CHANGE_TRACKING = `
+  CREATE TABLE IF NOT EXISTS tombstones (
+    kind TEXT NOT NULL,              -- item | agent
+    id TEXT NOT NULL,
+    deleted_at TEXT NOT NULL,
+    PRIMARY KEY (kind, id)
+  );
+  -- Memories that came from another computer. "Current state" snapshots (computer info, VS Code, folders)
+  -- and a capture that replaces what it wrote before only ever replace this computer's own rows.
+  CREATE TABLE IF NOT EXISTS synced_in (id TEXT PRIMARY KEY);
+  CREATE TRIGGER mv_items_changed AFTER UPDATE OF type, source, title, content, file_path, tags, agent_id, scope ON items
+    BEGIN UPDATE items SET updated_at = ${after(ITEM_STAMP)} WHERE id = NEW.id; END;
+  CREATE TRIGGER mv_items_deleted AFTER DELETE ON items
+    BEGIN
+      INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('item', OLD.id, ${after(ITEM_STAMP)});
+      DELETE FROM synced_in WHERE id = OLD.id;
+    END;
+  CREATE TRIGGER mv_items_added AFTER INSERT ON items
+    BEGIN
+      DELETE FROM tombstones WHERE kind = 'item' AND id = NEW.id;
+      UPDATE items SET updated_at = ${iso("'now'")} WHERE id = NEW.id AND NEW.updated_at IS NULL;
+    END;
+  CREATE TRIGGER mv_agents_deleted AFTER DELETE ON agents
+    BEGIN INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('agent', OLD.id, ${after("OLD.updated_at")}); END;
+  CREATE TRIGGER mv_agents_added AFTER INSERT ON agents
+    BEGIN DELETE FROM tombstones WHERE kind = 'agent' AND id = NEW.id; END;
+`;
+const TRIGGER_NAMES = ["mv_items_changed", "mv_items_deleted", "mv_items_added", "mv_agents_deleted", "mv_agents_added"];
+
 // ─── helpers ────────────────────────────────────────────────────────────────
 
 /** Best-effort POSIX permissions; harmless no-op on Windows. */
@@ -121,6 +159,9 @@ export function migrate(db) {
   }
   db.run("CREATE INDEX IF NOT EXISTS idx_items_scope ON items(scope)");
   db.run("CREATE INDEX IF NOT EXISTS idx_items_agent ON items(agent_id)");
+  if (!cols.includes("updated_at")) db.run("ALTER TABLE items ADD COLUMN updated_at TEXT");
+  for (const t of TRIGGER_NAMES) db.run(`DROP TRIGGER IF EXISTS ${t}`); // always the current version of each
+  db.run(CHANGE_TRACKING);
 
   db.run("INSERT OR IGNORE INTO meta (key,value) VALUES ('vault_id', ?)", [crypto.randomUUID()]);
   db.run("INSERT OR REPLACE INTO meta (key,value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
@@ -183,7 +224,12 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
 
   const loadFull = () => {
     const db = fs.existsSync(dbPath) ? new SQL.Database(fs.readFileSync(dbPath)) : new SQL.Database();
-    migrate(db);
+    try {
+      migrate(db);
+    } catch (e) {
+      db.close(); // e.g. a file from a newer MemVault: every retry would otherwise keep another copy in memory
+      throw e;
+    }
     return db;
   };
 
@@ -207,6 +253,11 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
 
   /** Remove everything this agent is not allowed to see from an in-memory copy. */
   const applyScope = (db) => {
+    // This copy is only ever read, never saved: the change triggers would just fill it with deletion records,
+    // and which ids were deleted is not the agent's business either.
+    for (const t of TRIGGER_NAMES) db.run(`DROP TRIGGER IF EXISTS ${t}`);
+    db.run("DELETE FROM tombstones");
+    db.run("DELETE FROM synced_in");
     const visible = rows(db, "SELECT DISTINCT scope FROM items")
       .map((r) => r.scope)
       .filter(scopeMatches);
@@ -226,7 +277,6 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
   const refresh = () => {
     const now = signature();
     if (read && now === sig) return;
-    if (read) read.close();
     if (!now) {
       // First run: create the file with the current schema, under the lock.
       lock.acquire();
@@ -236,8 +286,20 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
         lock.release();
       }
     }
-    sig = signature();
-    read = build(loadFull());
+    // Build the new copy before letting go of the old one: if loading fails (file busy, out of memory, a newer
+    // MemVault's file) the handle keeps its old copy and old signature, so the next call simply tries again.
+    const nextSig = signature();
+    const full = loadFull();
+    let next;
+    try {
+      next = build(full);
+    } catch (e) {
+      full.close();
+      throw e;
+    }
+    if (read) read.close();
+    read = next;
+    sig = nextSig;
   };
 
   /**
@@ -268,7 +330,14 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
         lost.code = "LOCK_LOST";
         throw lost;
       }
-      persist(fresh);
+      try {
+        persist(fresh);
+      } catch (e) {
+        // The change is in our copy but not (or not surely) on disk, e.g. the disk is full. Keeping the copy would
+        // show it to later reads and publish it with the next write, so drop it and read the file again next time.
+        if (reuse) { read.close(); read = null; sig = null; } else fresh.close();
+        throw e;
+      }
       if (reuse) {
         sig = signature();
       } else {
@@ -371,7 +440,8 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
           if (upsert) {
             db.run(
               `DELETE FROM items WHERE source = ? AND title = ? AND COALESCE(file_path, '') = ?
-                 AND scope = ? AND COALESCE(agent_id, '') = ?`,
+                 AND scope = ? AND COALESCE(agent_id, '') = ?
+                 AND id NOT IN (SELECT id FROM synced_in)`, // another computer's snapshot of the same thing stays
               [source, title, filePath || "", scopeName, agent || ""]
             );
           }

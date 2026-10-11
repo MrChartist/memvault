@@ -48,7 +48,7 @@
 
       <div class="card guide" id="guide" hidden>
         <div class="row between wrap gap">
-          <h3 class="guide-title">Welcome. Here is how MemVault works</h3>
+          <h3 class="guide-title">Welcome! Here’s how MemVault works</h3>
           <button class="btn sm ghost" data-action="dismiss-guide">Hide this</button>
         </div>
         <p class="muted">MemVault is a notebook on <strong>your own computer</strong> that all your AI assistants can share. Tell one AI something once, and the others can find it too.</p>
@@ -56,18 +56,18 @@
           <li><div><b>Connect your AI app</b>
             <span class="muted">Works with Claude, Cursor, Antigravity, VS Code and other AI apps that can connect to tools.</span>
             <div class="row"><button class="btn primary" data-action="connect-apps">Show me how</button></div></div></li>
-          <li><div><b>Choose helpers (optional)</b>
+          <li><div><b>Choose agents (optional)</b>
             <span class="muted">An agent is a helper with its own job, way of talking and rules, such as a study helper or a writing helper.</span>
-            <div class="row"><button class="btn" data-action="view" data-view="agents">See the helpers</button></div></div></li>
+            <div class="row"><button class="btn" data-action="view" data-view="agents">See the agents</button></div></div></li>
           <li><div><b>Try it</b>
             <span class="muted">In your AI app, say:</span>
             <div><span class="sample" dir="auto">Remember that I prefer short answers.</span></div>
-            <div class="row"><button class="btn" data-action="copy-sample">Copy this sentence</button></div></div></li>
+            <div class="row"><button class="btn" data-action="copy-sample">Copy sentence</button></div></div></li>
         </ol>
-        <p class="privacy-note"><strong>Your privacy, in plain words.</strong> Your notes are stored only on this computer, and MemVault sends nothing anywhere by itself. When you ask an AI to look something up here, the part it reads goes to that AI's company, like anything else you type to it. Passwords and ID numbers are hidden before they are saved.</p>
+        <p class="privacy-note"><strong>Your privacy, in plain words.</strong> Your notes are stored only on this computer, and MemVault sends nothing anywhere by itself. When you ask an AI to look something up here, the part it reads goes to that AI’s company, like anything else you type to it. Passwords and ID numbers are hidden before they are saved.</p>
       </div>
 
-      <div class="stats" id="stats"></div>
+      <div class="stats" id="stats" data-needs-items></div>
 
       <form class="card composer" id="composer">
         <label for="diary-input" class="label">Write a note</label>
@@ -78,20 +78,20 @@
         </div>
       </form>
 
-      <div class="toolbar">
+      <div class="toolbar" data-needs-items>
         <div class="chips" role="group" aria-label="Show only">
           <button class="chip is-active" aria-pressed="true" data-action="filter" data-type="">All</button>
           <button class="chip" aria-pressed="false" data-action="filter" data-type="diary">Notes</button>
           <button class="chip" aria-pressed="false" data-action="filter" data-type="conversation">Conversations</button>
           <button class="chip" aria-pressed="false" data-action="filter" data-type="worklog">Work logs</button>
         </div>
-        <label class="viewas">
+        <label class="viewas" for="viewas">
           <span class="muted small">See what this agent can see</span>
           <select id="viewas"><option value="">Everything (you)</option></select>
         </label>
       </div>
 
-      <div class="row between wrap gap">
+      <div class="row between wrap gap" data-needs-items>
         <button type="button" class="btn sm" id="select-toggle" data-action="select-mode" aria-pressed="false">Select several</button>
         <span id="results-status" class="muted small" role="status" aria-live="polite"></span>
       </div>
@@ -102,13 +102,19 @@
         <button type="button" class="btn sm ghost" data-action="select-mode">Done</button>
       </div>
 
-      <form class="search" id="search-form" role="search">
+      <form class="search" id="search-form" role="search" data-needs-items>
         <input id="search-input" dir="auto" type="search" placeholder="Search your memory…" aria-label="Search your memory" />
         <button class="btn" type="submit">Search</button>
         <button class="btn ghost" type="button" data-action="clear-search">Clear</button>
       </form>
 
       <div id="entries" class="entries"></div>
+
+      <div id="empty-state" class="card empty-state" hidden>
+        <h3>Your memory is empty</h3>
+        <p class="muted">Write your first note in the box above. Or connect an AI app and ask it to remember something for you.</p>
+        <div class="row gap wrap"><button class="btn primary" data-action="connect-apps">Connect an AI app</button></div>
+      </div>
     </section>
 
     <!-- ═════════ AGENTS ═════════ -->
@@ -116,18 +122,18 @@
       <div class="section-head">
         <div>
           <h2 id="h-agents" tabindex="-1">Agents</h2>
-          <p class="muted">An agent is a helper with its own job, way of talking and rules, and a clear limit on which memories it can see. An AI becomes that helper when you connect it to the helper, or when you paste the helper's instructions into it.</p>
+          <p class="muted">An agent is a helper with its own job, way of talking and rules, and a clear limit on which memories it can see. An AI becomes that agent when you connect it to the agent, or when you paste the agent’s instructions into it.</p>
         </div>
         <div class="row gap wrap">
-          <label class="viewas"><span class="sr-only">Starter set</span>
-            <select id="pack-select" aria-label="Starter set to install"></select></label>
+          <label class="viewas" for="pack-select"><span class="muted small">Starter set</span>
+            <select id="pack-select"></select></label>
           <button class="btn" data-action="starter">Add starter agents</button>
           <button class="btn primary" data-action="new-agent">New agent from a description</button>
         </div>
       </div>
       <p class="muted small" id="pack-desc"></p>
       <div id="agents" class="grid"></div>
-      <p class="muted small note">To give an AI app its own helper, choose <strong>Copy connection settings</strong> and paste them into that app. The helper is fixed by those settings, never by anything the AI says, so an AI cannot give itself more access.</p>
+      <p class="muted small note">To give an AI app its own agent, choose <strong>Copy connection settings</strong> and paste them into that app. The agent is fixed by those settings, never by anything the AI says, so an AI cannot give itself more access.</p>
     </section>
 
     <!-- ═════════ SECURE VAULT ═════════ -->
@@ -165,7 +171,7 @@
       <div class="section-head">
         <div>
           <h2 id="h-security" tabindex="-1">Security</h2>
-          <p class="muted">These are live checks of how this vault is really set up, not promises. No software is perfectly safe; the file <code>SECURITY.md</code> explains exactly what is and is not protected.</p>
+          <p class="muted">These are live checks of how this vault is really set up, not promises. No software is perfectly safe. <a href="https://github.com/MrChartist/memvault/blob/main/SECURITY.md" target="_blank" rel="noopener noreferrer">Read exactly what is and is not protected<span class="sr-only"> (opens in a new tab)</span></a>.</p>
         </div>
         <button class="btn" data-action="reload-security">Check again</button>
       </div>
@@ -198,8 +204,8 @@
         <h3 id="s-look">How it looks</h3>
         <fieldset class="opts"><legend class="label">Text size</legend>
           <label class="opt"><input type="radio" name="textsize" value="0"> Normal</label>
-          <label class="opt"><input type="radio" name="textsize" value="1"> Larger</label>
-          <label class="opt"><input type="radio" name="textsize" value="2"> Large</label>
+          <label class="opt"><input type="radio" name="textsize" value="1"> Large</label>
+          <label class="opt"><input type="radio" name="textsize" value="2"> Larger</label>
           <label class="opt"><input type="radio" name="textsize" value="3"> Largest</label>
         </fieldset>
         <fieldset class="opts"><legend class="label">Colours</legend>
@@ -214,7 +220,7 @@
         <p class="muted">All of these are off until you switch them on. Passwords and card numbers are hidden before anything is saved. Your AI apps can still save notes themselves even if all of these are off.</p>
         <div id="capture-list"></div>
         <div class="row gap wrap">
-          <button class="btn" data-action="sync-now" id="sync-now">Save now</button>
+          <button class="btn" data-action="sync-now" id="sync-now">Collect now</button>
           <span id="sync-status" class="muted small" role="status" aria-live="polite"></span>
         </div>
       </div>
@@ -247,13 +253,42 @@
         </form>
       </div>
 
+      <div class="card" aria-labelledby="s-devices">
+        <h3 id="s-devices">Your devices</h3>
+        <p class="muted">Use one memory on all your computers. Each one keeps its own copy, and they keep each other up to date through a folder you share between them (Syncthing, iCloud Drive, Dropbox, OneDrive, Google Drive or your own server). Everything in that folder is locked with your sync passphrase. <a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md" target="_blank" rel="noopener noreferrer">How to set it up<span class="sr-only"> (opens in a new tab)</span></a></p>
+        <p id="dv-phone-note" class="muted small" hidden>You are on a phone or tablet. To change these settings, change a passphrase or add a phone, use the dashboard on your computer.</p>
+        <div id="devices-info"></div>
+        <form id="devices-form" class="form-grid" novalidate>
+          <div><label for="dv-name" class="label">This computer’s name</label><input id="dv-name" type="text" dir="auto" maxlength="60" /></div>
+          <div><label for="dv-folder" class="label">Shared folder</label><input id="dv-folder" type="text" dir="auto" placeholder="For example: ~/Sync/MemVault Sync" aria-describedby="dv-error" /></div>
+          <div class="full"><label class="check"><input type="checkbox" id="dv-on" /> Keep this computer in step with my other computers</label></div>
+          <div class="full"><p class="error" id="dv-error" role="alert" hidden></p>
+            <div class="row gap wrap"><button class="btn" type="submit">Save</button><button class="btn" type="button" data-action="devices-sync" id="devices-sync">Sync now</button><span id="devices-status" class="muted small" role="status" aria-live="polite"></span></div></div>
+        </form>
+        <form id="dv-pass-form" class="stack" novalidate>
+          <h4>Sync passphrase</h4>
+          <p class="muted small">Use the <strong>same passphrase on every computer</strong>. Anyone who has the shared folder and this passphrase can read your memories, so keep it private. <strong>It cannot be recovered.</strong> It is kept in a private file on this computer, outside your vault.</p>
+          <label for="dp-1" class="label">Passphrase (at least 10 characters)</label>
+          <input id="dp-1" type="password" autocomplete="new-password" aria-describedby="dp-error" />
+          <label for="dp-2" class="label">Type it again</label>
+          <input id="dp-2" type="password" autocomplete="new-password" aria-describedby="dp-error" />
+          <p class="error" id="dp-error" role="alert" hidden></p>
+          <div><button class="btn primary" type="submit">Save sync passphrase</button></div>
+        </form>
+        <h4>Phones and tablets</h4>
+        <p class="muted small">A phone or tablet can open this dashboard through a private address that only your own devices can reach (for example Tailscale). Each one signs in with a one-time code and gets a key of its own.</p>
+        <div id="phones-list"></div>
+        <div class="row gap wrap" id="pair-phone-row"><button class="btn" data-action="pair-phone">Add a phone or tablet</button></div>
+        <div id="pair-code" class="pair-code" hidden></div>
+      </div>
+
       <div class="card" aria-labelledby="s-data">
         <h3 id="s-data">Your data</h3>
         <div class="row gap wrap">
           <button class="btn" data-action="export-all">Download everything</button>
           <button class="btn danger" data-action="wipe-all">Delete everything</button>
         </div>
-        <p class="muted small">Download gives you one file with all your notes. Passwords in the Secure Vault are not included. Delete everything makes a backup first.</p>
+        <p class="muted small after-buttons">Download gives you one file with all your notes. Passwords in the Secure Vault are not included. Delete everything makes a backup first.</p>
         <h4>Recently deleted</h4>
         <p class="muted small">You can put these back for one hour, as long as MemVault is still running.</p>
         <div id="trash-list"></div>
@@ -262,20 +297,32 @@
   </main>
 
   <footer class="foot">
-    <p class="statement">Learn it. Research it. Scan it. Trade it. Review it.</p>
-    <p class="muted small">MemVault is part of the <a href="https://mrchartist.com" target="_blank" rel="noopener noreferrer">Mr. Chartist</a> ecosystem · MrChartist.com · Stored on your computer · No tracking · No outside requests.</p>
+    <p class="statement"><span>Learn it.</span> <span>Research it.</span> <span>Scan it.</span> <span>Trade it.</span> <span>Review it.</span></p>
+    <p class="muted small foot-note">MemVault is part of the <a href="https://mrchartist.com" target="_blank" rel="noopener noreferrer">Mr. Chartist<span class="sr-only"> (opens in a new tab)</span></a> ecosystem · Stored on your computer · No tracking · Nothing is sent to other websites.</p>
   </footer>
 
   <!-- ═════════ DIALOGS ═════════ -->
   <dialog id="dlg-connect" aria-labelledby="connect-title" data-keep>
-    <form method="dialog" class="dlg" id="connect-form">
-      <h3 id="connect-title">Connect the dashboard to your vault</h3>
-      <p class="muted">Open the dashboard with the command <code>memvault open</code> and it connects by itself. Or paste your dashboard key here. Get it by running <code>memvault token</code> in a terminal.</p>
-      <label class="label" for="token-input">Dashboard key</label>
-      <input id="token-input" type="password" autocomplete="off" aria-describedby="token-error" />
-      <p class="error" id="token-error" role="alert" hidden></p>
-      <div class="row end gap"><button class="btn primary" type="submit">Connect</button></div>
-    </form>
+    <div class="dlg">
+      <form method="dialog" id="connect-form">
+        <h3 id="connect-title">Connect the dashboard to your vault</h3>
+        <p class="muted">Open the dashboard with the command <code>memvault open</code> and it connects by itself. Or paste your dashboard key here. Get it by running <code>memvault token</code> in a terminal.</p>
+        <label class="label" for="token-input">Dashboard key</label>
+        <input id="token-input" type="password" autocomplete="off" aria-describedby="token-error" />
+        <p class="error" id="token-error" role="alert" hidden></p>
+        <div class="row end gap"><button class="btn primary" type="submit">Connect</button></div>
+      </form>
+      <form id="pair-form" class="pair-form" novalidate>
+        <h4>On a phone or tablet? Use a pairing code</h4>
+        <p class="muted small">On the computer that runs MemVault, open Settings → Your devices → Add a phone or tablet (or run <code>memvault devices pair</code>), then type the code here. This device then stays signed in until you sign it out on that computer.</p>
+        <label class="label" for="pair-input">Pairing code</label>
+        <input id="pair-input" type="text" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" placeholder="ABCD-EFGH" aria-describedby="pair-error" />
+        <label class="label" for="pair-name">A name for this device (optional)</label>
+        <input id="pair-name" type="text" dir="auto" maxlength="40" placeholder="For example: iPhone" />
+        <p class="error" id="pair-error" role="alert" hidden></p>
+        <div class="row end gap"><button class="btn" type="submit">Use a pairing code</button></div>
+      </form>
+    </div>
   </dialog>
 
   <dialog id="dlg-apps" aria-labelledby="apps-title" class="closable">
@@ -284,7 +331,7 @@
       <p class="muted">Choose your app. MemVault gives you the exact text to paste.</p>
       <div class="apps" id="apps-list" role="group" aria-label="AI apps"></div>
       <div id="apps-body"></div>
-      <p class="hint">Menus and file locations change between versions. If something looks different, search that app's help for "MCP servers".</p>
+      <p class="hint">Menus and file locations change between versions. If something looks different, search that app’s help for “MCP servers”.</p>
       <div class="row end"><button class="btn" type="button" data-action="close-dialog">Close</button></div>
     </form>
   </dialog>
@@ -296,9 +343,9 @@
       <div id="agent-draft-step">
         <label class="label" for="agent-name">Name</label>
         <input id="agent-name" dir="auto" type="text" placeholder="For example: Study Buddy" />
-        <label class="label" for="agent-prompt">Describe the helper in your own words</label>
+        <label class="label" for="agent-prompt">Describe the agent in your own words</label>
         <textarea id="agent-prompt" dir="auto" rows="8" placeholder="Who is it? How should it talk? What must it always do? What must it never do?"></textarea>
-        <p class="hint">MemVault reads your text and sorts it into a job, a way of talking, and "must do" and "must not do" rules. It works best in English; in other languages, fill in the form by hand. You can check and change everything before saving.</p>
+        <p class="hint">MemVault reads your text and sorts it into a job, a way of talking, and “must do” and “must not do” rules. It works best in English; in other languages, fill in the form by hand. You can check and change everything before saving.</p>
         <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn primary" type="button" data-action="draft">Create a draft</button></div>
       </div>
 
@@ -338,7 +385,7 @@
     <form method="dialog" class="dlg">
       <h3 id="delete-title">Delete this agent?</h3>
       <p id="delete-text" class="muted"></p>
-      <label class="check"><input type="checkbox" id="delete-purge" /> Also delete this agent's private notes (a backup is made first)</label>
+      <label class="check"><input type="checkbox" id="delete-purge" /> Also delete this agent’s private notes (a backup is made first)</label>
       <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn danger" type="button" data-action="confirm-delete">Delete</button></div>
     </form>
   </dialog>
@@ -368,7 +415,7 @@
     <form method="dialog" class="dlg wide">
       <h3 id="text-title">Text</h3>
       <textarea id="text-body" class="mono" rows="16" readonly></textarea>
-      <div class="row end gap"><button class="btn" type="button" data-action="copy-text">Copy</button><button class="btn primary" type="button" data-action="close-dialog">Close</button></div>
+      <div class="row end gap"><button class="btn" type="button" data-action="copy-text">Copy text</button><button class="btn primary" type="button" data-action="close-dialog">Close</button></div>
     </form>
   </dialog>
 
@@ -378,12 +425,12 @@
         <h3 id="mem-title" dir="auto"></h3>
         <p class="muted small" id="mem-meta"></p>
         <div id="mem-full" class="fulltext" dir="auto" tabindex="0" role="region" aria-label="Full text of this memory"></div>
-        <div class="row end gap wrap">
+        <div class="row end gap wrap dlg-actions">
+          <button type="button" class="btn danger push-start" data-action="mem-delete">Delete</button>
           <button type="button" class="btn" data-action="mem-pin" id="mem-pin">Pin</button>
           <button type="button" class="btn" data-action="mem-edit">Edit</button>
           <button type="button" class="btn" data-action="mem-download">Download</button>
-          <button type="button" class="btn danger" data-action="mem-delete">Delete</button>
-          <button type="button" class="btn primary" data-action="close-dialog">Close</button>
+          <button type="button" class="btn" data-action="close-dialog">Close</button>
         </div>
       </div>
       <div id="mem-edit-step" hidden>
@@ -394,7 +441,7 @@
         <textarea id="m-content" dir="auto" rows="10" aria-describedby="mem-error"></textarea>
         <label class="label" for="m-tags">Tags</label>
         <input id="m-tags" type="text" aria-describedby="m-tags-hint" />
-        <p class="hint" id="m-tags-hint">Separate tags with commas. Passwords and card numbers are hidden when you save.</p>
+        <p class="hint" id="m-tags-hint">Separate tags with commas. Labels MemVault adds itself, such as “pinned”, are kept for you. Passwords and card numbers are hidden when you save.</p>
         <p class="error" id="mem-error" role="alert" tabindex="-1" hidden></p>
         <div class="row end gap"><button type="button" class="btn" data-action="close-dialog">Cancel</button><button type="button" class="btn primary" data-action="mem-save">Save changes</button></div>
       </div>
@@ -405,7 +452,7 @@
     <form method="dialog" class="dlg" id="bulk-form">
       <h3 id="bulk-title">Delete these memories?</h3>
       <p id="bulk-text" class="muted"></p>
-      <label class="label" for="bulk-confirm" id="bulk-label">Type the words to confirm</label>
+      <label class="label confirm-label" for="bulk-confirm" id="bulk-label">Type the words to confirm</label>
       <input id="bulk-confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
       <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn danger" type="button" id="bulk-go" data-action="bulk-go" disabled>Delete</button></div>
     </form>
@@ -415,7 +462,7 @@
     <form method="dialog" class="dlg" id="wipe-form">
       <h3 id="wipe-title">Delete everything?</h3>
       <p class="muted">This removes every note, conversation and work log from your vault, and the readable copies of them. A backup is made first, so you can still get it back with the command line (<code>memvault backup</code> keeps your backups). Agents and Secure Vault items are not deleted.</p>
-      <label class="label" for="wipe-confirm">Type DELETE ALL to confirm</label>
+      <label class="label confirm-label" for="wipe-confirm">Type <code>DELETE ALL</code> to confirm</label>
       <input id="wipe-confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
       <p class="error" id="wipe-error" role="alert" hidden></p>
       <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn danger" type="button" id="wipe-go" data-action="wipe-go" disabled>Delete everything</button></div>

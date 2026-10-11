@@ -23,7 +23,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 
-import { createIngestQueue } from "./ingest.mjs";
+import { createIngestQueue, clipText } from "./ingest.mjs";
 import { resolveUserPath } from "./paths.mjs";
 import { getVaultDb } from "./db.mjs";
 import { backupLocal } from "./storage.mjs";
@@ -86,7 +86,8 @@ function clearPreviousSync() {
     return;
   }
   const vdb = getVaultDb();
-  const where = "source = 'antigravity' AND (',' || REPLACE(IFNULL(tags,''),' ','')) LIKE '%,conv:%'";
+  // Only what THIS computer wrote: Antigravity items that came from your other computers stay.
+  const where = "source = 'antigravity' AND (',' || REPLACE(IFNULL(tags,''),' ','')) LIKE '%,conv:%' AND id NOT IN (SELECT id FROM synced_in)";
   const n = vdb.query(`SELECT COUNT(*) AS n FROM items WHERE ${where}`)[0].n;
   vdb.run(`DELETE FROM items WHERE ${where}`);
   console.log(`   ✅ Removed ${n} previously synced item(s). Backup: ${path.basename(backup.location)}`);
@@ -163,8 +164,8 @@ async function main() {
 
       // Combine summary + content (cap at 8000 chars to avoid huge entries)
       const fullContent = summary
-        ? `${summary}\n\n---\n\n${content}`.slice(0, 8000)
-        : content.slice(0, 8000);
+        ? clipText(`${summary}\n\n---\n\n${content}`, 8000)
+        : clipText(content, 8000);
 
       if (DRY_RUN) {
         console.log(`  [DRY] Would sync: ${title} (${art.type})`);

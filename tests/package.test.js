@@ -34,6 +34,6 @@ describe('package and MCP registry entry agree', () => {
     for (const must of ['cli.mjs', 'mcp-server.mjs', 'server.mjs', 'git-log.mjs', 'public/index.html', 'public/app.js', 'public/app.css', 'profiles/general/pack.json', 'LICENSE', 'SECURITY.md']) {
       expect(files).toContain(must);
     }
-    expect(files.some((f) => f.startsWith('tests/') || f.startsWith('docs/review/') || f.includes('.env') || f.endsWith('.log'))).toBe(false);
+    expect(files.some((f) => f.startsWith('tests/') || f.startsWith('site/') || f.startsWith('docs/review/') || f.includes('.env') || f.endsWith('.log'))).toBe(false);
   });
 });

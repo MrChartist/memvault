@@ -9,7 +9,8 @@
  *  - Weekly digest generation
  *
  * Privacy: Uses YOUR API key. No data leaves your machine except
- * to your own Gemini API calls. Fully optional.
+ * to your own Gemini API calls. Off unless ai.enabled is true in
+ * ~/.memvaultrc.json — a key in the environment alone never enables it.
  * ═══════════════════════════════════════════════════════════════════
  */
 
@@ -42,14 +43,20 @@ function getModel() {
   return getAIConfig().model || "gemini-2.0-flash";
 }
 
+/** What to tell someone whose AI features are off: how to switch them on, and what that means. */
+const AI_OFF_MESSAGE =
+  'AI features are off. They send the text they work on to Google Gemini, so they run only after you switch them on: ' +
+  'put "ai": { "enabled": true, "apiKey": "<your Gemini key>" } in ~/.memvaultrc.json (the key may come from GEMINI_API_KEY instead).';
+
+// Opt-in only: a key alone (a GEMINI_API_KEY set for some other program, say) must never start sending notes to Google.
 function isAIEnabled() {
-  const config = getAIConfig();
-  return config.enabled !== false && getApiKey() !== null;
+  return getAIConfig().enabled === true && getApiKey() !== null;
 }
 
 // ─── Gemini API Caller ─────────────────────────────────────────────────────
 
 async function callGemini(prompt, options = {}) {
+  if (getAIConfig().enabled !== true) throw new Error(AI_OFF_MESSAGE); // the one place text leaves for Google
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error("No Gemini API key configured. Add it to ~/.memvaultrc.json under ai.apiKey or set GEMINI_API_KEY env var.");
@@ -264,4 +271,5 @@ export {
   isAIEnabled,
   getApiKey,
   getModel,
+  AI_OFF_MESSAGE,
 };

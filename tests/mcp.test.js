@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -6,6 +6,9 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+
+// These tests talk to real MemVault processes; on a busy Windows CI machine one call can take seconds.
+vi.setConfig({ testTimeout: 20_000 });
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.join(here, '..', 'mcp-server.mjs');

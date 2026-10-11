@@ -39,31 +39,33 @@ It also lets you give each AI its own **agent**: a helper with a job, a voice, r
 
 ## Get started
 
-> **Honest note before you start.** MemVault needs [Node.js](https://nodejs.org) and a few commands in a terminal today. A one-click installer is planned (see [ROADMAP.md](ROADMAP.md)) but does not exist yet. It has been built and tested on Linux. The tests, an install check and the dashboard browser tests also pass on Windows and macOS in CI, but nobody has used it on those systems by hand yet, so expect rough edges there and please [tell us](https://github.com/MrChartist/memvault/issues).
+> **Honest note before you start.** MemVault needs [Node.js](https://nodejs.org) and a few commands in a terminal today. A one-click installer is planned (see [ROADMAP.md](ROADMAP.md)) but does not exist yet. It has been built and used on Linux. The tests, an install check and the dashboard browser tests also pass on Windows and macOS in CI, but nobody has used it on those systems by hand yet, so expect rough edges there and please [tell us](https://github.com/MrChartist/memvault/issues).
 
-You need Node.js 20 or newer (choose the "LTS" download). Then, in a terminal:
+> **Not on npm yet.** The package `@mrchartist/memvault` has not been published. Until it is, `npx @mrchartist/memvault …` and `npm install -g @mrchartist/memvault` do not work. Install from the source code instead.
 
-```bash
-npx @mrchartist/memvault setup        # one step, no questions
-npx @mrchartist/memvault mcp-config   # prints what to paste into your AI app
-npx @mrchartist/memvault open         # opens the dashboard
-```
+You need Node.js 20 or newer (choose the "LTS" download) and [Git](https://git-scm.com).
 
-<details>
-<summary>Installing from the source code instead</summary>
+**Today: install from the source code.** In a terminal:
 
 ```bash
 git clone https://github.com/MrChartist/memvault.git
 cd memvault
 npm install
-node cli.mjs setup
-node cli.mjs mcp-config
-node cli.mjs open
+node cli.mjs setup        # one step, no questions
+node cli.mjs mcp-config   # prints what to paste into your AI app
+node cli.mjs open         # opens the dashboard
 ```
-After that, use `node cli.mjs` wherever this page says `memvault`.
+
+This does not add a `memvault` command. In that folder, type `node cli.mjs` wherever this page says `memvault` (for example `node cli.mjs doctor`).
+
+<details>
+<summary>After the first npm release (not yet)</summary>
+
+- **Recommended:** `npm install -g @mrchartist/memvault`, then `memvault setup`. This gives you the `memvault` command.
+- **Without installing:** `npx -y @mrchartist/memvault setup`. npx does not add a `memvault` command, so every later command is `npx -y @mrchartist/memvault …` (for example `npx -y @mrchartist/memvault mcp-config`). MemVault's own messages show the commands that way, and the settings that `mcp-config` prints start MemVault through `npx` too, so your AI app needs Node.js on its PATH. Without `-y`, npx asks before it downloads anything.
 </details>
 
-The dashboard's **Get started** card walks you through connecting an app. Or run `memvault mcp-config` and paste the result into your app's MCP settings:
+The welcome card at the top of the dashboard walks you through connecting an app. Or run `memvault mcp-config` and paste the result into your app's MCP settings:
 
 | App | Usually found in |
 |-----|------------------|
@@ -77,7 +79,7 @@ Menus and file locations change between versions. If something looks different, 
 
 Then try it. In your AI app, say: **"Remember that I prefer short answers."**
 
-**In the dashboard** you can write notes, search, open any memory in full, correct it, pin it, download it or delete it (with **Undo**, and a typed confirmation when you delete several at once). The **Settings** screen lets you switch automatic saving on or off, set a backup passphrase, add your projects, download everything and see what you deleted recently, all without the terminal.
+**In the dashboard** you can write notes, search, open any memory in full, correct it, pin it, download it or delete it (with **Undo**, and a typed confirmation when you delete several at once). The **Settings** screen lets you choose what MemVault saves for you automatically, set a backup passphrase, add your projects, download everything and see what you deleted recently, all without the terminal.
 
 ## Agents: helpers with their own job and their own view
 
@@ -95,7 +97,7 @@ An agent is a saved profile. It says who the helper is, how it should sound, wha
 
 `memvault agent packs` lists more starter sets. Make your own in the dashboard by describing the helper in your own words, or with `memvault agent create --from-file my-helper.txt --save`.
 
-<p align="center"><img src="docs/images/agents.png" alt="The Agents screen showing helper cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its briefing or its connection settings." width="760"></p>
+<p align="center"><img src="docs/images/agents.png" alt="The Agents screen showing agent cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its instructions or its connection settings." width="760"></p>
 
 **Memory spaces.** Every note lives in one space:
 
@@ -109,39 +111,65 @@ An agent is a saved profile. It says who the helper is, how it should sound, wha
 
 **Giving an AI app its own agent.** `memvault mcp-config --agent study-buddy` prints settings that bind that app to one agent. The agent is chosen by that setting, never by anything the AI says, so an AI cannot give itself more access. Full guide: [docs/agents.md](docs/agents.md).
 
+## On all your devices
+
+Use one memory on several computers, for example a Linux server (VPS), a MacBook and a Windows PC, and open it on your iPhone.
+
+- **Each computer keeps its own full copy**, so your AI apps work offline.
+- **They keep each other up to date through a folder you share between them**: [Syncthing](https://syncthing.net) (free, device to device, no server needed), iCloud Drive, Dropbox, OneDrive, Google Drive, or a folder on your own server. Each computer writes one file there, **encrypted with your sync passphrase**, so the folder's host sees only scrambled data.
+- **The newest change wins on every computer**, and deletions travel too. A sync that would delete many notes makes a backup first.
+- **Your iPhone or iPad** opens the dashboard of a computer that is switched on (a VPS is ideal) through a private [Tailscale](https://tailscale.com) address, and signs in with a one-time code. Each phone has its own key, which you can sign out on its own.
+
+```bash
+memvault devices setup --folder "~/Sync/MemVault Sync" --name "MacBook"
+memvault devices passphrase    # use the same one on every computer
+memvault devices               # what is set up, and the other computers seen
+```
+
+Or use **Settings → Your devices** in the dashboard:
+
+<p align="center"><img src="docs/images/devices.png" alt="Settings, Your devices: syncing is on; two other computers, Linux VPS and MacBook, with how many memories each had; this computer's name and shared folder; the sync passphrase; and one signed-in iPhone with a Sign out button." width="640"></p>
+
+The Secure Vault, uploaded files and the access log stay on each computer. Claude on the iPhone cannot read MemVault yet. Step-by-step guides for a VPS, for no VPS, for a cloud folder and for the iPhone are in [docs/devices.md](docs/devices.md).
+
 ## Is it safe?
 
 MemVault is built so that your data stays with you, and it can check itself: run `memvault doctor` for a live report, or open the **Security** page in the dashboard.
 
 | What | How |
 |---|---|
-| Nothing is reachable from outside this computer | The server listens on `127.0.0.1` only. Every request needs a secret key, and web pages from other sites are refused. |
+| Nothing is reachable from outside this computer | The server listens on `127.0.0.1` only. Every request needs a secret key, and web pages from other sites are refused. A phone reaches it only through a private address you add yourself, with a key of its own that you can sign out. |
+| Whoever stores your shared folder sees only scrambled files | Each computer's file in the shared folder is encrypted with your sync passphrase, so a cloud provider or a server sees no readable text. Anyone who has both the folder and the passphrase can read and change your memories, so keep the passphrase private. What comes in from another computer is masked and logged like any other write. |
 | Passwords and ID numbers are hidden before saving | Common API keys and tokens, passwords in many formats (`password=…`, JSON, `.env`, web addresses, `curl -u`), card numbers, one-time codes and national ID numbers (US, UK, Canada, EU/IBAN, India) are replaced with a marker before saving. This includes the clipboard. It is pattern matching: unusual formats are missed. |
 | Each AI sees only what it should | Agents read through a filtered copy of the memory. Other agents' private notes are not just hidden; they are not in that copy at all. An agent can only become itself, and a message "from" another agent cannot be forged by typing tags. |
 | Your secrets are locked | The Secure Vault uses AES-256 with a key made from your master password. Agents never receive secret values. **There is no way to recover a forgotten master password.** |
 | Cloud backups are encrypted first | Without your passphrase, a cloud backup refuses to run. It never uploads plain text by default. You can set the passphrase in **Settings**. |
+| Taking access away works at once | An agent's connection checks its profile again on every request. If you delete the agent, or change what it may read or write or which tools it may use, its next request is refused and that connection ends. Restart the AI app to connect again with the new access. |
 | You can see who used your memory | A tamper-evident log records which agent called what, and when. It never records the content. |
-| Automatic capture is opt-in | Git, files, browser, computer info, VS Code and clipboard capture are all off until you turn them on in Settings. Running a capture script directly does nothing unless it is on (or you add `--force`). |
-| Deleting really deletes | Deleting a memory also removes its readable Markdown copy. Backups you made earlier still contain it. |
+| Automatic capture is opt-in | Git, files, browser, computer info, VS Code and clipboard capture are all off until you turn them on in Settings (Antigravity capture: in the settings file). Running a capture script directly does nothing unless it is on (or you add `--force`). |
+| Deleting really deletes | Deleting a memory also removes its readable Markdown copy. Backups you made earlier still contain it. One exception: diary notes added with `memvault vault diary` by older versions also sit in a daily file that is not removed (see the [CHANGELOG](CHANGELOG.md) upgrade notes). |
 | No tracking | No analytics, no telemetry, and the dashboard makes no requests to other websites. |
 
 **What no tool can promise.** When you ask an AI app to look something up in MemVault, the text it reads is sent to the company behind that AI, just like anything you type to it. Agents limit how much each AI can see; they cannot change that. Masking is a safety net that catches common patterns, not a guarantee. Malware running as your own user account can read your files. Turn on your system's disk encryption (BitLocker, FileVault, or LUKS) to protect a lost laptop. The full, honest list is in [SECURITY.md](SECURITY.md).
 
 ## What your AI can do with it
 
-29 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (about 23 by default, fewer if you restrict it), which also keeps each chat lighter.
+29 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (23 by default, fewer if you restrict it), which also keeps each chat lighter.
 
 | Group | Tools |
 |---|---|
 | Remember and find | `vault_remember`, `vault_add`, `vault_search`, `vault_smart_search`, `vault_smart_context`, `vault_get_context`, `vault_list`, `vault_stats` |
-| Summaries | `vault_project_context`, `vault_daily_digest`, `vault_weekly_digest`, `vault_projects` |
+| Summaries | `vault_project_context`, `vault_daily_digest`, `vault_projects` |
 | Captured data | `vault_git_log`, `vault_recent_files`, `vault_system_info` |
 | Conversation logs | `vault_capture_prompt`, `vault_log_conversation` |
-| Agents | `agent_list`, `agent_activate`, `agent_define`, `agent_handoff`, `agent_inbox` |
-| With your own Gemini key (optional) | `vault_ai_summarize`, `vault_ai_insights` |
-| Owner only | `vault_backup`, `vault_backups`, `vault_bridge_list`, `vault_bridge_sync`, `vault_secret_list` |
+| Agents | `agent_list`, `agent_activate`, `agent_handoff`, `agent_inbox` |
+| Google Gemini, only after you switch it on (optional) | `vault_ai_summarize`, `vault_ai_insights`, `vault_weekly_digest` |
+| Secure Vault names (never values) | `vault_secret_list`: offered to you, and to an agent only if its profile has `memory.allowSecrets: true` |
+| Owner only | `vault_backup`, `vault_backups`, `vault_bridge_list`, `vault_bridge_sync`, `agent_define` |
 
-Bound agents are never offered the owner-only tools, and `agent_define` (changing who an agent is) stays with you.
+Bound agents are never offered the owner-only tools. `agent_define` creates or changes an agent's profile (never its permissions), so it stays with you.
+
+The Gemini tools only answer "AI features are off" until you set `"ai": { "enabled": true }` (see [Settings](#settings)). With Gemini on, `vault_smart_search` also asks Gemini to re-order its results; with it off, it ranks them on your computer. Whatever the Gemini tools work on is sent to Google.
 
 ## Optional: capture and import
 
@@ -155,6 +183,7 @@ Everything here is **off** until you choose it (dashboard **Settings**, `memvaul
 | Computer info | system type, hardware, disk space, installed developer tools (not the computer's name, network addresses or running programs) |
 | Browser | page titles and addresses (never what comes after a `?`) from Chrome, Edge, Brave or Chromium; pages on your own computer or network are skipped |
 | Clipboard | what you copy (secrets are masked) |
+| Antigravity | the task lists, plans and walkthroughs Antigravity keeps for each conversation (in `~/.gemini/antigravity/brain`). Not in Settings or `memvault init`: switch it on with `"sync": { "antigravityEnabled": true }` in `~/.memvaultrc.json` |
 
 | Import your old chats | |
 |---|---|
@@ -164,7 +193,15 @@ Imports and capture write many items at once in a single step, so importing hund
 
 ## Backups
 
-A local backup is kept every time you run `memvault backup` or press **Back up now** (and before a bulk delete or "delete everything"). To keep a copy in Google Drive, set a passphrase (in **Settings**, or with `MEMVAULT_BACKUP_PASSPHRASE`; 10+ characters) and MemVault encrypts the backup *before* it leaves your computer. **If you lose the passphrase, those copies cannot be opened.** See [docs/google-drive.md](docs/google-drive.md). Restore with `node storage.mjs restore <name>` or `restore-encrypted <file>`; a file that is not a healthy MemVault database is refused before it can replace yours.
+A local backup is kept every time you run `memvault backup` or press **Back up now** (and before a bulk delete or "delete everything"). To keep a copy in Google Drive, set a passphrase (in **Settings**, or with `MEMVAULT_BACKUP_PASSPHRASE`; 10+ characters) and MemVault encrypts the backup *before* it leaves your computer. **If you lose the passphrase, those copies cannot be opened.** See [docs/google-drive.md](docs/google-drive.md).
+
+```bash
+memvault backup list                          # your local backups
+memvault backup restore <name>                # put a local backup back
+memvault backup restore-encrypted <file>      # put an encrypted (.mvbak) copy back
+```
+
+`restore-encrypted` uses the passphrase from **Settings** or from `MEMVAULT_BACKUP_PASSPHRASE`. A file that is not a healthy MemVault database is refused before it can replace yours. Before a restore, your current vault is kept as a `pre-restore-…` file in the backups folder, so you can go back.
 
 ## Settings
 
@@ -182,7 +219,9 @@ Most people never need to edit this. `~/.memvaultrc.json` (private to your accou
 }
 ```
 
-`projects` are yours: notes that mention them are tagged automatically. Nothing is assumed by default. The optional `ai` feature sends the text it works on to Google Gemini with your key; it is off unless you add one.
+`projects` are yours: notes that mention them are tagged automatically. Nothing is assumed by default.
+
+`ai` is optional. Its features send the text they work on to Google Gemini, using your own key. They stay off until you set `"enabled": true`. A key on its own does nothing. The key can be in `apiKey` or in the `GEMINI_API_KEY` environment variable. (Typing a key into `memvault init` also sets `"enabled": true`.)
 
 ## Commands
 
@@ -195,12 +234,19 @@ memvault scrub           preview masking of secrets already stored   (--apply to
 memvault agent …         list | create | edit | brief | export | import | delete | starter | packs
 memvault audit           who used your memory   (--verify checks the log is untampered)
 memvault token           show the dashboard key   (--rotate to replace it)
-memvault backup          back up now
-memvault sync / import  capture and import (only what you turned on)
+memvault backup          back up now   (list | restore <name> | restore-encrypted <file>)
+memvault sync            run the capture sources you switched on (only those)
+memvault import <folder> import a chat export (the unzipped folder, or one .json file)
+memvault bridge …        connect other MCP memory servers   (list | presets | add | sync | call)
+memvault vault …         add a note from the terminal   (diary | convo | worklog)
 memvault clipboard       watch what you copy and save it (switch it on in Settings first)
+memvault devices …       one memory on all your computers   (setup | passphrase | sync | name | off | hub | pair | keys | forget)
 memvault init            the full setup wizard (capture, backups, bridges)
 memvault serve           start the dashboard server by itself
+memvault mcp             start the MCP server (your AI app runs this for you)
 ```
+
+Put `--help` after a command (`memvault backup --help`) to see what it does without running it. In `memvault init`, pressing Enter at a capture question keeps it as it was, which is "no" the first time.
 
 ## Built for everyone
 
@@ -223,16 +269,26 @@ The dashboard is tested automatically with an accessibility checker (axe-core) o
 - `POST /clear` needs `{"confirm":"DELETE ALL"}` and makes a backup first. `sync-antigravity` now replaces only what it wrote before, instead of wiping the whole vault.
 - Automatic capture is off until you enable it. Existing config files keep working as written.
 - Run `memvault scrub` to mask credentials that were stored before 3.0, and `memvault doctor` to check your setup.
-- WSL2 users who relied on a Windows port-proxy should read [examples/wsl2](examples/wsl2).
+- WSL2 users who relied on a Windows port-proxy should read the [WSL2](#wsl2) note below.
 
 Full list: [CHANGELOG.md](CHANGELOG.md).
 
+### WSL2
+
+This is for you if MemVault is installed **inside WSL2** (Linux on Windows) and you want to start its dashboard from Windows. [examples/wsl2](examples/wsl2) has two small scripts. Edit the distro name and the MemVault folder at the top of each first.
+
+- `start-memvault.ps1` (PowerShell) stops a copy that is already running, then starts the dashboard server inside WSL2 in a hidden window. It prints the command that opens the dashboard.
+- `start-memvault-silent.vbs` starts the dashboard server inside WSL2 without a window. Copy it into your Windows Startup folder to start it each time you sign in.
+
+Windows should reach the dashboard at `http://127.0.0.1:7799` through WSL2's own localhost forwarding, so a port-proxy should not be needed. If that does not work, do **not** change the server's address to `0.0.0.0`: that would open MemVault to your network, and it refuses to start that way unless you also set `allowRemote`. These scripts only start the dashboard. They do not connect your Windows AI apps to MemVault. Nobody has tried them on a real Windows computer yet (*Needs verification*).
+
 ## Known limits
 
-- **Size.** Every save rewrites the whole database file and every AI app holds a copy in memory. Measured here: about 10,000 notes feel instant; at 100,000 notes one save takes around 0.7 to 1.9 seconds and a process can use about 1 GB while it writes. Plan on a few tens of thousands of notes. A faster storage engine is the first item on the [roadmap](ROADMAP.md).
+- **Size.** Every save rewrites the whole database file and every AI app holds a copy in memory. Measured here: about 10,000 notes feel instant; at 100,000 notes one save takes around 0.7 to 1.9 seconds and a process can use about 1 GB while it writes. Plan on a few tens of thousands of notes. A faster storage engine is the first item under "Next" on the [roadmap](ROADMAP.md).
 - **Search** finds the words you type (and, for Chinese, Japanese and Korean, parts of words). It does not understand meaning: "car" will not find "automobile".
 - **Language.** The dashboard text is English only. Notes can be in any language.
-- **Windows and macOS** have not been used by the author (see the note at the top).
+- **Windows and macOS** pass the tests in CI, but nobody has used MemVault on them by hand yet (see the note at the top). WSL2: see the [WSL2](#wsl2) note.
+- **Not on npm yet.** Install from the source code for now (see [Get started](#get-started)).
 - **What an AI reads leaves your computer** (see [SECURITY.md](SECURITY.md)).
 
 The plan, with what is next and what is deliberately not being done, is in [ROADMAP.md](ROADMAP.md). To remove MemVault, see [docs/uninstall.md](docs/uninstall.md).

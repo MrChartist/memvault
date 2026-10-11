@@ -27,6 +27,9 @@ import { listLocalBackups, backupLocal, backupVault, enabledBackends, resolvePas
 import { spawn } from "child_process";
 import { collectDiagnostics } from "./diagnostics.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
+import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
+import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
+import { resolveUserPath } from "./paths.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
@@ -92,7 +95,8 @@ const SecretAddSchema = z.object({
 const SENTINEL_ID = "__sentinel__";
 const SENTINEL_VALUE = "memvault-ok";
 
-const ITEM_COLS = "id,type,source,title,substr(content,1,300) as snippet,file_path,tags,created_at,agent_id,scope";
+// Lists carry a 300-character preview; a preview that was cut ends with "…" so it does not look like the whole text.
+const ITEM_COLS = "id,type,source,title,CASE WHEN length(content) > 300 THEN substr(content,1,300) || '…' ELSE content END as snippet,file_path,tags,created_at,agent_id,scope";
 
 function isoDate() {
   const d = new Date();
@@ -173,6 +177,20 @@ export function createApp({
   app.use(express.static(path.join(__dirname, "public")));
   app.get("/health", (_req, res) => res.json({ ok: true, name: "memvault", version: PKG_VERSION }));
 
+  // A phone or tablet trades a one-time pairing code (made by the owner) for a key of its own. No key is
+  // needed for this one route, so wrong guesses are limited: with codes of 8 characters from 32 that expire
+  // after 10 minutes, a few tries a minute can never find one.
+  const pairLimiter = createLimiter({ max: 5, windowMs: 60_000, lockMs: 60_000 });
+  app.post("/pair", express.json({ limit: "2kb" }), (req, res) => {
+    const gate = pairLimiter.check("pair");
+    if (!gate.allowed) return res.status(429).json({ ok: false, error: `Too many wrong codes. Try again in ${gate.retryAfterSec} seconds.` });
+    const got = redeemPairingCode(String(req.body?.code || ""), { name: typeof req.body?.name === "string" ? req.body.name : undefined });
+    if (!got) { pairLimiter.fail("pair"); return res.status(401).json({ ok: false, error: "That code is wrong or has expired. Make a new one on the computer." }); }
+    pairLimiter.success("pair");
+    log("device-paired", { device: got.id, name: got.name });
+    res.json({ ok: true, key: got.key, id: got.id, name: got.name });
+  });
+
   // 3. Everything below needs the API token.
   app.use(requireToken);
   app.use(express.json({ limit: "20mb" }));
@@ -181,6 +199,11 @@ export function createApp({
   const log = (action, detail, actor = "owner") => {
     if (security.audit !== false) audit({ actor, action, detail }, root);
   };
+  // Signing in more phones, changing a passphrase or the shared folder, and signing phones out are done on a
+  // computer with the dashboard key, never from a phone: a stolen phone cannot add a second key for itself.
+  const ownerOnly = (req, res, next) => (req.deviceKeyId
+    ? res.status(403).json({ ok: false, error: "Do this on your computer, not on a phone or tablet." })
+    : next());
 
   // ── items ────────────────────────────────────────────────────────────────
 
@@ -188,7 +211,8 @@ export function createApp({
     const parsed = AddSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     try {
-      const { ids, redacted } = ingest(parsed.data, { vdb, security, root, actor: parsed.data.agent_id || "api" });
+      // A note from the dashboard is the owner's own write: logged as "owner", like every other owner action here.
+      const { ids, redacted } = ingest(parsed.data, { vdb, security, root, actor: parsed.data.agent_id || "owner" });
       res.json({ ok: true, id: ids[0], redacted });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message });
@@ -281,8 +305,11 @@ export function createApp({
     while (trash.size > TRASH_MAX) trash.delete(trash.keys().next().value);
   };
   const getItem = (id) => (ID_RE.test(id) ? vdb.query("SELECT * FROM items WHERE id = ?", [id])[0] : undefined);
-  const COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "agent_id", "scope"];
-  const reinsert = (row) => vdb.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => row[c] ?? null));
+  const COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "agent_id", "scope", "updated_at"];
+  // Putting a memory back counts as a change made now: otherwise your other computers, which already have the
+  // newer deletion, would delete it again on the next sync (device-sync.mjs).
+  const putBack = (row) => COLS.map((c) => (c === "updated_at" ? new Date().toISOString() : row[c] ?? null));
+  const reinsert = (row) => vdb.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, putBack(row));
 
   app.get("/items/:id", (req, res) => {
     const item = getItem(req.params.id);
@@ -360,7 +387,7 @@ export function createApp({
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     const held = ids.map((id) => trash.get(id)).filter(Boolean);
     vdb.transaction((tx) => {
-      for (const h of held) tx.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, COLS.map((c) => h.row[c] ?? null));
+      for (const h of held) tx.run(`INSERT OR IGNORE INTO items (${COLS.join(",")}) VALUES (${COLS.map(() => "?").join(",")})`, putBack(h.row));
     });
     for (const h of held) trash.delete(h.row.id);
     log("restore", { count: held.length });
@@ -693,7 +720,9 @@ export function createApp({
   app.put("/settings", (req, res) => {
     const parsed = SettingsSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: "Those settings are not allowed. Only automatic saving and projects can be changed here." });
-    const uc = config.load();
+    let uc;
+    // A settings file with a mistake reads as {} (so MemVault still starts); saving that back would erase it. Refuse instead.
+    try { uc = config.load({ forUpdate: true }); } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
     const changed = [];
     if (parsed.data.capture) {
       uc.sync = { ...(uc.sync || {}) };
@@ -710,18 +739,86 @@ export function createApp({
   });
 
   // The passphrase goes to a private file OUTSIDE the vault (so backups never contain it); it is never returned or logged.
-  app.put("/settings/passphrase", (req, res) => {
+  app.put("/settings/passphrase", ownerOnly, (req, res) => {
     const parsed = PassphraseSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
     if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
+    let uc;
+    // Before the passphrase file is touched, so a refusal changes nothing.
+    try { uc = config.load({ forUpdate: true }); } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
     const file = config.passphraseFile;
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     fs.writeFileSync(file, parsed.data.passphrase + "\n", { mode: 0o600 });
     try { fs.chmodSync(file, 0o600); } catch { /* not POSIX */ }
-    const uc = config.load();
     uc.storage = { ...(uc.storage || {}), passphraseFile: file };
     config.save(uc);
     log("settings", { changed: ["backup-passphrase"] });
+    res.json({ ok: true });
+  });
+
+  // ── other computers and phones (device-sync.mjs, device-keys.mjs) ─────────
+
+  const devicesDir = path.dirname(TOKEN_FILE);
+  const devSettings = () => deviceSettings(config.load(), { dir: devicesDir });
+  const DevicesSchema = z.object({
+    enabled: z.boolean().optional(),
+    folder: z.string().max(1000).optional(),
+    name: z.string().max(60).optional(),
+  }).strict();
+
+  app.get("/devices", (req, res) => {
+    res.json({
+      ok: true,
+      ...deviceStatus({ vdb, settings: devSettings(), dir: devicesDir }),
+      onPhone: Boolean(req.deviceKeyId), // the dashboard hides what ownerOnly refuses
+      phones: listDeviceKeys(),
+      addresses: (security.allowedOrigins || []).filter((o) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$)/.test(o)),
+    });
+  });
+
+  app.put("/devices", ownerOnly, (req, res) => {
+    const parsed = DevicesSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Only the shared folder, the on/off switch and this computer's name can be changed here." });
+    const { enabled, folder, name } = parsed.data;
+    const change = {};
+    if (folder !== undefined) {
+      const f = folder.trim() ? resolveUserPath(folder.trim()) : "";
+      if (f && !fs.existsSync(f)) return res.status(400).json({ ok: false, error: `The folder ${f} does not exist. Create it (or start your sync app) first.` });
+      change.folder = f;
+    }
+    if (enabled !== undefined) change.enabled = enabled;
+    try {
+      if (Object.keys(change).length) updateDeviceSettings(change, { load: () => config.load({ forUpdate: true }), save: config.save });
+      if (name !== undefined) renameDevice(name, { dir: devicesDir });
+    } catch (e) { return res.status(400).json({ ok: false, error: e.message }); }
+    log("devices", { changed: [...Object.keys(change), ...(name !== undefined ? ["name"] : [])] });
+    res.json({ ok: true });
+  });
+
+  app.put("/devices/passphrase", ownerOnly, (req, res) => {
+    const parsed = PassphraseSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
+    if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
+    try { saveSyncPassphrase(parsed.data.passphrase, devSettings()); } catch (e) { return res.status(400).json({ ok: false, error: e.message }); }
+    log("devices", { changed: ["sync-passphrase"] });
+    res.json({ ok: true });
+  });
+
+  app.post("/devices/sync", (_req, res) => {
+    const r = syncDevices({ vdb, settings: devSettings(), dir: devicesDir, security, backup: backupLocal, force: true });
+    res.json({ ok: r.ok, added: r.added, changed: r.changed, deleted: r.deleted, agents: r.agents, backup: r.backup || null, problems: r.problems });
+  });
+
+  app.post("/devices/pair-code", ownerOnly, (req, res) => {
+    const name = typeof req.body?.name === "string" ? req.body.name : "Phone";
+    const { code, expiresAt } = createPairingCode({ name });
+    log("devices", { changed: ["pairing-code"] });
+    res.json({ ok: true, code, expiresAt });
+  });
+
+  app.delete("/devices/phones/:id", ownerOnly, (req, res) => {
+    if (!forgetDeviceKey(req.params.id)) return res.status(404).json({ ok: false, error: "Not found" });
+    log("device-forgotten", { device: req.params.id });
     res.json({ ok: true });
   });
 
@@ -809,7 +906,29 @@ export function createApp({
     res.status(status).json({ ok: false, error: status === 500 ? "Internal error" : err.message });
   });
 
+  app.locals.vdb = vdb;
+  app.locals.security = security;
   return app;
+}
+
+/**
+ * While the dashboard server runs, it keeps this computer in step with the others: a check every minute,
+ * a sync when one is due (every few minutes; the setting is devices.intervalMinutes). The sync runs as a
+ * separate short-lived process, so a large vault never makes the dashboard wait. AI apps do the same, and a
+ * lock makes sure only one of them syncs at a time.
+ */
+function startDeviceSync() {
+  const script = path.join(__dirname, "device-sync.mjs");
+  const tick = () => {
+    try {
+      if (!syncDue(deviceSettings())) return;
+      spawn(process.execPath, [script, "sync", "--if-due", "--quiet"], { stdio: "ignore", env: process.env, windowsHide: true }).unref();
+    } catch (e) {
+      console.warn(`Devices: ${e.message}`);
+    }
+  };
+  setTimeout(tick, 15_000).unref();
+  setInterval(tick, 60_000).unref();
 }
 
 /** Start listening. Refuses a non-loopback bind unless explicitly allowed. */
@@ -838,6 +957,7 @@ export function start({ app = createApp(), port = PORT, host = SECURITY_CONFIG.h
     console.log(`VAULT_ROOT=${VAULT_ROOT}`);
     console.log(`Run \`memvault open\` to open the dashboard (it passes your API token for you).`);
     if (!isLoopbackHost(host)) console.warn(`⚠️  Listening on ${host} (allowRemote). Keep your API token private.`);
+    startDeviceSync();
   });
 }
 

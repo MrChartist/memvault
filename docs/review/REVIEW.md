@@ -2,6 +2,14 @@
 
 Reviewer: Claude (AI), on behalf of the owner. Branch: `mrchartist/ecstatic-clarke-e81ecc`, draft PR [#6](https://github.com/MrChartist/memvault/pull/6) into the PR #5 branch. Nothing was merged or force-pushed.
 
+> **Status on 2026-10-11.** Added later. The review below is kept as it was written; numbers in it are from that time.
+>
+> - **Merged.** PR #6 (this review) and the final launch pass (PR #7) are in `main`.
+> - **Tests.** 458 unit and integration tests in 27 files pass at the last commit of branch `mrchartist/youthful-cannon-sm1978` (`npx vitest run`, about 20–25 seconds). The browser checks pass too; see the latest CI run for how many.
+> - **CI.** On `main` (commit `5a708ee`) all 12 jobs passed: unit tests on Linux (Node 20, 22, 24), Windows and macOS (Node 22); the install check and the browser tests on all three systems; the dependency audit. The Windows and macOS jobs are blocking. Nobody has used MemVault on Windows or macOS by hand.
+> - **Fixed since, on branch `mrchartist/youthful-cannon-sm1978` (not merged yet).** Secrets are masked before titles are cut to 80 characters (a key crossing the cut was stored half-masked). First-run problems found by installing the packed package (`memvault init` defaults to "no", `--help` explains instead of running, `mcp-config` from npx, `memvault open` checks it is talking to MemVault). Storage: failed reloads and saves, a settings file with a mistake, lock blips on Windows, half-written log lines. MCP: `agent_define` by name keeps the agent's permissions; deleting an agent or changing its access ends its running connection; Gemini features are off until `"ai": { "enabled": true }`. Capture: git commits are saved once; diary copies are deleted with the note; `memvault init` keeps settings it does not ask about. A first draft of a product page (`site/`). Documentation corrected against the code. Details: "Unreleased" in `CHANGELOG.md`.
+> - **Still open from the verdict.** Nothing is on npm (`npm view` answered 404 on 2026-10-11). Private vulnerability reporting was verified **off** on 2026-10-11 (GitHub API); SECURITY.md gives an interim route. No demo exists. The verdict is unchanged: **NO-GO for a public launch** until these are done.
+
 ## 1. Verdict
 
 **NO-GO for a public launch today. GO for the code itself.**
@@ -122,11 +130,11 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 | 3 | Node 20 and 24 pass | **Done** — green in CI on commit `442c69e` |
 | 4 | Windows and macOS tests pass | **Done in CI** (`d16b7d2`): unit tests, install check and the dashboard browser tests on both. Not tried by a person on a real Windows or macOS computer |
 | 5 | `npm audit --omit=dev` clean | **Done** (locally) |
-| 6 | Package contents checked (`npm pack`, 82 files) | **Done** |
+| 6 | Package contents checked (`npm pack`, 82 files) | **Done** (82 files then; 85 on 2026-10-11, after the user guides were listed one by one and `docs/promo.md` and `docs/release.md` were left out) |
 | 7 | Secret scan of the repo and history | **Done** for pushed commits (GitHub push protection) |
 | 8 | Published to npm and installed on a clean machine | **Not done** |
 | 9 | Registry entry published | **Not done** |
-| 10 | Private vulnerability reporting on | **Needs verification** (owner) |
+| 10 | Private vulnerability reporting on | **Not done.** Verified **off** on 2026-10-11 (GitHub API); the owner must switch it on |
 | 11 | Trademark and contact details confirmed | **Needs verification** (owner) |
 | 12 | Demo recording | **Not done** |
 | 13 | Launch copy matches reality | **Done** (`docs/promo.md`, with a before-you-post list) |
@@ -148,7 +156,7 @@ Checked as three people: a first-time non-technical user, a keyboard-only user, 
 - Google Drive upload against a real account (never run).
 - Real export files from ChatGPT, Claude, Gemini and Perplexity in their newest formats (tests use sample shapes).
 - The token count (an estimate).
-- Private vulnerability reporting switch.
+- Private vulnerability reporting switch. (Checked on 2026-10-11: off.)
 
 ## 9. Questions for the owner
 

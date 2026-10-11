@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MemVault: one private memory for every AI | Mr. Chartist</title>
+<meta name="description" content="MemVault keeps one private memory on your own computer that Claude, Cursor, VS Code and other MCP apps can all read and write. Free, open source (MIT), no tracking.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f4f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#060809" media="(prefers-color-scheme: dark)">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<!-- Share previews. og:image must be a full address; it points at the GitHub Pages copy of this page.
+     When the page has its final home on MrChartist.com, also add og:url and a canonical link (see docs/website.md). -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Mr. Chartist">
+<meta property="og:title" content="MemVault: one private memory for every AI">
+<meta property="og:description" content="Tell one AI something once. Every other AI can find it too. Your notes stay on your own computer. Free, open source, no tracking.">
+<meta property="og:image" content="https://mrchartist.github.io/memvault/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="MemVault by Mr. Chartist: one private memory, on your own computer, shared by every AI you use.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="assets/brand/mrchartist-symbol.svg">
+<link rel="preload" href="assets/fonts/PlusJakartaSans-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/Inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+  // Pick the theme before the page paints, so there is no flash. A saved choice wins over the system setting.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("mv-site-theme"); } catch (e) {}
+    if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", t);
+  })();
+</script>
+<style>
+/* Fonts: Plus Jakarta Sans and Inter, SIL Open Font License 1.1 (licence texts in assets/fonts). Served from this folder, never from another website. */
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("assets/fonts/Inter-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Inter"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("assets/fonts/Inter-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: "Plus Jakarta Sans"; font-style: normal; font-weight: 400 800; font-display: swap; src: url("assets/fonts/PlusJakartaSans-latin-ext.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: "Plus Jakarta Sans"; font-style: normal; font-weight: 400 800; font-display: swap; src: url("assets/fonts/PlusJakartaSans-latin.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+
+/* Mr. Chartist design tokens: the same HSL values as MrChartist.com and the MemVault dashboard. */
+:root {
+  --orange-100: 23.5 86.4% 88.4%;
+  --orange-400: 18 87.6% 62%;
+  --orange-500: 17.9 85.5% 53.9%;
+  --orange-900: 15.8 86.1% 22.5%;
+  --ink-wine: 336.7 41% 8.6%;
+  --paper-0: 0 0% 99.6%;
+  --paper-1: 72 20% 95.1%;
+  --paper-2: 53 23.5% 93.3%;
+  --paper-3: 54 20% 90.2%;
+  --bullish-300: 148.9 45.5% 63.3%;
+  --bullish-100: 144.5 35.5% 87.8%;
+  --volatile-100: 39 63.6% 89.2%;
+  --volatile-300: 40 56.5% 71.2%;
+  --void-0: 208 25% 1.6%;
+  --void-1: 210 25% 3.1%;
+  --void-2: 212 22% 5.5%;
+  --void-3: 214 20% 8.4%;
+  --void-4: 215 19% 12.5%;
+
+  --bg: hsl(var(--paper-1));
+  --bg-alt: hsl(var(--paper-2));
+  --surface: hsl(var(--paper-0));
+  --fg: hsl(var(--ink-wine));
+  --muted: hsl(337 12% 30%);
+  --line: hsl(var(--ink-wine) / 0.1);
+  --line-strong: hsl(var(--ink-wine) / 0.16);
+  --primary: hsl(var(--orange-500));
+  --primary-hover: hsl(var(--orange-400));
+  --primary-text: hsl(17.9 85.5% 38%);
+  --primary-strong: hsl(17.9 85.5% 33%); /* small bold text on the orange wash: 4.5:1 or more */
+  --on-primary: hsl(var(--ink-wine));
+  --wash: hsl(var(--orange-100));
+  --good: hsl(151.9 45.3% 28%);
+  --good-wash: hsl(var(--bullish-100));
+  --warn-wash: hsl(var(--volatile-100));
+  --warn-line: hsl(37 57.5% 31.4%);
+  --code-bg: hsl(var(--ink-wine));
+  --code-fg: hsl(var(--paper-1));
+  --shadow: 0 1px 2px hsl(var(--ink-wine) / 0.06), 0 12px 32px hsl(var(--ink-wine) / 0.07);
+  --shadow-lg: 0 2px 4px hsl(var(--ink-wine) / 0.05), 0 30px 70px hsl(var(--ink-wine) / 0.14);
+  --ring: hsl(var(--orange-500) / 0.55);
+
+  --display: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --body: "Inter", "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --radius: 16px;
+  --wrap: 1120px;
+  --gutter: 24px;
+}
+:root[data-theme="dark"] {
+  --bg: hsl(var(--void-1));
+  --bg-alt: hsl(var(--void-0));
+  --surface: hsl(var(--void-3));
+  --fg: hsl(var(--paper-1));
+  --muted: hsl(72 8% 72%);
+  --line: hsl(var(--paper-1) / 0.1);
+  --line-strong: hsl(var(--paper-1) / 0.18);
+  --primary-text: hsl(var(--orange-500));
+  --primary-strong: hsl(var(--orange-400));
+  --wash: hsl(var(--orange-500) / 0.16);
+  --good: hsl(var(--bullish-300));
+  --good-wash: hsl(147.5 30% 15.7%);
+  --warn-wash: hsl(37.6 66.3% 17.5% / 0.6);
+  --warn-line: hsl(var(--volatile-300));
+  --code-bg: hsl(var(--void-0));
+  --code-fg: hsl(var(--paper-1));
+  --shadow: 0 1px 2px #0008, 0 12px 32px #0007;
+  --shadow-lg: 0 2px 4px #0008, 0 30px 70px #000a;
+}
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { transition: none !important; animation: none !important; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 1.0625rem/1.65 var(--body); -webkit-font-smoothing: antialiased; overflow-wrap: break-word; }
+img, svg { max-width: 100%; height: auto; display: block; }
+a { color: var(--primary-text); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--ring); outline-offset: 3px; border-radius: 6px; }
+h1, h2, h3 { font-family: var(--display); letter-spacing: -0.025em; line-height: 1.15; margin: 0; }
+h2 { font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.6rem); font-weight: 800; }
+h3 { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; }
+p { margin: 0; }
+code, kbd { font-family: var(--mono); font-size: 0.9em; }
+:not(pre) > code { background: hsl(var(--ink-wine) / 0.06); border: 1px solid var(--line); border-radius: 6px; padding: 0.08em 0.4em; white-space: nowrap; }
+[data-theme="dark"] :not(pre) > code { background: hsl(var(--paper-1) / 0.07); }
+.wrap { width: 100%; max-width: calc(var(--wrap) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -100px; z-index: 100; background: var(--fg); color: var(--bg); padding: 12px 18px; border-radius: 10px; font-weight: 700; text-decoration: none; }
+.skip:focus { top: 12px; }
+.muted { color: var(--muted); }
+
+/* light/dark pairs of images and logos */
+.for-dark { display: none !important; }
+[data-theme="dark"] .for-dark { display: block !important; }
+[data-theme="dark"] .for-light { display: none !important; }
+
+/* ── header ── */
+.top { position: sticky; top: 0; z-index: 50; background: hsl(var(--paper-1) / 0.86); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid var(--line); }
+[data-theme="dark"] .top { background: hsl(var(--void-1) / 0.86); }
+.top-inner { display: flex; align-items: center; gap: 20px; min-height: 68px; }
+.brand { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.brand a { display: flex; align-items: center; min-height: 44px; color: var(--fg); text-decoration: none; }
+.brand .logo { height: 30px; width: auto; }
+.brand .sep { width: 1px; height: 28px; background: var(--line-strong); }
+.brand .name { font-family: var(--display); font-weight: 800; font-size: 1.2rem; letter-spacing: -0.02em; }
+.nav { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.nav a { color: var(--fg); text-decoration: none; font-weight: 600; font-size: 0.95rem; padding: 10px 12px; border-radius: 10px; }
+.nav a:hover { background: hsl(var(--ink-wine) / 0.06); }
+[data-theme="dark"] .nav a:hover { background: hsl(var(--paper-1) / 0.08); }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.icon-btn { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); cursor: pointer; }
+.icon-btn:hover { border-color: var(--fg); }
+.icon-btn svg { width: 20px; height: 20px; }
+
+/* ── buttons ── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; padding: 12px 22px; border-radius: 999px; font: 700 1rem/1.2 var(--display); text-decoration: none; border: 1.5px solid transparent; cursor: pointer; transition: background-color .15s, border-color .15s, transform .15s; }
+.btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+.btn-primary { background: var(--primary); color: var(--on-primary); }
+.btn-primary:hover { background: var(--primary-hover); transform: translateY(-1px); }
+.btn-ghost { background: var(--surface); color: var(--fg); border-color: var(--line-strong); }
+.btn-ghost:hover { border-color: var(--fg); transform: translateY(-1px); }
+.btn-sm { min-height: 44px; padding: 10px 16px; font-size: 0.95rem; }
+
+/* ── hero ── */
+.hero { padding: clamp(48px, 8vw, 96px) 0 0; text-align: center; overflow: hidden; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 0.8rem/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary-strong); background: var(--wash); padding: 8px 14px; border-radius: 999px; }
+.hero h1 { font-size: clamp(2.4rem, 1.4rem + 4.6vw, 4.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.04; margin: 22px auto 0; max-width: 15ch; }
+.hero h1 em { font-style: normal; color: var(--primary-text); }
+.lead { font-size: clamp(1.1rem, 1rem + 0.5vw, 1.3rem); color: var(--muted); max-width: 40rem; margin: 22px auto 0; }
+.cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 32px; }
+.facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; margin: 26px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.95rem; font-weight: 500; }
+.facts li { display: inline-flex; align-items: center; gap: 8px; }
+.facts svg { width: 18px; height: 18px; color: var(--good); flex-shrink: 0; }
+.shot-frame { margin: clamp(40px, 6vw, 64px) auto 0; max-width: 1040px; border-radius: 18px 18px 0 0; background: var(--surface); border: 1px solid var(--line); border-bottom: 0; box-shadow: var(--shadow-lg); padding: 10px 10px 0; position: relative; }
+.shot-frame .bar { display: flex; gap: 7px; padding: 4px 6px 10px; }
+.shot-frame .bar i { width: 11px; height: 11px; border-radius: 50%; background: var(--line-strong); }
+.shot-frame img { border-radius: 10px 10px 0 0; width: 100%; }
+
+/* ── sections ── */
+section { padding: clamp(64px, 9vw, 112px) 0; }
+.band { background: var(--bg-alt); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.section-head { max-width: 46rem; margin-bottom: clamp(32px, 4vw, 48px); }
+.section-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+.kicker { font: 700 0.8rem/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary-text); margin-bottom: 14px; }
+.section-head p:not(.kicker) { color: var(--muted); font-size: 1.125rem; margin-top: 14px; }
+
+/* problem + chat */
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 5vw, 64px); align-items: center; }
+.chat { display: grid; gap: 14px; }
+.msg { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; box-shadow: var(--shadow); max-width: 30rem; }
+.msg .who { display: flex; align-items: center; gap: 8px; font: 700 0.8rem/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.msg .who b { color: var(--primary-text); }
+.msg.you { justify-self: end; border-bottom-right-radius: 6px; }
+.msg.ai { border-bottom-left-radius: 6px; }
+.msg.ai .lookup { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--good); background: var(--good-wash); border-radius: 999px; padding: 3px 10px; margin-bottom: 8px; font-weight: 600; }
+
+/* steps */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; counter-reset: step; margin: 0; padding: 0; list-style: none; }
+.steps li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 26px; box-shadow: var(--shadow); counter-increment: step; }
+.steps li::before { content: counter(step); display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: var(--primary); color: var(--on-primary); font: 800 1.1rem/1 var(--display); margin-bottom: 18px; }
+.steps p { color: var(--muted); margin-top: 8px; }
+
+/* feature grid */
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+.card .ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--wash); color: var(--primary-text); margin-bottom: 16px; }
+.card .ico svg { width: 22px; height: 22px; }
+.card p { color: var(--muted); margin-top: 8px; font-size: 0.98rem; }
+
+/* agents */
+.agents-layout { display: grid; grid-template-columns: 5fr 6fr; gap: clamp(32px, 5vw, 56px); align-items: start; }
+.helpers { display: grid; gap: 10px; margin: 24px 0 0; padding: 0; list-style: none; }
+.helpers li { display: grid; grid-template-columns: 11rem 1fr; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.helpers li:last-child { border-bottom: 0; }
+.helpers b { font-family: var(--display); }
+.helpers span { color: var(--muted); }
+.figure { margin: 0; }
+.figure .frame { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 8px; box-shadow: var(--shadow-lg); }
+.figure img { border-radius: 12px; width: 100%; }
+.figure figcaption { color: var(--muted); font-size: 0.92rem; margin-top: 12px; text-align: center; }
+.spaces { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.spaces th, .spaces td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.spaces tr:last-child td { border-bottom: 0; }
+.spaces th { font: 700 0.8rem/1.2 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--bg-alt); }
+.callout { margin-top: 24px; padding: 18px 20px; border-radius: 14px; border-left: 4px solid var(--primary); background: var(--surface); border-top: 1px solid var(--line); border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.callout p + p { margin-top: 8px; }
+
+/* diagram */
+.diagram { margin: clamp(40px, 6vw, 64px) auto 0; max-width: 1000px; }
+.diagram .frame { background: hsl(var(--paper-1)); border-radius: 20px; padding: 6px; border: 1px solid var(--line); box-shadow: var(--shadow); }
+
+/* devices */
+.devices { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "a b" "f f" "c d"; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.devices .dev { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); display: grid; grid-template-columns: 40px 1fr; gap: 4px 14px; align-items: start; }
+.devices .dev svg { grid-row: span 2; width: 40px; height: 40px; padding: 9px; border-radius: 12px; background: var(--wash); color: var(--primary-text); }
+.devices .dev b { font-family: var(--display); }
+.devices .dev span { color: var(--muted); font-size: 0.93rem; line-height: 1.45; }
+.devices .dev.hub { grid-area: a; border-color: var(--primary); }
+.devices .d-mac { grid-area: b; } .devices .d-win { grid-area: c; } .devices .d-phone { grid-area: d; }
+.devices .folder { grid-area: f; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 18px; border-radius: 999px; background: var(--code-bg); color: var(--code-fg); font: 700 0.95rem/1.3 var(--display); text-align: center; }
+.devices .folder svg { width: 20px; height: 20px; flex-shrink: 0; color: hsl(var(--orange-400)); }
+.ticks { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; }
+.ticks li { display: grid; grid-template-columns: 24px 1fr; gap: 10px; }
+.ticks svg { width: 20px; height: 20px; color: var(--good); margin-top: 3px; }
+
+/* privacy */
+.protect { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.protect .card h3 { display: flex; align-items: center; gap: 10px; }
+.protect .card h3 svg { width: 22px; height: 22px; color: var(--good); flex-shrink: 0; }
+.honest { margin-top: 28px; padding: 26px 28px; border-radius: var(--radius); background: var(--warn-wash); border: 1px solid var(--line); border-left: 5px solid var(--warn-line); }
+.honest h3 { margin-bottom: 10px; }
+.honest ul { margin: 12px 0 0; padding-left: 1.2em; }
+.honest li + li { margin-top: 6px; }
+
+/* works with */
+.apps { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.apps li { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 12px 22px; font: 700 1rem/1.2 var(--display); box-shadow: var(--shadow); }
+.apps-note { text-align: center; color: var(--muted); margin-top: 20px; font-size: 0.95rem; }
+
+/* install */
+.install { display: grid; grid-template-columns: 7fr 6fr; gap: 24px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: clamp(22px, 3vw, 32px); box-shadow: var(--shadow); min-width: 0; }
+.panel h3 { font-size: 1.25rem; }
+.panel > p { color: var(--muted); margin-top: 8px; }
+.status { display: inline-flex; align-items: center; gap: 8px; font: 700 0.8rem/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; padding: 7px 12px; border-radius: 999px; margin-bottom: 14px; }
+.status.ok { background: var(--good-wash); color: var(--good); }
+.status.soon { background: var(--wash); color: var(--primary-strong); }
+.code { margin-top: 18px; background: var(--code-bg); color: var(--code-fg); border-radius: 14px; border: 1px solid var(--line); overflow: hidden; }
+.code-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px 6px 18px; border-bottom: 1px solid hsl(var(--paper-1) / 0.12); font: 600 0.8rem/1 var(--body); color: hsl(72 8% 70%); }
+.code pre { margin: 0; padding: 16px 18px 18px; overflow-x: auto; font: 0.9rem/1.8 var(--mono); }
+.code pre .c { color: hsl(72 8% 64%); }
+.copy { min-height: 44px; min-width: 44px; padding: 6px 14px; border-radius: 10px; border: 1px solid hsl(var(--paper-1) / 0.25); background: hsl(var(--paper-1) / 0.08); color: var(--code-fg); font: 600 0.875rem/1 var(--body); cursor: pointer; }
+.copy:hover { background: hsl(var(--paper-1) / 0.16); }
+.copy:focus-visible { outline-color: var(--primary); }
+.req { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 18px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 0.95rem; }
+.req li { display: inline-flex; align-items: center; gap: 8px; }
+.req svg { width: 18px; height: 18px; color: var(--good); }
+.connect { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 0.95rem; }
+.connect th, .connect td { text-align: left; padding: 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.connect th { font-weight: 700; padding-right: 16px; white-space: nowrap; }
+.connect td { color: var(--muted); }
+.connect td code { white-space: normal; word-break: break-word; }
+.try { margin-top: 20px; padding: 16px 18px; border-radius: 14px; background: var(--wash); font-weight: 600; }
+
+/* limits */
+.limits { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 40px; margin: 0; padding: 0; list-style: none; }
+.limits li { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.limits svg { width: 22px; height: 22px; color: var(--muted); margin-top: 2px; }
+.limits b { font-family: var(--display); display: block; }
+.limits span { color: var(--muted); }
+
+/* faq */
+.faq { max-width: 50rem; margin: 0 auto; display: grid; gap: 12px; }
+.faq details { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.faq summary { cursor: pointer; list-style: none; padding: 20px 56px 20px 22px; font: 700 1.05rem/1.4 var(--display); position: relative; min-height: 44px; border-radius: 14px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: ""; position: absolute; right: 22px; top: 50%; width: 10px; height: 10px; border-right: 2.5px solid currentColor; border-bottom: 2.5px solid currentColor; transform: translateY(-70%) rotate(45deg); transition: transform .2s; }
+.faq details[open] summary::after { transform: translateY(-30%) rotate(-135deg); }
+.faq details > div { padding: 0 22px 20px; color: var(--muted); }
+.faq details > div p + p { margin-top: 10px; }
+
+/* closing band */
+.closing { text-align: center; }
+.closing .box { background: var(--code-bg); color: var(--code-fg); border-radius: 28px; padding: clamp(40px, 6vw, 72px) clamp(22px, 4vw, 48px); position: relative; overflow: hidden; }
+[data-theme="dark"] .closing .box { background: var(--surface); border: 1px solid var(--line); }
+.closing .box::before { content: ""; position: absolute; inset: auto -10% -60% -10%; height: 80%; background: radial-gradient(closest-side, hsl(var(--orange-500) / 0.35), transparent); pointer-events: none; }
+.closing h2 { position: relative; color: var(--code-fg); }
+.closing p { position: relative; color: hsl(72 8% 76%); max-width: 36rem; margin: 16px auto 0; font-size: 1.125rem; }
+.closing .cta-row { position: relative; }
+.closing .btn-ghost { background: transparent; color: var(--code-fg); border-color: hsl(var(--paper-1) / 0.35); }
+.closing .btn-ghost:hover { border-color: var(--code-fg); }
+
+/* footer */
+.foot { padding: 48px 0 56px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.95rem; }
+.foot-inner { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 32px; }
+.foot .logo { height: 30px; width: auto; margin-bottom: 14px; }
+.foot .tag { font-family: var(--display); font-weight: 700; color: var(--fg); }
+.foot h3 { font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg); margin-bottom: 12px; }
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.foot ul a { color: var(--muted); text-decoration: none; display: inline-block; padding: 6px 0; }
+.foot ul a:hover { color: var(--fg); text-decoration: underline; }
+.legal { margin-top: 36px; padding-top: 22px; border-top: 1px solid var(--line); font-size: 0.875rem; display: grid; gap: 6px; }
+
+/* ── responsive ── */
+@media (max-width: 1020px) {
+  .grid { grid-template-columns: repeat(2, 1fr); }
+  .protect { grid-template-columns: repeat(2, 1fr); }
+  .agents-layout { grid-template-columns: 1fr; }
+}
+@media (max-width: 860px) {
+  .nav { display: none; }
+  .top-actions { margin-left: auto; }
+  .split, .install { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .limits { grid-template-columns: 1fr; }
+  .foot-inner { grid-template-columns: 1fr 1fr; }
+  .foot-inner > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  :root { --gutter: 16px; }
+  body { font-size: 1rem; }
+  .brand .logo { height: 24px; }
+  .brand .name { font-size: 1.05rem; }
+  .brand { gap: 10px; }
+  .top-actions .btn { display: none; }
+  .grid, .protect { grid-template-columns: 1fr; }
+  .devices { grid-template-columns: 1fr; grid-template-areas: "a" "b" "c" "d" "f"; }
+  .helpers li { grid-template-columns: 1fr; gap: 2px; }
+  .cta-row .btn { width: 100%; }
+  .shot-frame { padding: 6px 6px 0; border-radius: 12px 12px 0 0; }
+  .shot-frame .bar { display: none; }
+  .spaces th, .spaces td { padding: 12px 14px; }
+  .connect th { white-space: normal; }
+  .honest { padding: 22px 20px; }
+}
+@media (forced-colors: active) {
+  .btn, .icon-btn, .card, .panel, .msg, .faq details, .apps li { border: 1px solid CanvasText; }
+  .steps li::before { border: 1px solid CanvasText; }
+}
+@media print {
+  .top, .copy, .icon-btn, .closing .cta-row { display: none !important; }
+  body { background: #fff; color: #000; }
+}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "MemVault",
+  "description": "One private memory on your own computer, shared by every AI assistant you use.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Linux, Windows, macOS (requires Node.js 20 or newer)",
+  "softwareVersion": "3.0.0",
+  "license": "https://opensource.org/licenses/MIT",
+  "codeRepository": "https://github.com/MrChartist/memvault",
+  "url": "https://github.com/MrChartist/memvault",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
+  "publisher": { "@type": "Organization", "name": "Mr. Chartist", "url": "https://mrchartist.com" }
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- Icons used on the page, drawn once. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-github" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.7 5.38-5.27 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="5" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="i-handoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h13l-3-3M21 17H8l3 3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-import" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+  <symbol id="i-backup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a5 5 0 0 1-.5-10A6 6 0 0 1 18 7a4.5 4.5 0 0 1-1 11H7Z"/><path d="M12 11v5M9.5 13.5 12 11l2.5 2.5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-access" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M5 8.5l7 1.5 7-1.5M12 10v5M9 21l3-6 3 6"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/></symbol>
+  <symbol id="i-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8M12 16v5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <div class="brand">
+      <a class="brand-logo" href="https://mrchartist.com" aria-label="Mr. Chartist home page, MrChartist.com">
+        <img class="logo for-light" src="assets/brand/logo-horizontal-black.svg" alt="" width="716" height="210">
+        <img class="logo for-dark" src="assets/brand/logo-horizontal-white.svg" alt="" width="716" height="210">
+      </a>
+      <span class="sep" aria-hidden="true"></span>
+      <a class="name" href="#top">MemVault</a>
+    </div>
+    <nav class="nav" aria-label="On this page">
+      <a href="#how">How it works</a>
+      <a href="#agents">Agents</a>
+      <a href="#devices">Devices</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+      <a href="#faq">Questions</a>
+    </nav>
+    <div class="top-actions">
+      <a class="btn btn-ghost btn-sm" href="https://github.com/MrChartist/memvault"><svg aria-hidden="true"><use href="#i-github"/></svg>GitHub</a>
+      <button class="icon-btn" type="button" id="theme-btn" aria-label="Switch to dark theme" title="Light or dark theme">
+        <svg class="for-light" aria-hidden="true"><use href="#i-moon"/></svg>
+        <svg class="for-dark" aria-hidden="true"><use href="#i-sun"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <!-- ── hero ── -->
+  <div class="hero" id="top">
+    <div class="wrap">
+      <span class="eyebrow">Free and open source · Works with MCP</span>
+      <h1>One private memory for <em>every AI</em> you use</h1>
+      <p class="lead">Tell one AI something once. Every other AI can find it too. MemVault keeps your notes on your own computer, and Claude, Cursor, VS Code and other AI apps read and write them.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#install">Get started <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        <a class="btn btn-ghost" href="https://github.com/MrChartist/memvault"><svg aria-hidden="true"><use href="#i-github"/></svg>View the code on GitHub</a>
+      </div>
+      <ul class="facts" aria-label="At a glance">
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg>Stays on your computer</li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg>No account, no tracking</li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg>MIT licence</li>
+      </ul>
+      <div class="shot-frame">
+        <div class="bar" aria-hidden="true"><i></i><i></i><i></i></div>
+        <img class="for-light" src="assets/img/dashboard.png" width="1770" height="1350" alt="The MemVault dashboard: counts of notes, conversations and agents, a box to write a note, and a list of recent memories.">
+        <img class="for-dark" src="assets/img/dashboard-dark.png" width="1770" height="1350" alt="The MemVault dashboard in the dark theme: counts of notes, conversations and agents, a box to write a note, and a list of recent memories.">
+      </div>
+    </div>
+  </div>
+
+  <!-- ── the problem ── -->
+  <section class="band" id="how" aria-labelledby="how-h">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker">The problem</p>
+          <h2 id="how-h">Every AI chat starts with an empty head</h2>
+          <p class="muted" style="margin-top:16px;font-size:1.125rem">You explain who you are, what you are working on and how you like answers. Then you open another app and do it all again. MemVault is one notebook that all your AI apps share, so you say it once.</p>
+        </div>
+        <div class="chat" role="group" aria-label="Example: a preference told to Claude is used by Cursor">
+          <div class="msg you"><div class="who">You, in <b>Claude</b></div>“Remember that I prefer short answers with one example.”</div>
+          <div class="msg you"><div class="who">Later, you, in <b>Cursor</b></div>“Help me write this email.”</div>
+          <div class="msg ai"><div class="who"><b>Cursor</b></div><span class="lookup"><svg width="14" height="14" aria-hidden="true"><use href="#i-check"/></svg>Looked in MemVault</span><br>“Here is a short draft with one example…”</div>
+        </div>
+      </div>
+
+      <h3 class="sr-only">Three steps</h3>
+      <ol class="steps" style="margin-top:clamp(48px,7vw,80px)">
+        <li><h3>Set it up on your computer</h3><p>One setup command creates your private vault in your home folder. Nothing goes to a server.</p></li>
+        <li><h3>Connect your AI apps</h3><p>MemVault prints the settings to paste into each app. The welcome card in the dashboard walks you through it.</p></li>
+        <li><h3>Talk as you normally do</h3><p>Say “remember…” in one app. Any connected app can find it later, and you can see and correct every note in the dashboard.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ── features ── -->
+  <section id="features" aria-labelledby="features-h">
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="kicker">What you get</p>
+        <h2 id="features-h">Simple to use, careful with your data</h2>
+        <p>Everything you need to keep one memory for all your AI apps, and nothing that phones home.</p>
+      </div>
+      <div class="grid">
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-share"/></svg></div><h3>One memory, every app</h3><p>Claude Desktop, Claude Code, Cursor, Antigravity, VS Code and any app that supports MCP use the same notes.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-user"/></svg></div><h3>Helpers with their own job</h3><p>Give each AI an agent: a role, a voice, rules it must follow, and a clear limit on which notes it may see.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-handoff"/></svg></div><h3>Handoffs</h3><p>One agent can leave work for another. The other finds it in its inbox the next time it starts.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-edit"/></svg></div><h3>A dashboard you control</h3><p>Write, search, open, correct, pin, download or delete any memory, with Undo. Settings are switches, not config files.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-import"/></svg></div><h3>Bring your old chats</h3><p>Import exports from ChatGPT, Claude, Gemini (Google Takeout) and Perplexity. Importing again adds no duplicates.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-backup"/></svg></div><h3>Backups</h3><p>Local backups with one click. Google Drive copies are encrypted with your passphrase before they leave your computer.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-lock"/></svg></div><h3>Secure Vault</h3><p>Keep passwords and keys locked with AES-256 and your master password. Agents never receive the values.</p></div>
+        <div class="card"><div class="ico"><svg aria-hidden="true"><use href="#i-access"/></svg></div><h3>Built for everyone</h3><p>Text size buttons, full keyboard use, screen-reader labels, light and dark themes, high contrast and a phone layout.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── agents ── -->
+  <section class="band" id="agents" aria-labelledby="agents-h">
+    <div class="wrap">
+      <div class="agents-layout">
+        <div>
+          <p class="kicker">Agents</p>
+          <h2 id="agents-h">A helper for each job, with its own view</h2>
+          <p class="muted" style="margin-top:16px;font-size:1.125rem">An agent is a saved profile: who the helper is, how it should sound, what it must always and never do, and which memories it may see. A study helper does not need your work notes.</p>
+          <ul class="helpers" aria-label="Starter helpers">
+            <li><b>Everyday Assistant</b><span>Plain-language help with questions and small jobs</span></li>
+            <li><b>Study Buddy</b><span>Explains step by step and lets the learner try first</span></li>
+            <li><b>Writing Helper</b><span>Plans and edits while keeping your own voice</span></li>
+            <li><b>Planner</b><span>Turns goals into small, realistic steps</span></li>
+            <li><b>Researcher</b><span>Separates what is known from what is assumed</span></li>
+            <li><b>Software Engineer</b><span>Small, tested changes that match your code</span></li>
+            <li><b>Coordinator</b><span>Splits a goal and hands each part to the right helper</span></li>
+          </ul>
+          <p class="muted" style="margin-top:16px">Or describe a new helper in your own words in the dashboard.</p>
+        </div>
+        <div>
+          <figure class="figure">
+            <div class="frame">
+              <img class="for-light" src="assets/img/agents.png" width="1770" height="1290" loading="lazy" alt="The Agents screen: helper cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its briefing or its connection settings.">
+              <img class="for-dark" src="assets/img/agents-dark.png" width="1770" height="1290" loading="lazy" alt="The Agents screen in the dark theme, with helper cards and buttons to copy each briefing or its connection settings.">
+            </div>
+          </figure>
+          <table class="spaces">
+            <caption class="sr-only">Memory spaces and who can read them</caption>
+            <thead><tr><th scope="col">Memory space</th><th scope="col">Who can read it</th></tr></thead>
+            <tbody>
+              <tr><td><code>shared</code></td><td>Every agent: the common memory</td></tr>
+              <tr><td><code>agent:&lt;name&gt;</code></td><td>Only that agent, and you</td></tr>
+              <tr><td><code>project:&lt;name&gt;</code></td><td>Agents you allow, for one project</td></tr>
+            </tbody>
+          </table>
+          <div class="callout">
+            <p><b>An AI cannot give itself more access.</b> Each app is tied to one agent by its own settings, never by anything the AI says. Notes an agent may not see are not just hidden; they are not in its copy of the memory at all.</p>
+          </div>
+        </div>
+      </div>
+      <figure class="figure diagram">
+        <div class="frame"><img src="assets/img/architecture.svg" width="1000" height="626" loading="lazy" alt="How it fits together. Each AI app (for example Claude Desktop as the writer agent, Cursor as the coder agent) connects through its own MemVault server. Each server knows which agent it serves from the app's settings, reads through a filtered copy, offers only allowed tools and keeps a tamper-evident log. Every write is masked for secrets before it lands in one local file with shared, private and project spaces. The Secure Vault is locked separately, and backups are local, with cloud copies encrypted first."></div>
+        <figcaption>How it fits together: one server per app, one vault on your computer.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ── devices ── -->
+  <section id="devices" aria-labelledby="devices-h">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker">All your devices</p>
+          <h2 id="devices-h">One memory on your laptop, your PC, your server and your phone</h2>
+          <p class="muted" style="margin-top:16px;font-size:1.125rem">Each computer keeps its own full copy, so your AI apps work offline. They keep each other up to date through a folder you share between them. Every file in that folder is encrypted with your passphrase.</p>
+          <ul class="ticks">
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>With or without a server.</b> A VPS that is always on keeps everyone in step. With no server, your computers update each other directly whenever two of them are on.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Use the folder tool you like.</b> Syncthing (free, device to device), iCloud Drive, Dropbox, OneDrive or Google Drive. They only ever see encrypted files.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>The newest change wins everywhere.</b> Deletions travel too, and a sync that would delete many notes makes a backup first.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Your iPhone, privately.</b> Open the dashboard through Tailscale, with a one-time code. A lost phone can be signed out on its own.</span></li>
+          </ul>
+          <p style="margin-top:20px"><a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md">Step-by-step guide for your devices</a></p>
+        </div>
+        <ul class="devices" aria-label="An example setup">
+          <li class="dev hub"><svg aria-hidden="true"><use href="#i-server"/></svg><b>Linux VPS</b><span>Always on: keeps everyone in step and serves your phone</span></li>
+          <li class="dev d-mac"><svg aria-hidden="true"><use href="#i-laptop"/></svg><b>MacBook</b><span>Its own full copy, works offline</span></li>
+          <li class="folder"><svg aria-hidden="true"><use href="#i-sync"/></svg>Shared folder, encrypted with your passphrase</li>
+          <li class="dev d-win"><svg aria-hidden="true"><use href="#i-desktop"/></svg><b>Windows PC</b><span>Its own full copy, works offline</span></li>
+          <li class="dev d-phone"><svg aria-hidden="true"><use href="#i-phone"/></svg><b>iPhone</b><span>The dashboard in Safari, through Tailscale</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── privacy ── -->
+  <section class="band" id="privacy" aria-labelledby="privacy-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">Privacy and safety</p>
+        <h2 id="privacy-h">Your notes stay with you, and we say plainly what that means</h2>
+        <p>You can check all of this on your own computer: run <code>memvault doctor</code>, or open the Security page in the dashboard.</p>
+      </div>
+      <div class="protect">
+        <div class="card"><h3><svg aria-hidden="true"><use href="#i-check"/></svg>Not reachable from outside</h3><p>The server listens on <code>127.0.0.1</code> only. Every request needs a secret key, and web pages from other sites are refused.</p></div>
+        <div class="card"><h3><svg aria-hidden="true"><use href="#i-check"/></svg>Secrets hidden before saving</h3><p>Common API keys, passwords, card numbers, one-time codes and national ID numbers are replaced with a marker. It is pattern matching, so unusual formats can be missed.</p></div>
+        <div class="card"><h3><svg aria-hidden="true"><use href="#i-check"/></svg>Each AI sees only its share</h3><p>Agents read through a filtered copy of the memory, and are offered only the tools they may use.</p></div>
+        <div class="card"><h3><svg aria-hidden="true"><use href="#i-check"/></svg>Cloud copies encrypted first</h3><p>Without your passphrase, a cloud backup refuses to run. It never uploads plain text by default.</p></div>
+        <div class="card"><h3><svg aria-hidden="true"><use href="#i-check"/></svg>See who used your memory</h3><p>A tamper-evident log records which agent did what, and when. It never records the content.</p></div>
+        <div class="card"><h3><svg aria-hidden="true"><use href="#i-check"/></svg>Off until you switch it on</h3><p>Capture of git, files, browser pages, the clipboard and more is off until you switch it on. No analytics, no telemetry.</p></div>
+      </div>
+      <div class="honest" role="note" aria-labelledby="honest-h">
+        <h3 id="honest-h">What no tool can promise</h3>
+        <p>When you ask an AI app to look something up in MemVault, the text it reads is sent to the company behind that AI, just like anything you type to it. Agents limit how much each AI can see; they cannot change that.</p>
+        <ul>
+          <li>Masking catches common patterns. It is a safety net, not a guarantee.</li>
+          <li>Malware running as your own user account can read your files. Turn on disk encryption (BitLocker, FileVault or LUKS) to protect a lost laptop.</li>
+          <li>A forgotten master password or backup passphrase cannot be recovered. There is no reset, by design.</li>
+        </ul>
+        <p style="margin-top:12px">The full list is in <a href="https://github.com/MrChartist/memvault/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── works with ── -->
+  <section id="apps" aria-labelledby="apps-h" style="padding-block:clamp(56px,7vw,88px)">
+    <div class="wrap">
+      <div class="section-head center" style="margin-bottom:28px">
+        <p class="kicker">Works with</p>
+        <h2 id="apps-h">The AI apps you already use</h2>
+      </div>
+      <ul class="apps">
+        <li>Claude Desktop</li>
+        <li>Claude Code</li>
+        <li>Cursor</li>
+        <li>Antigravity</li>
+        <li>VS Code (Cline, Roo)</li>
+        <li>Any MCP app</li>
+      </ul>
+      <p class="apps-note">MemVault uses the open <a href="https://modelcontextprotocol.io">Model Context Protocol</a> (MCP). Product names belong to their owners; MemVault is not made or endorsed by them.</p>
+    </div>
+  </section>
+
+  <!-- ── install ── -->
+  <section class="band" id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">Get started</p>
+        <h2 id="install-h">Set it up in a few minutes</h2>
+        <p>You need <a href="https://nodejs.org">Node.js</a> 20 or newer (choose the “LTS” download) and a terminal. A one-click installer is planned but not built yet.</p>
+      </div>
+      <div class="install">
+        <div class="panel">
+          <!-- NPM-RELEASE: when @mrchartist/memvault is on npm, swap this panel's steps for the npx ones (see docs/website.md). -->
+          <span class="status ok"><svg width="14" height="14" aria-hidden="true"><use href="#i-check"/></svg>Works today</span>
+          <h3>Install from the source code</h3>
+          <p>Paste these lines into a terminal, one after another.</p>
+          <div class="code">
+            <div class="code-bar"><span>Terminal</span><button class="copy" type="button" data-copy="cmd-source" aria-label="Copy the install commands">Copy</button></div>
+<pre id="cmd-source" tabindex="0" aria-label="Install commands"><code>git clone https://github.com/MrChartist/memvault.git
+cd memvault
+npm install
+node cli.mjs setup       <span class="c"># one step, no questions</span>
+node cli.mjs mcp-config  <span class="c"># settings for your AI app</span>
+node cli.mjs open        <span class="c"># opens the dashboard</span></code></pre>
+          </div>
+          <ul class="req" aria-label="Requirements">
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg>Node.js 20 or newer</li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg>No account</li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg>No cloud service</li>
+          </ul>
+          <div class="callout" style="margin-top:22px">
+            <p><span class="status soon" style="margin:0 0 8px">Coming soon</span><br>After the first release on npm, it becomes <code>npm install -g @mrchartist/memvault</code> and then <code>memvault setup</code>.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Connect an AI app</h3>
+          <p>Paste what <code>mcp-config</code> prints into the app's MCP settings, then restart the app.</p>
+          <table class="connect">
+            <caption class="sr-only">Where each app keeps its MCP settings</caption>
+            <tbody>
+              <tr><th scope="row">Claude Desktop</th><td>Settings → Developer → Edit Config</td></tr>
+              <tr><th scope="row">Cursor</th><td><code>~/.cursor/mcp.json</code></td></tr>
+              <tr><th scope="row">Claude Code</th><td>Run the <code>claude mcp add …</code> command the dashboard shows you</td></tr>
+              <tr><th scope="row">Antigravity</th><td><code>~/.gemini/<wbr>antigravity/<wbr>mcp_config.json</code></td></tr>
+              <tr><th scope="row">VS Code</th><td>The MCP settings of Cline or Roo</td></tr>
+            </tbody>
+          </table>
+          <p class="muted" style="margin-top:14px;font-size:0.92rem">Menus change between versions. If yours looks different, search the app's help for “MCP servers”.</p>
+          <p class="try">Then, in your AI app, say: “Remember that I prefer short answers.”</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── limits ── -->
+  <section id="limits" aria-labelledby="limits-h">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="kicker">Before you start</p>
+        <h2 id="limits-h">Known limits, so you do not find them the hard way</h2>
+      </div>
+      <ul class="limits">
+        <li><svg aria-hidden="true"><use href="#i-info"/></svg><div><b>Needs a terminal today</b><span>Setup uses Node.js and a few commands. A one-click installer is on the roadmap.</span></div></li>
+        <li><svg aria-hidden="true"><use href="#i-info"/></svg><div><b>Built and used on Linux</b><span>Automated tests pass on Windows and macOS too, but nobody has used it on those systems by hand yet.</span></div></li>
+        <li><svg aria-hidden="true"><use href="#i-info"/></svg><div><b>Search finds words, not meaning</b><span>“car” will not find “automobile”. Chinese, Japanese and Korean match parts of words.</span></div></li>
+        <li><svg aria-hidden="true"><use href="#i-info"/></svg><div><b>A few tens of thousands of notes</b><span>About 10,000 notes feel instant. At 100,000, each save takes up to about two seconds.</span></div></li>
+        <li><svg aria-hidden="true"><use href="#i-info"/></svg><div><b>English interface</b><span>Your notes can be in any language and any direction. The dashboard text is English only for now.</span></div></li>
+        <li><svg aria-hidden="true"><use href="#i-info"/></svg><div><b>Checked by tools, not yet by people</b><span>Accessibility is tested automatically on every screen. A review with real screen-reader users is planned.</span></div></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── faq ── -->
+  <section class="band" id="faq" aria-labelledby="faq-h">
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="kicker">Questions</p>
+        <h2 id="faq-h">Common questions</h2>
+      </div>
+      <div class="faq">
+        <details><summary>Is MemVault free?</summary><div><p>Yes. It is open source under the MIT licence. There is no account, no subscription and no paid tier.</p></div></details>
+        <details><summary>Do my notes leave my computer?</summary><div><p>They are stored only on your computer. There are two exceptions you control: when an AI app reads a note, that text goes to the company behind that AI; and if you switch on Google Drive backups, an encrypted copy goes to your Drive.</p></div></details>
+        <details><summary>Do I need to be a programmer?</summary><div><p>No, but today you need to install Node.js and paste a few commands into a terminal. After that, everything is in the dashboard: notes, agents, backups and settings.</p></div></details>
+        <details><summary>Can I use it on more than one computer, and on my phone?</summary><div><p>Yes. Each computer keeps its own copy and they stay in step through a folder you share between them (Syncthing, iCloud Drive, Dropbox, OneDrive, Google Drive or your own server). Everything in that folder is encrypted with your sync passphrase.</p><p>Your iPhone or iPad opens the dashboard of a computer or server that is switched on, through a private Tailscale address. Claude on the iPhone cannot read MemVault yet. See the <a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md">devices guide</a>.</p></div></details>
+        <details><summary>Which AI apps can use it?</summary><div><p>Any app that supports MCP servers, including Claude Desktop, Claude Code, Cursor, Antigravity, and VS Code with Cline or Roo. Each app can be tied to its own agent.</p></div></details>
+        <details><summary>What happens if I forget my master password?</summary><div><p>Items in the Secure Vault cannot be opened again, and the same is true for an encrypted backup if you lose its passphrase. This is on purpose: there is no back door. Write them down somewhere safe.</p></div></details>
+        <details><summary>Can I bring my old ChatGPT or Claude chats?</summary><div><p>Yes. Download your export from ChatGPT, Claude, Gemini (Google Takeout) or Perplexity, then run <code>memvault import</code> on the folder. Each conversation keeps its own date. Services change their export formats without notice, so please report a file that does not import.</p></div></details>
+        <details><summary>How do I remove it?</summary><div><p>Removing the program does not remove your notes. The <a href="https://github.com/MrChartist/memvault/blob/main/docs/uninstall.md">uninstall guide</a> lists everything MemVault leaves, so you can decide what to keep.</p></div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── closing ── -->
+  <section class="closing" aria-labelledby="closing-h">
+    <div class="wrap">
+      <div class="box">
+        <h2 id="closing-h">Stop repeating yourself</h2>
+        <p>One private memory, on your own computer, shared by every AI you use.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#install">Get started <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          <a class="btn btn-ghost" href="https://github.com/MrChartist/memvault"><svg aria-hidden="true"><use href="#i-github"/></svg>Star it on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-inner">
+      <div>
+        <a href="https://mrchartist.com" aria-label="Mr. Chartist, MrChartist.com">
+          <img class="logo for-light" src="assets/brand/logo-horizontal-black.svg" alt="" width="716" height="210">
+          <img class="logo for-dark" src="assets/brand/logo-horizontal-white.svg" alt="" width="716" height="210">
+        </a>
+        <p class="tag">Learn it. Research it. Scan it. Trade it. Review it.</p>
+        <p style="margin-top:8px">MemVault is part of the <a href="https://mrchartist.com">Mr. Chartist</a> ecosystem.</p>
+      </div>
+      <div>
+        <h3>MemVault</h3>
+        <ul>
+          <li><a href="https://github.com/MrChartist/memvault">Source code</a></li>
+          <li><a href="https://github.com/MrChartist/memvault#readme">Full guide (README)</a></li>
+          <li><a href="https://github.com/MrChartist/memvault/blob/main/ROADMAP.md">Roadmap</a></li>
+          <li><a href="https://github.com/MrChartist/memvault/blob/main/CHANGELOG.md">What is new</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Trust</h3>
+        <ul>
+          <li><a href="https://github.com/MrChartist/memvault/blob/main/SECURITY.md">Security</a></li>
+          <li><a href="https://github.com/MrChartist/memvault/issues">Report a problem</a></li>
+          <li><a href="https://github.com/MrChartist/memvault/blob/main/LICENSE">MIT licence</a></li>
+          <li><a href="https://github.com/MrChartist/memvault/blob/main/TRADEMARKS.md">Name and logo</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="legal">
+      <p>This page uses no cookies, no analytics and loads nothing from other websites.</p>
+      <p>The code is MIT licensed. The Mr. Chartist name and logo are not covered by that licence. Claude, Cursor, VS Code and other product names belong to their owners.</p>
+    </div>
+  </div>
+</footer>
+
+<div class="sr-only" role="status" aria-live="polite" id="live"></div>
+
+<script>
+  (function () {
+    var root = document.documentElement, btn = document.getElementById("theme-btn"), live = document.getElementById("live");
+    function label() { btn.setAttribute("aria-label", root.getAttribute("data-theme") === "dark" ? "Switch to light theme" : "Switch to dark theme"); }
+    label();
+    btn.addEventListener("click", function () {
+      var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("mv-site-theme", next); } catch (e) {}
+      label();
+    });
+
+    function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+      return new Promise(function (resolve, reject) {
+        var ta = document.createElement("textarea");
+        ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand("copy") ? resolve() : reject(); } catch (e) { reject(e); }
+        document.body.removeChild(ta);
+      });
+    }
+    Array.prototype.forEach.call(document.querySelectorAll("[data-copy]"), function (b) {
+      b.addEventListener("click", function () {
+        var pre = document.getElementById(b.getAttribute("data-copy"));
+        // Copy the commands only, without the "# ..." notes after them.
+        var text = pre.innerText.split("\n").map(function (l) { return l.replace(/\s+#.*$/, ""); }).join("\n").trim() + "\n";
+        copyText(text).then(function () {
+          b.textContent = "Copied"; live.textContent = "Commands copied.";
+          setTimeout(function () { b.textContent = "Copy"; }, 2000);
+        }, function () {
+          b.textContent = "Select and copy"; live.textContent = "Could not copy. Select the text and copy it yourself.";
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

@@ -104,6 +104,7 @@ export async function importAll(inputPath, options = {}) {
     console.log("❌ No AI export files detected in this folder.");
     console.log("   Supported: ChatGPT, Claude, Gemini, Perplexity");
     console.log("   Make sure you've unzipped the export file first.\n");
+    process.exitCode = 1;
     return;
   }
 
@@ -163,8 +164,8 @@ if (process.argv[1] && process.argv[1].endsWith("import-all.mjs")) {
   📥 MemVault Universal AI Importer
 
   Usage:
-    node import-all.mjs <path-to-exports-folder>
-    node import-all.mjs <path> --dry-run
+    memvault import <path-to-exports-folder>
+    memvault import <path> --dry-run
 
   Auto-detects and imports from:
     • ChatGPT (conversations.json)
@@ -173,11 +174,11 @@ if (process.argv[1] && process.argv[1].endsWith("import-all.mjs")) {
     • Perplexity (search_history.json)
 
   Example:
-    node import-all.mjs ~/Downloads/ai-exports/
+    memvault import ~/Downloads/ai-exports/
     `);
     process.exit(1);
   }
 
   const dryRun = process.argv.includes("--dry-run");
-  importAll(inputPath, { dryRun }).catch(console.error);
+  importAll(inputPath, { dryRun }).catch((e) => { console.error(`❌ ${e.message}`); process.exitCode = 1; });
 }

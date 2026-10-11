@@ -28,9 +28,9 @@ const engines = [
   { script: "sync-antigravity.mjs", enabled: SYNC_CONFIG.antigravityEnabled === true },
 ].filter((e) => e.enabled);
 
-function runEngine(script) {
+function runEngine(script, args = []) {
   return new Promise((resolve) => {
-    const cp = spawn(process.execPath, [path.join(__dirname, script)], { stdio: "inherit" });
+    const cp = spawn(process.execPath, [path.join(__dirname, script), ...args], { stdio: "inherit" });
     cp.on("exit", resolve);
     cp.on("error", () => resolve(1));
   });
@@ -49,6 +49,13 @@ async function main() {
     await runEngine(script);
   }
   if (engines.length) console.log(`\n✅ All sync engines complete!`);
+
+  // Your other computers (memvault devices): after capture, so what was just noted travels too.
+  const { deviceSettings } = await import("./device-sync.mjs");
+  if (deviceSettings().enabled) {
+    console.log(`\n🔁 Syncing with your other computers...`);
+    await runEngine("device-sync.mjs", ["sync"]);
+  }
 
   // Auto-backup if Google Drive is enabled, otherwise just keep local.
   const driveOn = STORAGE_CONFIG.gdriveFolder?.enabled || STORAGE_CONFIG.gdriveApi?.enabled;

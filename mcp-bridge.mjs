@@ -28,11 +28,14 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  */
 
+import fs from "fs";
 import { isMain } from "./is-main.mjs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_BRIDGES, loadUserConfig, saveUserConfig } from "./config.mjs";
 import { ingest } from "./ingest.mjs";
+
+const PKG_VERSION = JSON.parse(fs.readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 const CONNECT_TIMEOUT_MS = 20000;
 
@@ -65,7 +68,7 @@ export const PRESET_BRIDGES = [
 export function addPreset(name) {
   const preset = PRESET_BRIDGES.find((p) => p.name === name);
   if (!preset) throw new Error(`Unknown preset "${name}". Available: ${PRESET_BRIDGES.map((p) => p.name).join(", ")}`);
-  const cfg = loadUserConfig();
+  const cfg = loadUserConfig({ forUpdate: true }); // a settings file with a mistake is refused, not replaced
   cfg.mcpBridges = cfg.mcpBridges || [];
   if (cfg.mcpBridges.some((b) => b.name === name)) {
     return { added: false, name, reason: "already configured" };
@@ -101,7 +104,7 @@ export async function connectBridge(bridge) {
   });
 
   const client = new Client(
-    { name: "memvault-bridge", version: "2.1.0" },
+    { name: "memvault-bridge", version: PKG_VERSION },
     { capabilities: {} }
   );
 

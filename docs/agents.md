@@ -26,11 +26,11 @@ memvault agent create --name "Maths Tutor" --from-file tutor.txt --save
 memvault agent edit maths-tutor        # opens it in your editor
 ```
 
-**3. Ask your AI.** In an app connected to MemVault, say "Read my description and create an agent from it." The AI fills in the profile with the `agent_define` tool, which is more thorough than the built-in reader. (`agent_define` can set who the agent is but never its permissions; those stay with you.)
+**3. Ask your AI.** In an app connected with the plain `memvault` entry (not one tied to an agent), say "Read my description and create an agent from it." The AI fills in the profile with the `agent_define` tool, which is more thorough than the built-in reader. `agent_define` is never offered to an app tied to an agent. It can set who the agent is but never its permissions; those stay with you. If an agent with the same id already exists (the id is made from the name when the AI gives none, so "Coordinator" means `coordinator`), `agent_define` updates it: it keeps the agent's permissions, and anything the AI leaves out stays as it was.
 
 ## Use one
 
-- **Copy briefing** (dashboard) or `memvault agent brief <id>`: paste it into any AI to make it that agent for the chat.
+- **Copy instructions** (on the agent's card in the dashboard) or `memvault agent brief <id>`: paste the text into any AI to make it that agent for the chat.
 - **`agent_activate`**: in an app that is connected to MemVault, say "Activate the study-buddy agent." The briefing includes the agent's rules and the memories it may see. An app connected to one agent can only activate that agent; an unrestricted (owner) connection can activate any.
 - **Give an app its own agent**: `memvault mcp-config --agent study-buddy` prints settings for that one app. That app now only ever sees what `study-buddy` may see, and is only offered the tools `study-buddy` may use. The agent comes from those settings, never from anything the AI says.
 
@@ -42,7 +42,7 @@ memvault agent edit maths-tutor        # opens it in your editor
 | `agent:<id>` | that agent, and you | that agent |
 | `project:<name>` | agents whose profile lists it | agents whose profile lists it as writable |
 
-Tell an agent to keep something private: "Remember this, privately." (`vault_remember` with `private: true`). A coordinator that must see several private spaces can be given `agent:*` or `project:*` read access in "More options"; the dashboard marks such agents **wide access** so you notice.
+Tell an agent to keep something private: "Remember this, privately." (`vault_remember` with `private: true`). A coordinator that must see several private spaces can be given `agent:*` or `project:*` read access in "More options". When an agent may read another agent's private space (`agent:…`, including `agent:*`) or may list Secure Vault names, its card in the dashboard shows a warning badge (today it reads "Can see more than usual") so you notice. `project:*` alone does not show the badge.
 
 Use **See what this agent can see** on the Memory page to check what an agent would find.
 
