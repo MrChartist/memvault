@@ -29,6 +29,7 @@ import { FileLock } from "./filelock.mjs";
 import { encryptBuffer, decryptBuffer, isEncryptedBackup, MIN_PASSPHRASE_LENGTH } from "./crypto-vault.mjs";
 import initSqlJs from "sql.js";
 import { retryBusy } from "./retry.mjs";
+import { forgetSyncState } from "./device-sync.mjs";
 
 const SQL = await initSqlJs();
 
@@ -115,6 +116,9 @@ function installDb(bytes) {
   } finally {
     lock.release();
   }
+  // Device sync remembers which of the other computers' files it already merged. After a restore those files
+  // must be read again, so that your other computers' newer changes come back.
+  forgetSyncState();
 }
 
 /** Restore the live DB from a named local backup (e.g. "index-...sqlite"). */

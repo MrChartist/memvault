@@ -14,6 +14,9 @@ const sync = await import('../device-sync.mjs');
 const keys = await import('../device-keys.mjs');
 const { saveAgent, getAgent, deleteAgent, blankProfile } = await import('../agents.mjs');
 
+/** A time this many hours from now, so it is later than any change the test itself makes. */
+const later = (hours) => new Date(Date.now() + hours * 3600e3).toISOString();
+
 function computer(name) {
   const home = path.join(tmp, name);
   const root = path.join(home, 'vault');
@@ -100,9 +103,9 @@ describe('two computers share one memory through a folder', () => {
     const id = dev.a.add('Shared plan', 'v0');
     dev.a.run(); dev.b.run();
     dev.a.vdb.run("UPDATE items SET content = 'from A' WHERE id = ?", [id]);
-    dev.a.vdb.run("UPDATE items SET updated_at = '2026-10-05T10:00:00.000Z' WHERE id = ?", [id]);
+    dev.a.vdb.run('UPDATE items SET updated_at = ? WHERE id = ?', [later(1), id]);
     dev.b.vdb.run("UPDATE items SET content = 'from B' WHERE id = ?", [id]);
-    dev.b.vdb.run("UPDATE items SET updated_at = '2026-10-05T11:00:00.000Z' WHERE id = ?", [id]);
+    dev.b.vdb.run('UPDATE items SET updated_at = ? WHERE id = ?', [later(2), id]);
     for (let i = 0; i < 2; i++) { dev.a.run(); dev.b.run(); }
     const content = (d) => d.vdb.query('SELECT content FROM items WHERE id = ?', [id])[0]?.content;
     expect(content(dev.a)).toBe('from B');
@@ -113,9 +116,9 @@ describe('two computers share one memory through a folder', () => {
     const id = dev.a.add('Keep me', 'v0');
     dev.a.run(); dev.b.run();
     dev.a.vdb.run('DELETE FROM items WHERE id = ?', [id]);
-    dev.a.vdb.run("UPDATE tombstones SET deleted_at = '2026-10-05T10:00:00.000Z' WHERE id = ?", [id]);
+    dev.a.vdb.run('UPDATE tombstones SET deleted_at = ? WHERE id = ?', [later(1), id]);
     dev.b.vdb.run("UPDATE items SET content = 'edited later' WHERE id = ?", [id]);
-    dev.b.vdb.run("UPDATE items SET updated_at = '2026-10-05T12:00:00.000Z' WHERE id = ?", [id]);
+    dev.b.vdb.run('UPDATE items SET updated_at = ? WHERE id = ?', [later(2), id]);
     for (let i = 0; i < 2; i++) { dev.a.run(); dev.b.run(); }
     const content = (d) => d.vdb.query('SELECT content FROM items WHERE id = ?', [id])[0]?.content;
     expect(content(dev.a)).toBe('edited later');
@@ -280,11 +283,143 @@ describe('every write path is tracked, so nothing can be missed', () => {
     dev.a.add('x'); // same note, same date: same id
     expect(dev.a.vdb.query("SELECT COUNT(*) AS n FROM tombstones WHERE id = ?", [id])[0].n).toBe(0);
   });
-  it('a new note has no change time until it is changed', () => {
-    const id = dev.a.add('fresh');
-    expect(dev.a.vdb.query('SELECT updated_at FROM items WHERE id = ?', [id])[0].updated_at).toBe(null);
+  it('a new note counts as a change made now, and each change is stamped after the one before', () => {
+    const before = new Date().toISOString();
+    const id = dev.a.add('fresh'); // dated 2026-10-01, written now
+    const first = dev.a.vdb.query('SELECT updated_at FROM items WHERE id = ?', [id])[0].updated_at;
+    expect(first >= before).toBe(true);
+    dev.a.vdb.run("UPDATE items SET updated_at = '2999-01-01T00:00:00.000Z' WHERE id = ?", [id]); // a version from a computer whose clock is far ahead
     dev.a.vdb.run("UPDATE items SET tags = 'x' WHERE id = ?", [id]);
-    expect(dev.a.vdb.query('SELECT updated_at FROM items WHERE id = ?', [id])[0].updated_at).not.toBe(null);
+    expect(dev.a.vdb.query('SELECT updated_at FROM items WHERE id = ?', [id])[0].updated_at > '2999-01-01T00:00:00.000Z').toBe(true);
+  });
+});
+
+describe('things a review found', () => {
+  it('replacing "what I wrote before" on one computer leaves what came from the others (Antigravity, snapshots)', () => {
+    // A "current state" snapshot with the same title on two computers, as computer info and VS Code write them
+    const snap = (d, text) => d.vdb.addItems([{ type: 'worklog', source: 'system', title: '[System] Disk Usage Snapshot', content: text, upsert: true }]);
+    snap(dev.a, 'MacBook disks');
+    snap(dev.b, 'PC disks');
+    for (let i = 0; i < 2; i++) { dev.a.run(); dev.b.run(); }
+    snap(dev.b, 'PC disks, later');
+    for (let i = 0; i < 2; i++) { dev.a.run(); dev.b.run(); }
+    for (const d of [dev.a, dev.b]) {
+      const texts = d.vdb.query("SELECT content FROM items WHERE source = 'system' ORDER BY content").map((r) => r.content);
+      expect(texts, d.name).toEqual(['MacBook disks', 'PC disks, later']);
+    }
+  });
+
+  it('a capture that clears its own earlier items does not delete the other computers\' items', () => {
+    const ag = (d, title) => d.vdb.addItems([{ type: 'conversation', source: 'antigravity', title, content: title, tags: 'antigravity,conv:abcd1234', created_at: '2026-10-01T09:00:00.000Z' }]);
+    ag(dev.a, 'From the MacBook');
+    ag(dev.b, 'From the PC');
+    for (let i = 0; i < 2; i++) { dev.a.run(); dev.b.run(); }
+    // what sync-antigravity.mjs does on the PC before writing its items again
+    dev.b.vdb.run("DELETE FROM items WHERE source = 'antigravity' AND tags LIKE '%conv:%' AND id NOT IN (SELECT id FROM synced_in)");
+    ag(dev.b, 'From the PC');
+    for (let i = 0; i < 2; i++) { dev.a.run(); dev.b.run(); }
+    for (const d of [dev.a, dev.b]) expect(d.titles(), d.name).toEqual(expect.arrayContaining(['From the MacBook', 'From the PC']));
+  });
+
+  it('setting up a new computer never resets a changed agent, or brings back a deleted one', async () => {
+    const { installStarterPack } = await import('../agents.mjs');
+    installStarterPack(dev.a.vdb);
+    const custom = { ...getAgent(dev.a.vdb, 'assistant'), role: 'My own assistant', tools: { allow: ['vault_search'] } };
+    saveAgent(dev.a.vdb, custom);
+    deleteAgent(dev.a.vdb, 'coder');
+    dev.a.run();
+    installStarterPack(dev.b.vdb); // what `memvault setup` does on the new computer
+    for (let i = 0; i < 2; i++) { dev.b.run(); dev.a.run(); }
+    for (const d of [dev.a, dev.b]) {
+      expect(getAgent(d.vdb, 'assistant').role, d.name).toBe('My own assistant');
+      expect(getAgent(d.vdb, 'assistant').tools.allow, d.name).toEqual(['vault_search']);
+      expect(getAgent(d.vdb, 'coder'), d.name).toBe(null);
+    }
+  });
+
+  it('an edit that arrives through a second computer reaches a third that only sees the second', () => {
+    const id = dev.a.add('Plan', 'old');
+    for (const d of [dev.a, dev.b, dev.c, dev.b, dev.c]) d.run();
+    dev.a.vdb.run("UPDATE items SET content = 'new' WHERE id = ?", [id]);
+    dev.a.run(); dev.b.run();
+    fs.rmSync(path.join(shared, `memvault-${dev.a.identity.id}.mvsync`)); // the MacBook goes away
+    dev.c.run();
+    expect(dev.c.vdb.query('SELECT content FROM items WHERE id = ?', [id])[0].content).toBe('new');
+  });
+
+  it('an entry without a memory space joins "shared" instead of blocking every other change', () => {
+    const snap = sync.snapshot(dev.a.vdb, dev.a.identity);
+    snap.items.push({ id: 'diary_noscope', type: 'diary', title: 'no scope', content: 'c', created_at: '2026-10-02T00:00:00.000Z' });
+    snap.items.push({ id: 'diary_fine', type: 'diary', title: 'fine', content: 'c', created_at: '2026-10-02T00:00:00.000Z', scope: 'shared' });
+    sync.writeOwnFile(shared, dev.a.identity, sync.encodeSnapshot(snap, PASS));
+    const r = dev.b.run();
+    expect(r.ok, r.problems.join()).toBe(true);
+    expect(dev.b.vdb.query("SELECT id, scope FROM items WHERE id LIKE 'diary_%' ORDER BY id")).toEqual([{ id: 'diary_fine', scope: 'shared' }, { id: 'diary_noscope', scope: 'shared' }]);
+  });
+
+  it('a file asking for slow key settings is refused at once (the folder host needs no passphrase for that)', async () => {
+    const { encryptBuffer } = await import('../crypto-vault.mjs');
+    const blob = encryptBuffer(Buffer.from('x'), PASS);
+    const len = blob.readUInt32BE(5);
+    const header = JSON.parse(blob.subarray(9, 9 + len).toString('utf8'));
+    const evil = Buffer.from(JSON.stringify({ ...header, p: 200 }));
+    const lenBuf = Buffer.alloc(4); lenBuf.writeUInt32BE(evil.length);
+    const forged = Buffer.concat([blob.subarray(0, 5), lenBuf, evil, blob.subarray(9 + len)]);
+    fs.writeFileSync(path.join(shared, `memvault-${'f'.repeat(16)}.mvsync`), forged);
+    const t = Date.now();
+    const r = dev.b.run();
+    expect(Date.now() - t).toBeLessThan(3000);
+    expect(r.problems.join()).toMatch(/key settings MemVault does not use|cannot be opened/);
+  });
+
+  it.skipIf(process.platform === 'win32')('links planted in the shared folder are neither read nor written through', () => {
+    const outside = path.join(tmp, 'outside.txt');
+    fs.writeFileSync(outside, 'keep me');
+    fs.symlinkSync(outside, path.join(shared, `memvault-${'e'.repeat(16)}.mvsync`)); // a "peer" that is a link
+    fs.symlinkSync(outside, path.join(shared, `memvault-${dev.b.identity.id}.mvsync`)); // a link at our own name
+    dev.b.add('note');
+    const r = dev.b.run();
+    expect(r.problems.join()).toMatch(/not a plain file/);
+    expect(fs.readFileSync(outside, 'utf8')).toBe('keep me');
+    expect(fs.lstatSync(path.join(shared, `memvault-${dev.b.identity.id}.mvsync`)).isFile()).toBe(true);
+  });
+
+  it('after a restore, the other computers\' newer changes come back', () => {
+    const id = dev.a.add('Shared plan', 'v1');
+    dev.a.run(); dev.b.run();
+    const dbFile = path.join(dev.a.root, 'db', 'index.sqlite');
+    const backup = fs.readFileSync(dbFile);
+    dev.b.vdb.run("UPDATE items SET content = 'v2' WHERE id = ?", [id]);
+    dev.b.run(); dev.a.run();
+    fs.writeFileSync(dbFile, backup); // restore the older vault on the MacBook…
+    sync.forgetSyncState({ dir: dev.a.home }); // …which is what restoring a backup does
+    dev.a.vdb.invalidate();
+    dev.a.run();
+    expect(dev.a.vdb.query('SELECT content FROM items WHERE id = ?', [id])[0].content).toBe('v2');
+  });
+
+  it('a computer whose settings were copied from another notices, and takes a new id', () => {
+    fs.copyFileSync(path.join(dev.a.home, 'device.json'), path.join(dev.c.home, 'device.json'));
+    const twin = JSON.parse(fs.readFileSync(path.join(dev.c.home, 'device.json'), 'utf8'));
+    dev.a.add('from A'); dev.a.run();
+    dev.c.add('from C');
+    dev.c.run({ identity: twin }); // C writes "A's" file
+    const r = dev.a.run();
+    expect(r.problems.join()).toMatch(/new id/);
+    expect(r.device.id).not.toBe(dev.a.identity.id);
+  });
+
+  it('a sync that cannot start waits its interval instead of trying again every minute', () => {
+    const settings = { enabled: true, folder: shared, intervalMinutes: 5, passphraseFile: path.join(dev.a.home, 'pp') };
+    const r = sync.syncDevices({ vdb: dev.a.vdb, dir: dev.a.home, identity: dev.a.identity, passphrase: null, settings, security: { redact: true, audit: false } });
+    expect(r.ok).toBe(false);
+    expect(sync.syncDue(settings, { dir: dev.a.home })).toBe(false);
+  });
+
+  it('deletion records older than half a year are dropped', () => {
+    dev.a.vdb.run("INSERT INTO tombstones (kind, id, deleted_at) VALUES ('item', 'old_one', '2020-01-01T00:00:00.000Z')");
+    dev.a.run();
+    expect(dev.a.vdb.query("SELECT COUNT(*) AS n FROM tombstones WHERE id = 'old_one'")[0].n).toBe(0);
   });
 });
 

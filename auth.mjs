@@ -149,10 +149,13 @@ export function createGuards({ port, token, allowedHosts = [], allowedOrigins = 
   const requireToken = (req, res, next) => {
     const h = String(req.headers.authorization || "");
     const candidate = h.startsWith("Bearer ") ? h.slice(7).trim() : req.headers["x-memvault-token"];
-    if (!tokenMatches(candidate, token) && !deviceKey(candidate)) {
+    if (tokenMatches(candidate, token)) return next();
+    const phone = deviceKey(candidate);
+    if (!phone) {
       res.set("WWW-Authenticate", 'Bearer realm="memvault"');
       return res.status(401).json({ ok: false, error: "Missing or invalid API token. Run `memvault token`." });
     }
+    req.deviceKeyId = phone; // a phone or tablet signed in with its own key (see ownerOnly in server.mjs)
     next();
   };
 

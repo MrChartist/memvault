@@ -158,6 +158,7 @@ export function deleteAgent(db, id, { purge = false } = {}) {
 // "general": helpers for anyone. Other packs are optional examples.
 
 export const DEFAULT_PACK = "general";
+const STARTER_STAMP = "2000-01-01T00:00:00.000Z";
 
 /** Available packs, with their agents' ids and names. */
 export function listPacks(dir = STARTER_DIR) {
@@ -201,6 +202,10 @@ export function installStarterPack(db, { pack = DEFAULT_PACK, overwrite = false,
     for (const p of loadPack(name, dir)) {
       if (!overwrite && getAgent(db, p.id)) { skipped.push(p.id); continue; }
       saveAgent(db, p);
+      // A starter agent added by setup is dated long ago, so that on a computer joining device sync it never
+      // counts as newer than your own changes, or a deletion, made on your other computers.
+      // (--overwrite is a deliberate reset, so it is dated now and wins.)
+      if (!overwrite) db.run("UPDATE agents SET created_at = ?, updated_at = ? WHERE id = ?", [STARTER_STAMP, STARTER_STAMP, p.id]);
       installed.push(p.id);
     }
   }

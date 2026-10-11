@@ -99,6 +99,32 @@ describe('signing a phone in', () => {
     expect((await req('GET', '/whoami', { token: phoneKey })).status).toBe(401);
   });
 
+  it('a phone can use the vault, but cannot sign in more phones or change passphrases', async () => {
+    const made = await req('POST', '/devices/pair-code', { body: { name: 'iPad' } });
+    const paired = await req('POST', '/pair', { token: null, body: { code: made.json.code } });
+    const phone = paired.json.key;
+    const seen = await req('GET', '/devices', { token: phone });
+    expect(seen.status).toBe(200);
+    expect(seen.json.onPhone).toBe(true); // so the dashboard hides what is refused below
+    expect((await req('GET', '/devices')).json.onPhone).toBe(false);
+    expect((await req('POST', '/devices/sync', { token: phone, body: {} })).status).toBe(200);
+
+    const refused = [
+      ['POST', '/devices/pair-code', { name: 'Second phone' }],
+      ['PUT', '/devices', { enabled: false }],
+      ['PUT', '/devices/passphrase', { passphrase: 'a new passphrase', confirm: 'a new passphrase' }],
+      ['PUT', '/settings/passphrase', { passphrase: 'a new passphrase', confirm: 'a new passphrase' }],
+      ['DELETE', `/devices/phones/${paired.json.id}`, undefined],
+    ];
+    for (const [method, p, body] of refused) {
+      const r = await req(method, p, { token: phone, body });
+      expect(r.status, `${method} ${p}`).toBe(403);
+      expect(r.json.error).toMatch(/on your computer/);
+    }
+    expect((await req('GET', '/devices')).json.phones.filter((x) => x.name === 'Second phone')).toHaveLength(0);
+    expect((await req('GET', '/whoami', { token: phone })).status).toBe(200); // it did not sign itself out either
+  });
+
   it('wrong codes are limited', async () => {
     let last;
     for (let i = 0; i < 6; i++) last = await req('POST', '/pair', { token: null, body: { code: 'AAAA-AAAA' } });

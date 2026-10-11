@@ -256,6 +256,7 @@
       <div class="card" aria-labelledby="s-devices">
         <h3 id="s-devices">Your devices</h3>
         <p class="muted">Use one memory on all your computers. Each one keeps its own copy, and they keep each other up to date through a folder you share between them (Syncthing, iCloud Drive, Dropbox, OneDrive, Google Drive or your own server). Everything in that folder is locked with your sync passphrase. <a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md" target="_blank" rel="noopener noreferrer">How to set it up<span class="sr-only"> (opens in a new tab)</span></a></p>
+        <p id="dv-phone-note" class="muted small" hidden>You are on a phone or tablet. To change these settings, change a passphrase or add a phone, use the dashboard on your computer.</p>
         <div id="devices-info"></div>
         <form id="devices-form" class="form-grid" novalidate>
           <div><label for="dv-name" class="label">This computer’s name</label><input id="dv-name" type="text" dir="auto" maxlength="60" /></div>
@@ -277,7 +278,7 @@
         <h4>Phones and tablets</h4>
         <p class="muted small">A phone or tablet can open this dashboard through a private address that only your own devices can reach (for example Tailscale). Each one signs in with a one-time code and gets a key of its own.</p>
         <div id="phones-list"></div>
-        <div class="row gap wrap"><button class="btn" data-action="pair-phone">Add a phone or tablet</button></div>
+        <div class="row gap wrap" id="pair-phone-row"><button class="btn" data-action="pair-phone">Add a phone or tablet</button></div>
         <div id="pair-code" class="pair-code" hidden></div>
       </div>
 

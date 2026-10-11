@@ -484,6 +484,13 @@ check("a phone signs in with the code and sees the memories", (await PH.page.loc
 await PH.page.reload(); await PH.page.waitForSelector("article.entry");
 check("and stays signed in after a reload, with a key of its own", (await PH.page.locator("#dlg-connect[open]").count()) === 0 && await PH.page.evaluate(() => (localStorage.getItem("memvault-device-key") || "").startsWith("mvd_")));
 check("the same code does not work twice", (await (await fetch(`${base}/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: pairCode }) })).status) === 401);
+await PH.page.click('.tab[data-view="settings"]'); await PH.page.waitForSelector("#devices-info p");
+const onPhone = async (sel) => PH.page.locator(sel).first().isVisible();
+check("on the phone, Settings hides what only a computer may change", await onPhone("#dv-phone-note") && await onPhone('[data-action="devices-sync"]')
+  && !(await onPhone("#pair-phone-row")) && !(await onPhone("#dv-pass-form")) && !(await onPhone("#pass-form"))
+  && (await PH.page.locator('#phones-list [data-action="forget-phone"]').count()) === 0 && await PH.page.locator("#dv-folder").isDisabled());
+await axe(PH.page, "Settings on a phone");
+await PH.page.click('.tab[data-view="memory"]');
 await kp.click('.tab[data-view="memory"]'); await kp.click('.tab[data-view="settings"]');
 await kp.waitForFunction(() => /Test phone/.test(document.querySelector("#phones-list")?.innerText || ""));
 check("the phone is listed under 'Phones and tablets' with a way to sign it out", (await kp.locator('#phones-list [data-action="forget-phone"]').count()) === 1);

@@ -233,12 +233,15 @@ export async function cmdSetup() {
   console.log(`${OK} Vault ready at ${cfg.VAULT_ROOT}`);
   console.log(`${OK} Dashboard key ${hadToken ? "already in place" : "created"} (${cfg.TOKEN_FILE}), kept outside the vault and never backed up`);
   console.log(`${OK} Helpers (agents): ${starter.installed.length ? `installed ${starter.installed.join(", ")}` : "already installed"}`);
-  const step = (cmd, what) => `  ${mv(cmd).padEnd(runFromNpx() ? 52 : 34)}${what}`;
+  const steps = [
+    ["mcp-config", "paste into Claude, Cursor or Antigravity"],
+    ["mcp-config --agent study-buddy", "give one app its own helper"],
+    ["open", "the dashboard"],
+    ["doctor", "check your setup"],
+  ];
+  const width = Math.max(...steps.map(([cmd]) => mv(cmd).length)) + 2;
   console.log(`\nNext steps:`);
-  console.log(step("mcp-config", "→ paste into Claude, Cursor or Antigravity"));
-  console.log(step("mcp-config --agent study-buddy", "→ give one app its own helper"));
-  console.log(step("open", "→ the dashboard"));
-  console.log(step("doctor", "→ check your setup"));
+  for (const [cmd, what] of steps) console.log(`  ${mv(cmd).padEnd(width)}→ ${what}`);
   if (runFromNpx()) console.log(`\nTip: install it once with  npm install -g ${PKG_NAME}  and the commands become just  memvault …`);
 }
 

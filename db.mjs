@@ -79,8 +79,13 @@ const BASE_SCHEMA = `
 
 // Multi-device sync (device-sync.mjs) has to know when each memory last changed and which ones were deleted.
 // Triggers record both on every write path (the dashboard, the CLI, imports, older versions of MemVault too),
-// so no caller can forget. `updated_at` stays empty until a memory is first changed.
-const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
+// so no caller can forget. A new memory counts as a change made now.
+//
+// A change is always stamped later than the version it replaces, even when this computer's clock is behind
+// the one that made that version: otherwise the other computers would keep the older version, as "newer".
+const iso = (julianExpr) => `strftime('%Y-%m-%dT%H:%M:%fZ', ${julianExpr})`;
+const after = (stampSql) => iso(`MAX(julianday('now'), COALESCE(julianday(${stampSql}) + 1.0 / 86400000, 0))`);
+const ITEM_STAMP = "MAX(COALESCE(OLD.updated_at, ''), COALESCE(OLD.created_at, ''))";
 const CHANGE_TRACKING = `
   CREATE TABLE IF NOT EXISTS tombstones (
     kind TEXT NOT NULL,              -- item | agent
@@ -88,15 +93,24 @@ const CHANGE_TRACKING = `
     deleted_at TEXT NOT NULL,
     PRIMARY KEY (kind, id)
   );
-  CREATE TRIGGER IF NOT EXISTS mv_items_changed AFTER UPDATE OF type, source, title, content, file_path, tags, agent_id, scope ON items
-    BEGIN UPDATE items SET updated_at = ${NOW_SQL} WHERE id = NEW.id; END;
-  CREATE TRIGGER IF NOT EXISTS mv_items_deleted AFTER DELETE ON items
-    BEGIN INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('item', OLD.id, ${NOW_SQL}); END;
-  CREATE TRIGGER IF NOT EXISTS mv_items_added AFTER INSERT ON items
-    BEGIN DELETE FROM tombstones WHERE kind = 'item' AND id = NEW.id; END;
-  CREATE TRIGGER IF NOT EXISTS mv_agents_deleted AFTER DELETE ON agents
-    BEGIN INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('agent', OLD.id, ${NOW_SQL}); END;
-  CREATE TRIGGER IF NOT EXISTS mv_agents_added AFTER INSERT ON agents
+  -- Memories that came from another computer. "Current state" snapshots (computer info, VS Code, folders)
+  -- and a capture that replaces what it wrote before only ever replace this computer's own rows.
+  CREATE TABLE IF NOT EXISTS synced_in (id TEXT PRIMARY KEY);
+  CREATE TRIGGER mv_items_changed AFTER UPDATE OF type, source, title, content, file_path, tags, agent_id, scope ON items
+    BEGIN UPDATE items SET updated_at = ${after(ITEM_STAMP)} WHERE id = NEW.id; END;
+  CREATE TRIGGER mv_items_deleted AFTER DELETE ON items
+    BEGIN
+      INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('item', OLD.id, ${after(ITEM_STAMP)});
+      DELETE FROM synced_in WHERE id = OLD.id;
+    END;
+  CREATE TRIGGER mv_items_added AFTER INSERT ON items
+    BEGIN
+      DELETE FROM tombstones WHERE kind = 'item' AND id = NEW.id;
+      UPDATE items SET updated_at = ${iso("'now'")} WHERE id = NEW.id AND NEW.updated_at IS NULL;
+    END;
+  CREATE TRIGGER mv_agents_deleted AFTER DELETE ON agents
+    BEGIN INSERT OR REPLACE INTO tombstones (kind, id, deleted_at) VALUES ('agent', OLD.id, ${after("OLD.updated_at")}); END;
+  CREATE TRIGGER mv_agents_added AFTER INSERT ON agents
     BEGIN DELETE FROM tombstones WHERE kind = 'agent' AND id = NEW.id; END;
 `;
 const TRIGGER_NAMES = ["mv_items_changed", "mv_items_deleted", "mv_items_added", "mv_agents_deleted", "mv_agents_added"];
@@ -146,6 +160,7 @@ export function migrate(db) {
   db.run("CREATE INDEX IF NOT EXISTS idx_items_scope ON items(scope)");
   db.run("CREATE INDEX IF NOT EXISTS idx_items_agent ON items(agent_id)");
   if (!cols.includes("updated_at")) db.run("ALTER TABLE items ADD COLUMN updated_at TEXT");
+  for (const t of TRIGGER_NAMES) db.run(`DROP TRIGGER IF EXISTS ${t}`); // always the current version of each
   db.run(CHANGE_TRACKING);
 
   db.run("INSERT OR IGNORE INTO meta (key,value) VALUES ('vault_id', ?)", [crypto.randomUUID()]);
@@ -242,6 +257,7 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
     // and which ids were deleted is not the agent's business either.
     for (const t of TRIGGER_NAMES) db.run(`DROP TRIGGER IF EXISTS ${t}`);
     db.run("DELETE FROM tombstones");
+    db.run("DELETE FROM synced_in");
     const visible = rows(db, "SELECT DISTINCT scope FROM items")
       .map((r) => r.scope)
       .filter(scopeMatches);
@@ -424,7 +440,8 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
           if (upsert) {
             db.run(
               `DELETE FROM items WHERE source = ? AND title = ? AND COALESCE(file_path, '') = ?
-                 AND scope = ? AND COALESCE(agent_id, '') = ?`,
+                 AND scope = ? AND COALESCE(agent_id, '') = ?
+                 AND id NOT IN (SELECT id FROM synced_in)`, // another computer's snapshot of the same thing stays
               [source, title, filePath || "", scopeName, agent || ""]
             );
           }

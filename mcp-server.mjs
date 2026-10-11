@@ -1430,7 +1430,7 @@ process.stderr.write(`[MemVault MCP] DB_PATH=${DB_PATH}\n`);
       if (!syncDue(deviceSettings())) return;
       const env = { ...process.env };
       delete env.MEMVAULT_AGENT;
-      spawn(process.execPath, [script, "sync", "--if-due", "--quiet"], { stdio: "ignore", env }).unref();
+      spawn(process.execPath, [script, "sync", "--if-due", "--quiet"], { stdio: "ignore", env, windowsHide: true }).unref();
     } catch { /* a sync problem must never disturb the AI app; `memvault devices` shows it */ }
   };
   setTimeout(tick, 20_000).unref();

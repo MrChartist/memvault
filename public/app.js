@@ -1113,6 +1113,12 @@
   async function loadDevices() {
     try { devices = await api('/devices'); } catch (e) { $('#devices-info').innerHTML = `<p class="muted">${esc(e.message)}</p>`; return; }
     const d = devices;
+    // A phone or tablet can read and sync, but the server refuses these (ownerOnly in server.mjs).
+    const phone = Boolean(d.onPhone);
+    $('#dv-phone-note').hidden = !phone;
+    $$('#devices-form input').forEach((el) => { el.disabled = phone; });
+    $('#devices-form button[type="submit"]').hidden = phone;
+    for (const id of ['#dv-pass-form', '#pass-form', '#pair-phone-row']) $(id).hidden = phone;
     $('#dv-name').value = d.device.name;
     $('#dv-folder').value = d.folder || '';
     $('#dv-on').checked = d.enabled;
@@ -1125,7 +1131,7 @@
       : '<p class="muted small">No other computers seen yet. Set up the same shared folder and passphrase on them.</p>';
     $('#devices-info').innerHTML = `<p><b>${d.enabled ? 'Syncing is on' : 'Syncing is off'}</b>${d.enabled ? `, every ${esc(d.intervalMinutes)} minutes while MemVault is open` : ''}. ${d.passphraseSet ? 'The sync passphrase is set.' : '<b>No sync passphrase yet.</b>'} ${last}</p>${problems ? `<ul class="plain">${problems}</ul>` : ''}<h4>Other computers</h4>${peers}`;
     $('#phones-list').innerHTML = d.phones.length
-      ? `<ul class="plain">${d.phones.map((k) => `<li><span dir="auto"><b>${esc(k.name)}</b> <span class="muted small">· added ${esc(fmtDay(k.created_at))}${k.last_used_at ? `, last used ${esc(ago(k.last_used_at))}` : ''}</span></span> <button type="button" class="btn sm ghost" data-action="forget-phone" data-id="${esc(k.id)}" aria-label="Sign out: ${esc(k.name)}">Sign out</button></li>`).join('')}</ul>`
+      ? `<ul class="plain">${d.phones.map((k) => `<li><span dir="auto"><b>${esc(k.name)}</b> <span class="muted small">· added ${esc(fmtDay(k.created_at))}${k.last_used_at ? `, last used ${esc(ago(k.last_used_at))}` : ''}</span></span>${phone ? '' : ` <button type="button" class="btn sm ghost" data-action="forget-phone" data-id="${esc(k.id)}" aria-label="Sign out: ${esc(k.name)}">Sign out</button>`}</li>`).join('')}</ul>`
       : '<p class="muted small">No phones or tablets are signed in.</p>';
   }
 

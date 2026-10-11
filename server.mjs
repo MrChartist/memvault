@@ -199,6 +199,11 @@ export function createApp({
   const log = (action, detail, actor = "owner") => {
     if (security.audit !== false) audit({ actor, action, detail }, root);
   };
+  // Signing in more phones, changing a passphrase or the shared folder, and signing phones out are done on a
+  // computer with the dashboard key, never from a phone: a stolen phone cannot add a second key for itself.
+  const ownerOnly = (req, res, next) => (req.deviceKeyId
+    ? res.status(403).json({ ok: false, error: "Do this on your computer, not on a phone or tablet." })
+    : next());
 
   // ── items ────────────────────────────────────────────────────────────────
 
@@ -734,7 +739,7 @@ export function createApp({
   });
 
   // The passphrase goes to a private file OUTSIDE the vault (so backups never contain it); it is never returned or logged.
-  app.put("/settings/passphrase", (req, res) => {
+  app.put("/settings/passphrase", ownerOnly, (req, res) => {
     const parsed = PassphraseSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
     if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
@@ -761,16 +766,17 @@ export function createApp({
     name: z.string().max(60).optional(),
   }).strict();
 
-  app.get("/devices", (_req, res) => {
+  app.get("/devices", (req, res) => {
     res.json({
       ok: true,
       ...deviceStatus({ vdb, settings: devSettings(), dir: devicesDir }),
+      onPhone: Boolean(req.deviceKeyId), // the dashboard hides what ownerOnly refuses
       phones: listDeviceKeys(),
       addresses: (security.allowedOrigins || []).filter((o) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|$)/.test(o)),
     });
   });
 
-  app.put("/devices", (req, res) => {
+  app.put("/devices", ownerOnly, (req, res) => {
     const parsed = DevicesSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: "Only the shared folder, the on/off switch and this computer's name can be changed here." });
     const { enabled, folder, name } = parsed.data;
@@ -789,7 +795,7 @@ export function createApp({
     res.json({ ok: true });
   });
 
-  app.put("/devices/passphrase", (req, res) => {
+  app.put("/devices/passphrase", ownerOnly, (req, res) => {
     const parsed = PassphraseSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ ok: false, error: `Use at least ${MIN_PASSPHRASE_LENGTH} characters.` });
     if (parsed.data.passphrase !== parsed.data.confirm) return res.status(400).json({ ok: false, error: "The two passphrases are not the same." });
@@ -803,14 +809,14 @@ export function createApp({
     res.json({ ok: r.ok, added: r.added, changed: r.changed, deleted: r.deleted, agents: r.agents, backup: r.backup || null, problems: r.problems });
   });
 
-  app.post("/devices/pair-code", (req, res) => {
+  app.post("/devices/pair-code", ownerOnly, (req, res) => {
     const name = typeof req.body?.name === "string" ? req.body.name : "Phone";
     const { code, expiresAt } = createPairingCode({ name });
     log("devices", { changed: ["pairing-code"] });
     res.json({ ok: true, code, expiresAt });
   });
 
-  app.delete("/devices/phones/:id", (req, res) => {
+  app.delete("/devices/phones/:id", ownerOnly, (req, res) => {
     if (!forgetDeviceKey(req.params.id)) return res.status(404).json({ ok: false, error: "Not found" });
     log("device-forgotten", { device: req.params.id });
     res.json({ ok: true });
@@ -907,17 +913,16 @@ export function createApp({
 
 /**
  * While the dashboard server runs, it keeps this computer in step with the others: a check every minute,
- * a sync when one is due (every few minutes; the setting is devices.intervalMinutes). AI apps do the same
- * in the background, and a lock makes sure only one of them syncs at a time.
+ * a sync when one is due (every few minutes; the setting is devices.intervalMinutes). The sync runs as a
+ * separate short-lived process, so a large vault never makes the dashboard wait. AI apps do the same, and a
+ * lock makes sure only one of them syncs at a time.
  */
-function startDeviceSync(app) {
+function startDeviceSync() {
+  const script = path.join(__dirname, "device-sync.mjs");
   const tick = () => {
     try {
-      const settings = deviceSettings();
-      if (!syncDue(settings)) return;
-      const r = syncDevices({ vdb: app.locals.vdb, settings, security: app.locals.security, backup: backupLocal });
-      if (r.added || r.changed || r.deleted) console.log(`Devices: +${r.added} added, ${r.changed} changed, ${r.deleted} deleted`);
-      for (const p of r.problems) console.warn(`Devices: ${p}`);
+      if (!syncDue(deviceSettings())) return;
+      spawn(process.execPath, [script, "sync", "--if-due", "--quiet"], { stdio: "ignore", env: process.env, windowsHide: true }).unref();
     } catch (e) {
       console.warn(`Devices: ${e.message}`);
     }
@@ -952,7 +957,7 @@ export function start({ app = createApp(), port = PORT, host = SECURITY_CONFIG.h
     console.log(`VAULT_ROOT=${VAULT_ROOT}`);
     console.log(`Run \`memvault open\` to open the dashboard (it passes your API token for you).`);
     if (!isLoopbackHost(host)) console.warn(`⚠️  Listening on ${host} (allowRemote). Keep your API token private.`);
-    startDeviceSync(app);
+    startDeviceSync();
   });
 }
 
