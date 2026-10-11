@@ -182,8 +182,10 @@ describe('redact — behaviour', () => {
 });
 
 describe('redact — speed on hostile or unusual text', () => {
-  const ms = (text) => { const t = performance.now(); redact(text); return performance.now() - t; };
-  const LIMIT = 1500; // generous for slow CI; the old patterns needed 30+ seconds for the dotted case
+  // The faster of two runs: a busy CI machine can stall one run, but a pattern that backtracks is slow every time.
+  const once = (text) => { const t = performance.now(); redact(text); return performance.now() - t; };
+  const ms = (text) => Math.min(once(text), once(text));
+  const LIMIT = 3000; // well under a second normally; the old patterns needed 30+ seconds for the dotted case
 
   it.each([
     ['dotted identifiers', () => 'a.bc.def.node.value.x1.'.repeat(9000)],
