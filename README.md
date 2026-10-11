@@ -97,7 +97,7 @@ An agent is a saved profile. It says who the helper is, how it should sound, wha
 
 `memvault agent packs` lists more starter sets. Make your own in the dashboard by describing the helper in your own words, or with `memvault agent create --from-file my-helper.txt --save`.
 
-<p align="center"><img src="docs/images/agents.png" alt="The Agents screen showing helper cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its briefing or its connection settings." width="760"></p>
+<p align="center"><img src="docs/images/agents.png" alt="The Agents screen showing agent cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its instructions or its connection settings." width="760"></p>
 
 **Memory spaces.** Every note lives in one space:
 
@@ -126,7 +126,11 @@ memvault devices passphrase    # use the same one on every computer
 memvault devices               # what is set up, and the other computers seen
 ```
 
-Or use **Settings → Your devices** in the dashboard. The Secure Vault, uploaded files and the access log stay on each computer. Claude on the iPhone cannot read MemVault yet. Step-by-step guides for a VPS, for no VPS, for a cloud folder and for the iPhone are in [docs/devices.md](docs/devices.md).
+Or use **Settings → Your devices** in the dashboard:
+
+<p align="center"><img src="docs/images/devices.png" alt="Settings, Your devices: syncing is on; two other computers, Linux VPS and MacBook, with how many memories each had; this computer's name and shared folder; the sync passphrase; and one signed-in iPhone with a Sign out button." width="640"></p>
+
+The Secure Vault, uploaded files and the access log stay on each computer. Claude on the iPhone cannot read MemVault yet. Step-by-step guides for a VPS, for no VPS, for a cloud folder and for the iPhone are in [docs/devices.md](docs/devices.md).
 
 ## Is it safe?
 

@@ -47,20 +47,44 @@ for (const [actor, tool] of [["assistant", "vault_remember"], ["writer", "agent_
   audit({ actor, action: "tool", detail: { tool, args: ["query"] } }, vaultRoot);
 }
 
+// Two other computers share a folder with this one, and a phone is signed in, so "Your devices" shows a real picture.
+const { renameDevice, syncDevices, saveSyncPassphrase, deviceSettings } = await load("device-sync.mjs");
+const { createPairingCode, redeemPairingCode } = await load("device-keys.mjs");
+const sharedDir = path.join(vaultRoot, "Shared folder");
+fs.mkdirSync(sharedDir);
+const SYNC_PASS = "example sync passphrase";
+const syncAs = (vdb, home, name) => syncDevices({
+  vdb, dir: home, identity: renameDevice(name, { dir: home }), passphrase: SYNC_PASS,
+  settings: { enabled: true, folder: sharedDir, intervalMinutes: 5, passphraseFile: path.join(home, "sync-passphrase") },
+  security: { redact: true, audit: true },
+});
+for (const [name, note] of [["MacBook", "Book the train for the conference"], ["Linux VPS", "Back up the photos folder every Sunday"]]) {
+  const home = path.join(vaultRoot, "other computers", name);
+  const pdb = openVaultDb({ root: path.join(home, "vault") });
+  installStarterPack(pdb, { pack: "general" });
+  pdb.addItems([{ type: "diary", source: "manual", title: note, content: `Written on the ${name}.`, created_at: ago(30 + note.length) }]);
+  syncAs(pdb, home, name);
+  pdb.close();
+}
+
 const token = "shots-" + Math.random().toString(16).slice(2);
 const port = await new Promise((res) => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => res(p)); }); });
 const cfgFile = path.join(vaultRoot, "rc.json");
-fs.writeFileSync(cfgFile, "{}");
+fs.writeFileSync(cfgFile, JSON.stringify({ devices: { enabled: true, folder: sharedDir } }));
+saveSyncPassphrase(SYNC_PASS, deviceSettings(JSON.parse(fs.readFileSync(cfgFile, "utf8")), { dir: vaultRoot }));
+syncAs(vdb, vaultRoot, "Windows PC");
+redeemPairingCode(createPairingCode({ name: "iPhone" }).code, { name: "iPhone" });
 const config = { load: () => JSON.parse(fs.readFileSync(cfgFile, "utf8")), save: (c) => fs.writeFileSync(cfgFile, JSON.stringify(c)), passphraseFile: path.join(vaultRoot, "outside", "backup-passphrase") };
 const server = await new Promise((res) => { const s = createApp({ vdb, token, port, root: vaultRoot, config }).listen(port, "127.0.0.1", () => res(s)); });
 const base = `http://127.0.0.1:${port}`;
 
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || undefined, args: ["--no-sandbox"] });
 const written = [];
-const save = async (page, name, { site = true } = {}) => {
+const SITE_SHOTS = new Set(["dashboard.png", "dashboard-dark.png", "agents.png", "agents-dark.png"]); // what site/index.html shows
+const save = async (page, name) => {
   const file = path.join(DOCS, name);
   await page.screenshot({ path: file });
-  if (site) fs.copyFileSync(file, path.join(SITE, name));
+  if (SITE_SHOTS.has(name)) fs.copyFileSync(file, path.join(SITE, name));
   written.push(name);
 };
 
@@ -90,6 +114,21 @@ for (const [name, opts] of [
 ]) {
   const { ctx, page } = await open(opts);
   await save(page, name);
+  await ctx.close();
+}
+
+// Just the "Your devices" card, for the README.
+{
+  const { ctx, page } = await open({ theme: "light", height: 1200, view: "settings" });
+  await page.waitForFunction(() => /Other computers/.test(document.querySelector("#devices-info")?.innerText || ""));
+  const card = page.locator(".card", { has: page.locator("#s-devices") });
+  await card.scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    document.querySelector(".top")?.classList.add("unstick"); // the sticky header would cover the card
+    document.querySelector("#dv-folder").value = "C:\\Users\\you\\Sync\\MemVault Sync"; // this run's temporary folder means nothing to a reader
+  });
+  await card.screenshot({ path: path.join(DOCS, "devices.png") });
+  written.push("devices.png");
   await ctx.close();
 }
 

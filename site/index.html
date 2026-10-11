@@ -70,6 +70,7 @@
   --primary: hsl(var(--orange-500));
   --primary-hover: hsl(var(--orange-400));
   --primary-text: hsl(17.9 85.5% 38%);
+  --primary-strong: hsl(17.9 85.5% 33%); /* small bold text on the orange wash: 4.5:1 or more */
   --on-primary: hsl(var(--ink-wine));
   --wash: hsl(var(--orange-100));
   --good: hsl(151.9 45.3% 28%);
@@ -98,6 +99,7 @@
   --line: hsl(var(--paper-1) / 0.1);
   --line-strong: hsl(var(--paper-1) / 0.18);
   --primary-text: hsl(var(--orange-500));
+  --primary-strong: hsl(var(--orange-400));
   --wash: hsl(var(--orange-500) / 0.16);
   --good: hsl(var(--bullish-300));
   --good-wash: hsl(147.5 30% 15.7%);
@@ -166,7 +168,7 @@ code, kbd { font-family: var(--mono); font-size: 0.9em; }
 
 /* ── hero ── */
 .hero { padding: clamp(48px, 8vw, 96px) 0 0; text-align: center; overflow: hidden; }
-.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 0.8rem/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary-text); background: var(--wash); padding: 8px 14px; border-radius: 999px; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font: 700 0.8rem/1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary-strong); background: var(--wash); padding: 8px 14px; border-radius: 999px; }
 .hero h1 { font-size: clamp(2.4rem, 1.4rem + 4.6vw, 4.4rem); font-weight: 800; letter-spacing: -0.035em; line-height: 1.04; margin: 22px auto 0; max-width: 15ch; }
 .hero h1 em { font-style: normal; color: var(--primary-text); }
 .lead { font-size: clamp(1.1rem, 1rem + 0.5vw, 1.3rem); color: var(--muted); max-width: 40rem; margin: 22px auto 0; }
@@ -267,7 +269,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
 .panel > p { color: var(--muted); margin-top: 8px; }
 .status { display: inline-flex; align-items: center; gap: 8px; font: 700 0.8rem/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; padding: 7px 12px; border-radius: 999px; margin-bottom: 14px; }
 .status.ok { background: var(--good-wash); color: var(--good); }
-.status.soon { background: var(--wash); color: var(--primary-text); }
+.status.soon { background: var(--wash); color: var(--primary-strong); }
 .code { margin-top: 18px; background: var(--code-bg); color: var(--code-fg); border-radius: 14px; border: 1px solid var(--line); overflow: hidden; }
 .code-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px 6px 18px; border-bottom: 1px solid hsl(var(--paper-1) / 0.12); font: 600 0.8rem/1 var(--body); color: hsl(72 8% 70%); }
 .code pre { margin: 0; padding: 16px 18px 18px; overflow-x: auto; font: 0.9rem/1.8 var(--mono); }
@@ -455,8 +457,8 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
       </ul>
       <div class="shot-frame">
         <div class="bar" aria-hidden="true"><i></i><i></i><i></i></div>
-        <img class="for-light" src="assets/img/memory-light.png" width="1770" height="1350" alt="The MemVault dashboard: counts of notes, conversations and agents, a box to write a note, and a list of recent memories.">
-        <img class="for-dark" src="assets/img/memory-dark.png" width="1770" height="1350" alt="The MemVault dashboard in the dark theme: counts of notes, conversations and agents, a box to write a note, and a list of recent memories.">
+        <img class="for-light" src="assets/img/dashboard.png" width="1770" height="1350" alt="The MemVault dashboard: counts of notes, conversations and agents, a box to write a note, and a list of recent memories.">
+        <img class="for-dark" src="assets/img/dashboard-dark.png" width="1770" height="1350" alt="The MemVault dashboard in the dark theme: counts of notes, conversations and agents, a box to write a note, and a list of recent memories.">
       </div>
     </div>
   </div>
@@ -529,7 +531,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
         <div>
           <figure class="figure">
             <div class="frame">
-              <img class="for-light" src="assets/img/agents-light.png" width="1770" height="1290" loading="lazy" alt="The Agents screen: helper cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its briefing or its connection settings.">
+              <img class="for-light" src="assets/img/agents.png" width="1770" height="1290" loading="lazy" alt="The Agents screen: helper cards such as Coordinator, Everyday Assistant and Planner, each with buttons to copy its briefing or its connection settings.">
               <img class="for-dark" src="assets/img/agents-dark.png" width="1770" height="1290" loading="lazy" alt="The Agents screen in the dark theme, with helper cards and buttons to copy each briefing or its connection settings.">
             </div>
           </figure>
@@ -645,7 +647,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
           <p>Paste these lines into a terminal, one after another.</p>
           <div class="code">
             <div class="code-bar"><span>Terminal</span><button class="copy" type="button" data-copy="cmd-source" aria-label="Copy the install commands">Copy</button></div>
-<pre id="cmd-source"><code>git clone https://github.com/MrChartist/memvault.git
+<pre id="cmd-source" tabindex="0" aria-label="Install commands"><code>git clone https://github.com/MrChartist/memvault.git
 cd memvault
 npm install
 node cli.mjs setup       <span class="c"># one step, no questions</span>
@@ -670,7 +672,7 @@ node cli.mjs open        <span class="c"># opens the dashboard</span></code></pr
               <tr><th scope="row">Claude Desktop</th><td>Settings → Developer → Edit Config</td></tr>
               <tr><th scope="row">Cursor</th><td><code>~/.cursor/mcp.json</code></td></tr>
               <tr><th scope="row">Claude Code</th><td>Run the <code>claude mcp add …</code> command the dashboard shows you</td></tr>
-              <tr><th scope="row">Antigravity</th><td><code>~/.gemini/antigravity/mcp_config.json</code></td></tr>
+              <tr><th scope="row">Antigravity</th><td><code>~/.gemini/<wbr>antigravity/<wbr>mcp_config.json</code></td></tr>
               <tr><th scope="row">VS Code</th><td>The MCP settings of Cline or Roo</td></tr>
             </tbody>
           </table>
