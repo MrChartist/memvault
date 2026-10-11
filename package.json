@@ -30,7 +30,8 @@
     "test": "vitest run",
     "setup": "node cli.mjs setup",
     "doctor": "node cli.mjs doctor",
-    "test:e2e": "node tests/e2e/dashboard.e2e.mjs"
+    "test:e2e": "node tests/e2e/dashboard.e2e.mjs",
+    "screenshots": "node tests/e2e/screenshots.mjs"
   },
   "keywords": [
     "mcp",
