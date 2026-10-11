@@ -4,6 +4,11 @@
 
 Fixes found by installing the packed package and by testing each part again, plus documentation checked line by line against the code. Nothing here is on npm yet.
 
+**Your devices (new)**
+- One memory on all your computers: `memvault devices` (or **Settings → Your devices**) syncs this computer with your others through a folder you share between them (Syncthing, iCloud Drive, Dropbox, OneDrive, Google Drive or your own server). Each computer keeps its own full copy and writes one file of its own to the folder, encrypted with your sync passphrase. The newest change wins on every computer, deletions travel, Undo sticks, and a sync that would delete many notes takes a backup first. It runs every 5 minutes while the dashboard or an AI app is open, and with `memvault sync`. The Secure Vault, uploaded files and the access log stay on each computer. See [docs/devices.md](docs/devices.md).
+- Your phone or tablet: `memvault devices hub --address https://…` lets the dashboard answer at a private address (for example `tailscale serve`; MemVault keeps listening on `127.0.0.1`), and `memvault devices pair` gives a one-time code that signs a phone in with a key of its own, which you can sign out on its own.
+- The vault now records when each memory last changed and which were deleted (for sync). Older versions can still open it.
+
 **Security and privacy**
 - A key or password that crossed the 80-character cut of a title was stored half-masked: its first part stayed in the title, and search returned it. This affected `vault_remember`, `vault_capture_prompt`, `vault_log_conversation`, git capture, the Gemini and Perplexity importers and Antigravity capture. Secrets are now masked first, and the title is shortened after that.
 - Taking access away now works at once. An AI app tied to an agent checks the agent's profile again on every request. If you delete the agent, or change what it may read, write or use, the request is refused and that connection ends. Restart the app to connect with the new access. (Before, it kept the old access until the app was restarted.)

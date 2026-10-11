@@ -111,13 +111,31 @@ An agent is a saved profile. It says who the helper is, how it should sound, wha
 
 **Giving an AI app its own agent.** `memvault mcp-config --agent study-buddy` prints settings that bind that app to one agent. The agent is chosen by that setting, never by anything the AI says, so an AI cannot give itself more access. Full guide: [docs/agents.md](docs/agents.md).
 
+## On all your devices
+
+Use one memory on several computers, for example a Linux server (VPS), a MacBook and a Windows PC, and open it on your iPhone.
+
+- **Each computer keeps its own full copy**, so your AI apps work offline.
+- **They keep each other up to date through a folder you share between them**: [Syncthing](https://syncthing.net) (free, device to device, no server needed), iCloud Drive, Dropbox, OneDrive, Google Drive, or a folder on your own server. Each computer writes one file there, **encrypted with your sync passphrase**, so the folder's host sees only scrambled data.
+- **The newest change wins on every computer**, and deletions travel too. A sync that would delete many notes makes a backup first.
+- **Your iPhone or iPad** opens the dashboard of a computer that is switched on (a VPS is ideal) through a private [Tailscale](https://tailscale.com) address, and signs in with a one-time code. Each phone has its own key, which you can sign out on its own.
+
+```bash
+memvault devices setup --folder "~/Sync/MemVault Sync" --name "MacBook"
+memvault devices passphrase    # use the same one on every computer
+memvault devices               # what is set up, and the other computers seen
+```
+
+Or use **Settings → Your devices** in the dashboard. The Secure Vault, uploaded files and the access log stay on each computer. Claude on the iPhone cannot read MemVault yet. Step-by-step guides for a VPS, for no VPS, for a cloud folder and for the iPhone are in [docs/devices.md](docs/devices.md).
+
 ## Is it safe?
 
 MemVault is built so that your data stays with you, and it can check itself: run `memvault doctor` for a live report, or open the **Security** page in the dashboard.
 
 | What | How |
 |---|---|
-| Nothing is reachable from outside this computer | The server listens on `127.0.0.1` only. Every request needs a secret key, and web pages from other sites are refused. |
+| Nothing is reachable from outside this computer | The server listens on `127.0.0.1` only. Every request needs a secret key, and web pages from other sites are refused. A phone reaches it only through a private address you add yourself, with a key of its own that you can sign out. |
+| Your other computers see only scrambled files | Each computer's file in the shared folder is encrypted with your sync passphrase. What comes in from another computer is masked and logged like any other write. |
 | Passwords and ID numbers are hidden before saving | Common API keys and tokens, passwords in many formats (`password=…`, JSON, `.env`, web addresses, `curl -u`), card numbers, one-time codes and national ID numbers (US, UK, Canada, EU/IBAN, India) are replaced with a marker before saving. This includes the clipboard. It is pattern matching: unusual formats are missed. |
 | Each AI sees only what it should | Agents read through a filtered copy of the memory. Other agents' private notes are not just hidden; they are not in that copy at all. An agent can only become itself, and a message "from" another agent cannot be forged by typing tags. |
 | Your secrets are locked | The Secure Vault uses AES-256 with a key made from your master password. Agents never receive secret values. **There is no way to recover a forgotten master password.** |
@@ -218,6 +236,7 @@ memvault import <folder> import a chat export (the unzipped folder, or one .json
 memvault bridge …        connect other MCP memory servers   (list | presets | add | sync | call)
 memvault vault …         add a note from the terminal   (diary | convo | worklog)
 memvault clipboard       watch what you copy and save it (switch it on in Settings first)
+memvault devices …       one memory on all your computers   (setup | passphrase | sync | name | off | hub | pair | keys | forget)
 memvault init            the full setup wizard (capture, backups, bridges)
 memvault serve           start the dashboard server by itself
 memvault mcp             start the MCP server (your AI app runs this for you)

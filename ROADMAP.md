@@ -106,8 +106,10 @@ These are blockers. The verdict in [docs/review/REVIEW.md](docs/review/REVIEW.md
 
 ### L2. Encrypted sync between your own devices
 - **Problem.** One computer only; people use several.
-- **Approach.** End-to-end encrypted sync with a key only the owner holds, with conflict handling designed first (the lock-file design cannot be used over a shared drive).
-- **Effort.** L. **Risk.** High (data loss, key loss, conflicts). **Success.** Two devices converge after offline edits with no lost note in a long randomised test.
+- **Status (2026-10-11): a first version exists** (`memvault devices`, [docs/devices.md](docs/devices.md)): one encrypted file per computer in a folder the owner shares (Syncthing, iCloud, Dropbox, a server), newest change wins, deletions travel, phones open the dashboard through a private address with a key of their own. It has automated tests, not yet use by people on Windows and macOS.
+- **Still to do.** A long randomised convergence test across three or more devices; syncing the Secure Vault (each computer has its own today); sending only what changed instead of the whole vault each time (for very large vaults); and the next item.
+- **Claude on a phone.** Claude's mobile apps can only reach a memory through a public internet address with a login (OAuth). That means putting the vault on the internet, so it needs its own design and review before it is built.
+- **Effort.** M for what is left. **Risk.** High (data loss, key loss, conflicts). **Success.** Three devices converge after offline edits with no lost note in a long randomised test.
 
 ### L3. Several people on one computer
 - **Approach.** One profile per operating-system user, each with its own vault and key; the dashboard shows only the current profile's data.
