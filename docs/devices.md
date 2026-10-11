@@ -80,9 +80,9 @@ The phone opens the dashboard of an always-on computer (the VPS, or a Mac that s
 1. **Install Tailscale** on the VPS (or the always-on Mac) and on the iPhone, and sign in to the same account on both.
 2. **On the VPS, give MemVault a private https address:**
    ```bash
-   tailscale serve --bg 7799
+   tailscale serve --bg --https=443 http://127.0.0.1:7799
    ```
-   Tailscale prints an address like `https://my-vps.tail1234.ts.net`. *Needs verification for your Tailscale version:* the options of `tailscale serve` have changed between versions, so check `tailscale serve --help` if this exact command is refused.
+   Tailscale shows an address like `https://my-vps.tail1234.ts.net`. Only devices signed in to your Tailscale account can open it. To stop it later, run `tailscale serve --https=443 off`. The options of `tailscale serve` have changed between Tailscale versions, so check `tailscale serve --help` if this command is refused.
 3. **Tell MemVault to accept that address:**
    ```bash
    memvault devices hub --address https://my-vps.tail1234.ts.net

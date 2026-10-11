@@ -232,6 +232,20 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
 .diagram { margin: clamp(40px, 6vw, 64px) auto 0; max-width: 1000px; }
 .diagram .frame { background: hsl(var(--paper-1)); border-radius: 20px; padding: 6px; border: 1px solid var(--line); box-shadow: var(--shadow); }
 
+/* devices */
+.devices { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "a b" "f f" "c d"; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.devices .dev { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); display: grid; grid-template-columns: 40px 1fr; gap: 4px 14px; align-items: start; }
+.devices .dev svg { grid-row: span 2; width: 40px; height: 40px; padding: 9px; border-radius: 12px; background: var(--wash); color: var(--primary-text); }
+.devices .dev b { font-family: var(--display); }
+.devices .dev span { color: var(--muted); font-size: 0.93rem; line-height: 1.45; }
+.devices .dev.hub { grid-area: a; border-color: var(--primary); }
+.devices .d-mac { grid-area: b; } .devices .d-win { grid-area: c; } .devices .d-phone { grid-area: d; }
+.devices .folder { grid-area: f; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 18px; border-radius: 999px; background: var(--code-bg); color: var(--code-fg); font: 700 0.95rem/1.3 var(--display); text-align: center; }
+.devices .folder svg { width: 20px; height: 20px; flex-shrink: 0; color: hsl(var(--orange-400)); }
+.ticks { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; }
+.ticks li { display: grid; grid-template-columns: 24px 1fr; gap: 10px; }
+.ticks svg { width: 20px; height: 20px; color: var(--good); margin-top: 3px; }
+
 /* privacy */
 .protect { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .protect .card h3 { display: flex; align-items: center; gap: 10px; }
@@ -333,6 +347,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
   .brand { gap: 10px; }
   .top-actions .btn { display: none; }
   .grid, .protect { grid-template-columns: 1fr; }
+  .devices { grid-template-columns: 1fr; grid-template-areas: "a" "b" "c" "d" "f"; }
   .helpers li { grid-template-columns: 1fr; gap: 2px; }
   .cta-row .btn { width: 100%; }
   .shot-frame { padding: 6px 6px 0; border-radius: 12px 12px 0 0; }
@@ -385,6 +400,11 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
   <symbol id="i-backup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a5 5 0 0 1-.5-10A6 6 0 0 1 18 7a4.5 4.5 0 0 1-1 11H7Z"/><path d="M12 11v5M9.5 13.5 12 11l2.5 2.5"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
   <symbol id="i-access" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M5 8.5l7 1.5 7-1.5M12 10v5M9 21l3-6 3 6"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+  <symbol id="i-laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="11" rx="2"/><path d="M2 20h20"/></symbol>
+  <symbol id="i-desktop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8M12 16v5"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
 </svg>
 
@@ -401,6 +421,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
     <nav class="nav" aria-label="On this page">
       <a href="#how">How it works</a>
       <a href="#agents">Agents</a>
+      <a href="#devices">Devices</a>
       <a href="#privacy">Privacy</a>
       <a href="#install">Install</a>
       <a href="#faq">Questions</a>
@@ -533,8 +554,35 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
     </div>
   </section>
 
+  <!-- ── devices ── -->
+  <section id="devices" aria-labelledby="devices-h">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <p class="kicker">All your devices</p>
+          <h2 id="devices-h">One memory on your laptop, your PC, your server and your phone</h2>
+          <p class="muted" style="margin-top:16px;font-size:1.125rem">Each computer keeps its own full copy, so your AI apps work offline. They keep each other up to date through a folder you share between them. Every file in that folder is encrypted with your passphrase.</p>
+          <ul class="ticks">
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>With or without a server.</b> A VPS that is always on keeps everyone in step. With no server, your computers update each other directly whenever two of them are on.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Use the folder tool you like.</b> Syncthing (free, device to device), iCloud Drive, Dropbox, OneDrive or Google Drive. They only ever see encrypted files.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>The newest change wins everywhere.</b> Deletions travel too, and a sync that would delete many notes makes a backup first.</span></li>
+            <li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Your iPhone, privately.</b> Open the dashboard through Tailscale, with a one-time code. A lost phone can be signed out on its own.</span></li>
+          </ul>
+          <p style="margin-top:20px"><a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md">Step-by-step guide for your devices</a></p>
+        </div>
+        <ul class="devices" aria-label="An example setup">
+          <li class="dev hub"><svg aria-hidden="true"><use href="#i-server"/></svg><b>Linux VPS</b><span>Always on: keeps everyone in step and serves your phone</span></li>
+          <li class="dev d-mac"><svg aria-hidden="true"><use href="#i-laptop"/></svg><b>MacBook</b><span>Its own full copy, works offline</span></li>
+          <li class="folder"><svg aria-hidden="true"><use href="#i-sync"/></svg>Shared folder, encrypted with your passphrase</li>
+          <li class="dev d-win"><svg aria-hidden="true"><use href="#i-desktop"/></svg><b>Windows PC</b><span>Its own full copy, works offline</span></li>
+          <li class="dev d-phone"><svg aria-hidden="true"><use href="#i-phone"/></svg><b>iPhone</b><span>The dashboard in Safari, through Tailscale</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- ── privacy ── -->
-  <section id="privacy" aria-labelledby="privacy-h">
+  <section class="band" id="privacy" aria-labelledby="privacy-h">
     <div class="wrap">
       <div class="section-head">
         <p class="kicker">Privacy and safety</p>
@@ -563,7 +611,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
   </section>
 
   <!-- ── works with ── -->
-  <section class="band" id="apps" aria-labelledby="apps-h" style="padding-block:clamp(56px,7vw,88px)">
+  <section id="apps" aria-labelledby="apps-h" style="padding-block:clamp(56px,7vw,88px)">
     <div class="wrap">
       <div class="section-head center" style="margin-bottom:28px">
         <p class="kicker">Works with</p>
@@ -582,7 +630,7 @@ section { padding: clamp(64px, 9vw, 112px) 0; }
   </section>
 
   <!-- ── install ── -->
-  <section id="install" aria-labelledby="install-h">
+  <section class="band" id="install" aria-labelledby="install-h">
     <div class="wrap">
       <div class="section-head">
         <p class="kicker">Get started</p>
@@ -634,7 +682,7 @@ node cli.mjs open        <span class="c"># opens the dashboard</span></code></pr
   </section>
 
   <!-- ── limits ── -->
-  <section class="band" id="limits" aria-labelledby="limits-h">
+  <section id="limits" aria-labelledby="limits-h">
     <div class="wrap">
       <div class="section-head">
         <p class="kicker">Before you start</p>
@@ -652,7 +700,7 @@ node cli.mjs open        <span class="c"># opens the dashboard</span></code></pr
   </section>
 
   <!-- ── faq ── -->
-  <section id="faq" aria-labelledby="faq-h">
+  <section class="band" id="faq" aria-labelledby="faq-h">
     <div class="wrap">
       <div class="section-head center">
         <p class="kicker">Questions</p>
@@ -662,6 +710,7 @@ node cli.mjs open        <span class="c"># opens the dashboard</span></code></pr
         <details><summary>Is MemVault free?</summary><div><p>Yes. It is open source under the MIT licence. There is no account, no subscription and no paid tier.</p></div></details>
         <details><summary>Do my notes leave my computer?</summary><div><p>They are stored only on your computer. There are two exceptions you control: when an AI app reads a note, that text goes to the company behind that AI; and if you switch on Google Drive backups, an encrypted copy goes to your Drive.</p></div></details>
         <details><summary>Do I need to be a programmer?</summary><div><p>No, but today you need to install Node.js and paste a few commands into a terminal. After that, everything is in the dashboard: notes, agents, backups and settings.</p></div></details>
+        <details><summary>Can I use it on more than one computer, and on my phone?</summary><div><p>Yes. Each computer keeps its own copy and they stay in step through a folder you share between them (Syncthing, iCloud Drive, Dropbox, OneDrive, Google Drive or your own server). Everything in that folder is encrypted with your sync passphrase.</p><p>Your iPhone or iPad opens the dashboard of a computer or server that is switched on, through a private Tailscale address. Claude on the iPhone cannot read MemVault yet. See the <a href="https://github.com/MrChartist/memvault/blob/main/docs/devices.md">devices guide</a>.</p></div></details>
         <details><summary>Which AI apps can use it?</summary><div><p>Any app that supports MCP servers, including Claude Desktop, Claude Code, Cursor, Antigravity, and VS Code with Cline or Roo. Each app can be tied to its own agent.</p></div></details>
         <details><summary>What happens if I forget my master password?</summary><div><p>Items in the Secure Vault cannot be opened again, and the same is true for an encrypted backup if you lose its passphrase. This is on purpose: there is no back door. Write them down somewhere safe.</p></div></details>
         <details><summary>Can I bring my old ChatGPT or Claude chats?</summary><div><p>Yes. Download your export from ChatGPT, Claude, Gemini (Google Takeout) or Perplexity, then run <code>memvault import</code> on the folder. Each conversation keeps its own date. Services change their export formats without notice, so please report a file that does not import.</p></div></details>
@@ -671,7 +720,7 @@ node cli.mjs open        <span class="c"># opens the dashboard</span></code></pr
   </section>
 
   <!-- ── closing ── -->
-  <section class="closing" aria-labelledby="closing-h" style="padding-top:0">
+  <section class="closing" aria-labelledby="closing-h">
     <div class="wrap">
       <div class="box">
         <h2 id="closing-h">Stop repeating yourself</h2>
