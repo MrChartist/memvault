@@ -11,6 +11,7 @@
 Tell one AI something once. Every other AI can find it too.</p>
 
 <p align="center">
+  <a href="https://github.com/MrChartist/memvault/actions/workflows/ci.yml"><img alt="Tests" src="https://github.com/MrChartist/memvault/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2f6f4f"></a>
   <img alt="Node.js 20 or newer" src="https://img.shields.io/badge/node-20%2B-2f6f4f">
   <img alt="Works with MCP" src="https://img.shields.io/badge/works%20with-MCP-b43f0e">
@@ -19,7 +20,30 @@ Tell one AI something once. Every other AI can find it too.</p>
 
 <p align="center"><img src="docs/images/dashboard.png" alt="The MemVault dashboard: counts of notes, conversations and agents, a box to write a note, and a list of recent memories." width="860"></p>
 
+<p align="center">
+  <a href="#get-started">Get started</a> ·
+  <a href="#agents">Agents</a> ·
+  <a href="#your-profile">Your profile</a> ·
+  <a href="#on-all-your-devices">All your devices</a> ·
+  <a href="#is-it-safe">Is it safe?</a> ·
+  <a href="#commands">Commands</a> ·
+  <a href="#known-limits">Known limits</a> ·
+  <a href="#open-source">Open source</a>
+</p>
+
 ---
+
+## Why I made MemVault
+
+<!-- Needs verification (Rohit): this note was drafted from what the project itself shows. Please read it and change anything that is not how you would say it. -->
+
+I am Rohit, and I run [Mr. Chartist](https://mrchartist.com). I research the Indian stock market and teach what I learn. I use more than one AI app every day, and every one of them starts each chat knowing nothing about me. I kept explaining the same things again and again: who I am, how I like my research written, and what I am working on this week.
+
+So I built a notebook that sits on my own computer, which all my AI apps can read. I tell one AI something once, and the others know it too. My notes stay with me, MemVault sends nothing anywhere by itself, and I can check who read what.
+
+I am making it open source because anyone who works with AI should be able to have this, without handing their memory to one more company. It is a one-person project, so I have tried to be honest about what it does not do yet (see [Known limits](#known-limits) and [SECURITY.md](SECURITY.md)). If something does not work for you, please [tell me](https://github.com/MrChartist/memvault/issues).
+
+— Rohit, [@MrChartist](https://mrchartist.com)
 
 ## What is MemVault?
 
@@ -35,7 +59,7 @@ Cursor:           (looks in MemVault) "Here is a short draft with one example...
 
 It also lets you give each AI its own **agent**: a helper with a job, a voice, rules, and a clear limit on which memories it may see. A study helper does not need to see your work notes.
 
-**Who is it for?** Anyone who uses more than one AI assistant: students, writers, developers, researchers, and anyone who is tired of repeating themselves.
+**Who is it for?** Anyone who uses more than one AI assistant: students, writers, traders and analysts, developers, researchers, and anyone who is tired of repeating themselves.
 
 ## Get started
 
@@ -65,7 +89,9 @@ This does not add a `memvault` command. In that folder, type `node cli.mjs` wher
 - **Without installing:** `npx -y @mrchartist/memvault setup`. npx does not add a `memvault` command, so every later command is `npx -y @mrchartist/memvault …` (for example `npx -y @mrchartist/memvault mcp-config`). MemVault's own messages show the commands that way, and the settings that `mcp-config` prints start MemVault through `npx` too, so your AI app needs Node.js on its PATH. Without `-y`, npx asks before it downloads anything.
 </details>
 
-The welcome card at the top of the dashboard walks you through connecting an app. Or run `memvault mcp-config` and paste the result into your app's MCP settings:
+**The Getting started list** at the top of the dashboard shows what is done and what is next, and ticks each step by itself as you go: connecting an AI app (it shows the app's name once it has connected), the first memory an AI saves, a first backup, and a backup passphrase. On a server with no browser, `memvault doctor` prints the same list.
+
+To connect an app, choose **Show me how** in that list, or run `memvault mcp-config` and paste the result into your app's MCP settings:
 
 | App | Usually found in |
 |-----|------------------|
@@ -81,7 +107,10 @@ Then try it. In your AI app, say: **"Remember that I prefer short answers."**
 
 **In the dashboard** you can write notes, search, open any memory in full, correct it, pin it, download it or delete it (with **Undo**, and a typed confirmation when you delete several at once). The **Settings** screen lets you choose what MemVault saves for you automatically, set a backup passphrase, add your projects, download everything and see what you deleted recently, all without the terminal.
 
-## Agents: helpers with their own job and their own view
+## Agents
+
+Helpers with their own job and their own view of your memory.
+
 
 An agent is a saved profile. It says who the helper is, how it should sound, what it must always and never do, and which memories it can see. Any AI becomes that helper by calling `agent_activate`.
 
@@ -110,6 +139,24 @@ An agent is a saved profile. It says who the helper is, how it should sound, wha
 **Handoffs.** One agent can leave work for another (`agent_handoff`). The other finds it in its inbox the next time it starts (`agent_inbox`). They share memory, not chat history, so a brief must say everything the next helper needs.
 
 **Giving an AI app its own agent.** `memvault mcp-config --agent study-buddy` prints settings that bind that app to one agent. The agent is chosen by that setting, never by anything the AI says, so an AI cannot give itself more access. Full guide: [docs/agents.md](docs/agents.md).
+
+## Your profile
+
+Tell every AI app who you are, once. Your profile is a short list of facts about you (how you like things written, what you work on, the tools you use), kept in your own vault and offered to every app you connect.
+
+```bash
+memvault profile set preferences writing-tone "short, formal, plain English"
+memvault profile set work role "market research analyst"
+memvault profile show
+memvault profile learn            # a preview of what MemVault can read off your own notes; saves nothing
+```
+
+- **Only you change it.** An AI can *suggest* a fact (`profile_suggest`), and nothing is saved until you accept it (`memvault profile review`).
+- **An agent sees less.** An app tied to one agent gets a reduced view, with no identity and no daily routine.
+- **Some things are never kept:** health, money, ID numbers, passwords, other people's details.
+- **Wispr Flow users** can import their dictated notes (`memvault wispr <file-or-folder>`) and wrap a dictated request with their background (`memvault profile prompt "…"`).
+
+Full guide: [docs/profile.md](docs/profile.md).
 
 ## On all your devices
 
@@ -259,7 +306,7 @@ Put `--help` after a command (`memvault backup --help`) to see what it does with
 - **Screen readers**: labelled controls, announcements for saves and errors, a proper page heading.
 - **Colour and contrast**: light and dark themes that follow your system; text meets WCAG 2.1 AA contrast; nothing relies on colour alone; Windows High Contrast is supported.
 - **Large touch targets** (at least 44 pixels, checked by the browser tests) and a layout that works on a phone.
-- **Many languages**: notes can be in any language and any direction (Arabic, Hebrew, Hindi, Japanese and more display correctly). The interface text is **English only today**; translations are welcome (see [Contributing](#contributing)). Dates and times follow your system's locale.
+- **Many languages**: notes can be in any language and any direction (Arabic, Hebrew, Hindi, Japanese and more display correctly). The interface text is **English only today**; translations are welcome (see [Open source](#open-source)). Dates and times follow your system's locale.
 - **Plain wording** in messages and in the dashboard, with the technical detail kept in the docs.
 
 The dashboard is tested automatically with an accessibility checker (axe-core) on every screen, in light, dark and phone layouts, and with scripted keyboard use. **It has not been tested with a real screen reader, with voice control, or with disabled users.** Automated checks cannot find every problem; if something does not work for you, please [open an issue](https://github.com/MrChartist/memvault/issues). An accessibility review with real users is on the [roadmap](ROADMAP.md).
@@ -297,9 +344,19 @@ Windows should reach the dashboard at `http://127.0.0.1:7799` through WSL2's own
 
 The plan, with what is next and what is deliberately not being done, is in [ROADMAP.md](ROADMAP.md). To remove MemVault, see [docs/uninstall.md](docs/uninstall.md).
 
-## Contributing
+## Open source
 
-Pull requests are welcome, especially translations, accessibility fixes, and tests. Start with [CONTRIBUTING.md](CONTRIBUTING.md) (setup, how the code is organised, the rules for capture engines) and run `npm test` before you send one. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). `docs/agents.md` explains how to write a good agent profile, and a new starter pack is just a folder of JSON files in `profiles/`.
+MemVault is free and open source under the MIT licence. You can read every line of what runs on your computer, and the tests check the promises on this page: `npm test` (more than 500 automated checks) and `npm run test:e2e` (the dashboard in a real browser, with an accessibility checker).
+
+**Ways to help, most useful first:**
+
+1. **Try it on Windows or macOS** and [tell me](https://github.com/MrChartist/memvault/issues) what happened. CI passes there, but nobody has used it on those systems by hand yet.
+2. **Use it with a screen reader or voice control** and report what gets in your way.
+3. **Translate the dashboard.** The interface is English only today.
+4. **Report an export that does not import** (ChatGPT, Claude, Gemini, Perplexity or Wispr Flow change their files without notice).
+5. **Write an agent or a starter pack**: a pack is just a folder of JSON files in `profiles/`, and [docs/agents.md](docs/agents.md) explains how to write a good one.
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) (setup, how the code is organised, the rules every change must keep) and run `npm test` before you send a pull request. Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md); please do not open a public issue with the details.
 
 ## License
 

@@ -28,6 +28,11 @@ secrets.json
 credentials.json
 config.local.*
 
+# ── MemVault's own backups and device-sync files (they hold your memory) ──────
+*.mvbak
+*.mvsync
+.memvault/
+
 # ── Sync output / temp files ──────────────────────────────────────────────────
 *.log
 /tmp/
