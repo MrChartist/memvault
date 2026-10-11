@@ -33,7 +33,7 @@ import { redact } from "./redact.mjs";
 import { writeMirror } from "./mirror.mjs";
 import { audit } from "./audit.mjs";
 import {
-  getAgent, listAgents, saveAgent, buildBriefing, scopesFor, listInbox, AGENT_ID_RE,
+  getAgent, listAgents, saveAgent, buildBriefing, scopesFor, listInbox, slugify, AGENT_ID_RE,
 } from "./agents.mjs";
 
 // ─── Configuration ──────────────────────────────────────────────────────────
@@ -70,15 +70,58 @@ if (AGENT_ID) {
   db = openVaultDb();
 }
 
+// The owner can narrow or delete an agent while its AI app keeps this process running, but the filtered handle
+// and the tool list were built from the profile as it was at startup. So every call first re-reads the profile
+// (the handle reloads only when the file changed; otherwise this is a stat) and, once the profile is gone or its
+// access changed, refuses and exits rather than keep serving with access the owner has taken away.
+const accessOf = (p) => JSON.stringify([scopesFor(p), p.tools.allow]); // everything the handle and the tool list come from
+const boundAccess = profile && accessOf(profile);
+let boundRaw = null; // the stored profile text last found fine: the same text again needs no further work
+let revoked = null;  // once set, every call is refused while the process exits
+
+function checkBinding() {
+  if (!AGENT_ID) return;
+  if (revoked) throw new Error(revoked);
+  const raw = db.query("SELECT profile FROM agents WHERE id = ?", [AGENT_ID])[0]?.profile ?? null;
+  if (raw !== null && raw === boundRaw) return;
+  const now = raw === null ? null : getAgent(db, AGENT_ID);
+  if (!now) throw revoke(`Agent "${AGENT_ID}" was removed by the owner, so this connection has ended. Nothing was read or saved.`);
+  if (accessOf(now) !== boundAccess) {
+    throw revoke(`The owner changed what agent "${AGENT_ID}" may read or use. Nothing was read or saved. Restart this AI app to connect with the new access.`);
+  }
+  boundRaw = raw; // only the persona, rules or the like changed: those are read fresh wherever they are used
+}
+
+/** Refuse from now on and exit; returns the error for this call. */
+function revoke(message) {
+  revoked = message;
+  process.stderr.write(`[MemVault MCP] ${message} Exiting.\n`);
+  // Let this refusal reach the app first, then exit so the app shows the connection as ended.
+  const exit = () => process.exit(1);
+  setTimeout(() => process.stdout.write("", exit), 50);
+  setTimeout(exit, 2000).unref(); // even if stdout never drains
+  return new Error(message);
+}
+
 const actor = () => AGENT_ID || "owner";
 const queryAll = (sql, params = []) => db.query(sql, params);
 
 /** A value that goes inside a comma-separated tag list: a comma would start a new tag (and could fake a routing tag). */
 const tagSafe = (v) => String(v).replace(/[,\r\n]+/g, " ").trim().slice(0, 80);
 
-function isoDate() {
-  const d = new Date();
+function isoDate(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * The instants a local day (YYYY-MM-DD) starts and ends, for `created_at >= ? AND created_at < ?`.
+ * created_at is stored in UTC, so comparing its first ten characters with a local date misses part of the day
+ * everywhere but UTC. Null for a date that does not exist ("2026-02-31").
+ */
+function localDay(date) {
+  const [y, m, d] = date.split("-").map(Number);
+  const start = new Date(y, m - 1, d);
+  return isoDate(start) === date ? [start.toISOString(), new Date(y, m - 1, d + 1).toISOString()] : null;
 }
 
 /** Any-word keyword search, ranked by the relevance engine. Shared by the smart tools. */
@@ -136,6 +179,7 @@ server.tool = (name, ...rest) => {
   const handler = rest[rest.length - 1];
   rest[rest.length - 1] = async (args, extra) => {
     audit({ actor: actor(), action: "tool", detail: { tool: name, args: Object.keys(args || {}) } });
+    checkBinding();
     return handler(args, extra);
   };
   return registerTool(name, ...rest);
@@ -150,6 +194,7 @@ server.resource = (name, ...rest) => {
   const handler = rest[rest.length - 1];
   rest[rest.length - 1] = async (...a) => {
     audit({ actor: actor(), action: "resource", detail: { resource: name } });
+    checkBinding();
     return handler(...a);
   };
   return registerResourceRaw(name, ...rest);
@@ -160,6 +205,7 @@ server.prompt = (name, ...rest) => {
   const handler = rest[rest.length - 1];
   rest[rest.length - 1] = async (args, extra) => {
     audit({ actor: actor(), action: "prompt", detail: { prompt: name, args: Object.keys(args || {}) } });
+    checkBinding();
     return handler(args, extra);
   };
   return registerPromptRaw(name, ...rest);
@@ -176,7 +222,7 @@ server.tool(
   {
     query: z.string().describe("Search query — keywords, phrases, project names, or topics"),
     type: z.enum(["diary", "conversation", "worklog", "file"]).optional().describe("Filter by entry type: diary, conversation, worklog, or file. Omit to search all types."),
-    limit: z.number().min(1).max(50).optional().describe("Maximum results to return (default: 20)"),
+    limit: z.number().int().min(1).max(50).optional().describe("Maximum results to return (default: 20)"),
   },
   async ({ query, type, limit }) => {
     const maxResults = limit || 20;
@@ -240,10 +286,11 @@ server.tool(
     const backupFile = scope === "shared" ? writeMirror(VAULT_ROOT, { ...stored, id: ids[0], type, created_at }) : null;
     const note = redacted.length ? `\n🔒 Masked before saving: ${redacted.map((r) => `${r.count}× ${r.type}`).join(", ")}` : "";
     const where = scope === "shared" ? "shared vault" : `private to ${AGENT_ID}`;
+    const copy = backupFile && (AGENT_ID ? path.relative(VAULT_ROOT, backupFile) : backupFile); // the full path contains the account name, so only the owner gets it
     return {
       content: [{
         type: "text",
-        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${stored.tags || "none"}${backupFile ? `\n- **Copy saved as**: ${backupFile}` : ""}${note}`,
+        text: `✅ Entry saved (${where})!\n\n- **ID**: ${ids[0]}\n- **Type**: ${type}\n- **Title**: ${stored.title}\n- **Tags**: ${stored.tags || "none"}${copy ? `\n- **Copy saved as**: ${copy}` : ""}${note}`,
       }],
     };
   }
@@ -255,7 +302,7 @@ server.tool(
   "List recent entries from the vault. Use this to browse what's been stored recently — diary entries, conversations, or worklogs. Good for getting an overview of recent activity.",
   {
     type: z.enum(["diary", "conversation", "worklog", "file"]).optional().describe("Filter by type: diary, conversation, worklog, or file. Omit for all types."),
-    limit: z.number().min(1).max(50).optional().describe("Maximum entries to return (default: 15)"),
+    limit: z.number().int().min(1).max(50).optional().describe("Maximum entries to return (default: 15)"),
   },
   async ({ type, limit }) => {
     const maxResults = limit || 15;
@@ -295,7 +342,7 @@ server.tool(
   "Get relevant vault entries for a specific topic or task. This is the PRIMARY tool for making AI responses context-aware. When starting a conversation or answering a complex question, call this first to understand what the user has done before on this topic.",
   {
     topic: z.string().describe("Topic, project name, or description of what context is needed"),
-    limit: z.number().min(1).max(20).optional().describe("Maximum context entries (default: 10)"),
+    limit: z.number().int().min(1).max(20).optional().describe("Maximum context entries (default: 10)"),
   },
   async ({ topic, limit }) => {
     const maxResults = limit || 10;
@@ -399,7 +446,7 @@ server.tool(
   "Get recent Git commits stored in the vault. Shows commit history across all tracked repositories. Use this when the user asks about recent code changes, what they committed, or project development history.",
   {
     repo: z.string().optional().describe("Filter by repository name. Leave empty for all repos."),
-    limit: z.number().min(1).max(50).optional().describe("Maximum commits to return (default: 20)"),
+    limit: z.number().int().min(1).max(50).optional().describe("Maximum commits to return (default: 20)"),
   },
   async ({ repo, limit }) => {
     const maxResults = limit || 20;
@@ -517,7 +564,7 @@ server.tool(
   "Get the most relevant vault entries for a topic, ranked by a smart relevance algorithm that considers keyword match strength, recency, and entry type. Automatically deduplicates and filters previously seen entries. THIS IS THE BEST TOOL for getting context — use it instead of vault_search when you need quality over quantity.",
   {
     topic: z.string().describe("Topic, question, or task description to find context for"),
-    limit: z.number().min(1).max(30).optional().describe("Max results (default: 10)"),
+    limit: z.number().int().min(1).max(30).optional().describe("Max results (default: 10)"),
     freshOnly: z.boolean().optional().describe("If true, only return entries not yet seen this session"),
   },
   async ({ topic, limit, freshOnly }) => {
@@ -645,16 +692,16 @@ server.tool(
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use the YYYY-MM-DD format").optional().describe("Date in YYYY-MM-DD format (default: today)"),
   },
   async ({ date }) => {
-    const targetDate = date || isoDate();
+    const day = localDay(date || isoDate());
 
-    // A bound parameter, never pasted into the SQL: `date` comes from the AI.
-    const rows = queryAll(
+    // Bound parameters, never pasted into the SQL: `date` comes from the AI.
+    const rows = day ? queryAll(
       `SELECT id, type, source, title, substr(content, 1, 400) as snippet, tags, created_at
        FROM items
-       WHERE substr(created_at, 1, 10) = ?
+       WHERE created_at >= ? AND created_at < ?
        ORDER BY created_at ASC;`,
-      [targetDate]
-    );
+      day
+    ) : [];
 
     const digest = generateDigest(rows);
 
@@ -857,9 +904,9 @@ server.prompt(
     const rows = queryAll(
       `SELECT type, title, substr(content, 1, 500) as snippet, created_at
        FROM items
-       WHERE substr(created_at, 1, 10) = ?
+       WHERE created_at >= ? AND created_at < ?
        ORDER BY created_at DESC;`,
-      [today]
+      localDay(today)
     );
 
     const entries = rows.map(r => {
@@ -941,10 +988,13 @@ server.tool(
   },
   async (a) => {
     try {
-      const existing = a.id ? getAgent(db, a.id) : null;
+      // The id is optional and comes from the name, so look the profile up by the id it WILL be saved under:
+      // otherwise "define Coordinator" would replace the existing coordinator, permissions and all.
+      const id = a.id || slugify(a.name);
+      const existing = getAgent(db, id);
       const saved = saveAgent(db, {
         ...(existing || {}),
-        id: a.id || existing?.id,
+        id,
         name: a.name,
         role: a.role ?? existing?.role ?? "",
         persona: a.persona ?? existing?.persona ?? "",
@@ -1004,6 +1054,10 @@ server.tool(
     if (!id) return { content: [{ type: "text", text: "Say whose inbox to read (agent_id)." }] };
     if (AGENT_ID && agent_id && agent_id !== AGENT_ID) {
       return { content: [{ type: "text", text: "You can only read your own inbox." }] };
+    }
+    if (ack?.length && !AGENT_ID) {
+      // An acknowledgement counts only when the addressee itself writes it (see listInbox), so one written here would be ignored.
+      return { content: [{ type: "text", text: `⚠️ Nothing was acknowledged: only \`${id}\` itself can acknowledge its handoffs, from an app connected as that agent. To clear a handoff without it, delete it in the dashboard.` }] };
     }
     let open = listInbox(db, id, { limit: 50 });
     let acked = 0;
@@ -1105,13 +1159,13 @@ server.tool(
   "Use AI (Gemini) to generate a smart summary of vault entries matching a query. Highlights key points, decisions, and action items.",
   {
     query: z.string().describe("Search query to find entries to summarize"),
-    limit: z.number().optional().describe("Max entries to include (default: 5)"),
+    limit: z.number().int().min(1).max(20).optional().describe("Max entries to include (default: 5)"),
   },
   async ({ query, limit }) => {
     try {
-      const { isAIEnabled, summarize } = await import("./ai-engine.mjs");
+      const { isAIEnabled, summarize, AI_OFF_MESSAGE } = await import("./ai-engine.mjs");
       if (!isAIEnabled()) {
-        return { content: [{ type: "text", text: "⚠️ AI features not configured. Add your Gemini API key to ~/.memvaultrc.json under ai.apiKey" }] };
+        return { content: [{ type: "text", text: `⚠️ ${AI_OFF_MESSAGE}` }] };
       }
 
       const rows = keywordCandidates(query, Math.min(limit || 5, 20), 4000);
@@ -1140,9 +1194,9 @@ server.tool(
   },
   async ({ timeframe, topic }) => {
     try {
-      const { isAIEnabled, generateInsights } = await import("./ai-engine.mjs");
+      const { isAIEnabled, generateInsights, AI_OFF_MESSAGE } = await import("./ai-engine.mjs");
       if (!isAIEnabled()) {
-        return { content: [{ type: "text", text: "⚠️ AI not configured. Add Gemini API key to ~/.memvaultrc.json" }] };
+        return { content: [{ type: "text", text: `⚠️ ${AI_OFF_MESSAGE}` }] };
       }
 
       const tf = timeframe || "this week";
@@ -1176,7 +1230,7 @@ server.tool(
   "AI-powered semantic search — understands the INTENT of your query, not just keywords. Uses Gemini to re-rank keyword results by true relevance (falls back to local relevance scoring when AI is off).",
   {
     query: z.string().describe("Natural language search query"),
-    limit: z.number().optional().describe("Max results (default: 10)"),
+    limit: z.number().int().min(1).max(40).optional().describe("Max results (default: 10)"),
   },
   async ({ query, limit }) => {
     try {
@@ -1218,9 +1272,9 @@ server.tool(
   {},
   async () => {
     try {
-      const { isAIEnabled, weeklyDigest } = await import("./ai-engine.mjs");
+      const { isAIEnabled, weeklyDigest, AI_OFF_MESSAGE } = await import("./ai-engine.mjs");
       if (!isAIEnabled()) {
-        return { content: [{ type: "text", text: "⚠️ AI not configured. Add Gemini API key to ~/.memvaultrc.json" }] };
+        return { content: [{ type: "text", text: `⚠️ ${AI_OFF_MESSAGE}` }] };
       }
 
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
