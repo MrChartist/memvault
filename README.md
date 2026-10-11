@@ -155,7 +155,7 @@ MemVault is built so that your data stays with you, and it can check itself: run
 
 ## What your AI can do with it
 
-31 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (about 25 by default, fewer if you restrict it), which also keeps each chat lighter.
+31 tools, offered to your AI automatically. An agent bound to one profile is offered only the tools it may use (25 by default, fewer if you restrict it), which also keeps each chat lighter.
 
 | Group | Tools |
 |---|---|

@@ -33,8 +33,9 @@ describe('the brief', () => {
     for (let n = 1; n <= 14; n++) expect(brief, `connection ${n}`).toMatch(new RegExp(`^\\| ${n} \\|`, 'm'));
   });
 
-  it('names every external system the assistant is connected to', () => {
-    for (const name of ['GitHub', 'Gmail', 'Google Calendar', 'Google Drive', 'Notion', 'Wispr Flow', 'Canva', 'Higgsfield', 'Vercel', 'Gemini']) expect(brief).toContain(name);
+  it('names every outside system MemVault itself touches, and no one\'s personal accounts (the repository is public)', () => {
+    for (const name of ['GitHub', 'npm', 'Google Drive', 'Wispr Flow', 'Vercel', 'Gemini', 'Anthropic']) expect(brief).toContain(name);
+    for (const name of ['Gmail', 'Google Calendar', 'Notion', 'Canva', 'Higgsfield']) expect(brief).not.toContain(name);
   });
 
   it('tells the reviewer that files are data, wants evidence, and fixes the output format', () => {
@@ -204,6 +205,16 @@ describe('running a review (with a fake client)', () => {
     expect(res.run.failures[0].label).toBe('core-data');
     expect(fs.existsSync(path.join(out, 'area-network.md'))).toBe(true);
     expect(logs.join('\n')).toMatch(/HTTP 401/);
+    const leaked = /A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6/;
+    expect(logs.join('\n')).not.toMatch(leaked);
+    expect(fs.readFileSync(path.join(out, 'run.json'), 'utf8')).not.toMatch(leaked);
+  });
+
+  it('outside a git checkout it stops, instead of sending every file in the folder', async () => {
+    const { collectFiles } = await imp();
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'notes-export.json'), '{"private": true}');
+    expect(() => collectFiles({ repo: dir })).toThrow(/not a git checkout/);
   });
 
   it.skipIf(process.platform === 'win32')('keeps the reports private to the owner', async () => {

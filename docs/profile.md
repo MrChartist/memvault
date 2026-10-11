@@ -15,7 +15,7 @@ A profile holds facts under ten headings. The list is closed on purpose.
 | `projects` | what you are building and why |
 | `tools` | software, languages and services you use |
 | `preferences` | format, length, tone, defaults |
-| `communication` | how you write and prompt, names and terms you use, brand voice |
+| `communication` | how you write and prompt, product names and terms you use, brand voice |
 | `goals` | what you are working towards |
 | `schedule` | when you are active |
 | `interests` | topics you keep coming back to |
@@ -35,14 +35,14 @@ memvault profile export profile.json        # and: memvault profile import profi
 memvault profile clear --yes                # delete the whole profile
 ```
 
-**Learn from your notes.** MemVault can read what is already in your vault and suggest facts: when you are most active, which technologies and topics come up, which tools feed your memory, how long your notes are, which names and terms you dictate. It only counts and measures; there is no model and no network. It starts as a preview:
+**Learn from your notes.** MemVault can read what is already in your vault and suggest facts: when you are most active, which technologies and topics come up, which tools feed your memory, how long your notes are, which product names and terms you dictate (written like `MemVault`, `NASDAQ` or `GPT4`; a plain name such as "Priya" is never kept). It only counts and measures; there is no model and no network. It starts as a preview:
 
 ```bash
 memvault profile learn            # shows what it would save; saves nothing
 memvault profile learn --apply    # saves it
 ```
 
-Learning reads only your own notes and imports (not the browser, the clipboard, device scans or file names), only in the shared space (never an agent's private notes), and never overwrites a fact you set by hand. Personal money topics (loans, tax, savings) are never learned.
+Learning reads only your own notes and imports (not the browser, the clipboard, device scans, file names, or anything an AI app saved: learning saves facts without asking you, so an AI must not be able to steer it), only in the shared space (never an agent's private notes), and never overwrites a fact you set by hand. Personal money topics (loans, tax, savings) are never learned.
 
 **A prompt with your background.** Wrap any request, for example one you dictated:
 
@@ -67,7 +67,7 @@ memvault profile reject <id>
 
 Why suggestions and not writes: the profile is placed into your conversations. If an AI could edit it, a web page or document it read could plant a "fact" (even an instruction) that every other AI would then trust. Only you can accept. At most 25 suggestions wait at a time.
 
-Two more protections: the source names `profile` and `profile-suggestion` are reserved, so no tool, import or API request can create a profile item any other way, and profile items sit in a space that bound agents cannot search. Every change is in the access log (`memvault audit`).
+Two more protections: the source names `profile` and `profile-suggestion` are reserved, so no tool, import or API request can create a profile item any other way, and profile items are left out of every agent's copy of the vault, so a bound agent cannot search them, even one allowed to read every project space (`project:*`). Every change is in the access log (`memvault audit`).
 
 ## Wispr Flow
 
@@ -78,7 +78,7 @@ memvault wispr ~/Downloads/wispr-notes/       # a folder, or one file
 memvault profile learn
 ```
 
-The importer reads JSON (a list of notes or meetings) and Markdown or text files. It keeps the text, title and date. It leaves out **attendee names, e-mail addresses and share links** (a share link opens the note for anyone who has it). Running it twice adds nothing twice.
+The importer reads JSON (a list of notes or meetings) and Markdown or text files. It keeps the text, title and date. It leaves out **the attendee list, every e-mail address (also inside the title or the text) and Wispr Flow share links** (a share link opens the note for anyone who has it). Names that were *said* in a note stay in its text, because they are part of what you said; learning never turns them into profile facts. Secrets and ID numbers are masked before anything is shortened. Running it twice adds nothing twice.
 
 Needs verification: the file the Wispr Flow app itself exports. This version was written against the fields Wispr's notes and meetings carry (`title`, `notes` or `content_excerpt`, `start`), and skips what it does not recognise instead of guessing. If your export does not import, [open an issue](https://github.com/MrChartist/memvault/issues) with the field names (not the content).
 

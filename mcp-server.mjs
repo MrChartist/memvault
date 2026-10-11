@@ -106,6 +106,8 @@ function revoke(message) {
 }
 
 const actor = () => AGENT_ID || "owner";
+/** Labels that mean "the owner typed or dictated this". An AI's vault_add cannot use them (see profile.mjs). */
+const OWNER_SOURCES = new Set(["manual", "cli", "wispr"]);
 const queryAll = (sql, params = []) => db.query(sql, params);
 
 /** A value that goes inside a comma-separated tag list: a comma would start a new tag (and could fake a routing tag). */
@@ -278,7 +280,7 @@ server.tool(
     const scope = isPrivate && AGENT_ID ? `agent:${AGENT_ID}` : "shared";
 
     const { ids, items, redacted } = ingest(
-      { type, source: source || "mcp", title, content, tags: tags || null, created_at, scope },
+      { type, source: OWNER_SOURCES.has(String(source || "").trim().toLowerCase()) ? "mcp" : source || "mcp", title, content, tags: tags || null, created_at, scope },
       { vdb: db, actor: actor() }
     );
     const stored = items[0];
@@ -1413,7 +1415,13 @@ server.tool(
 // a reduced view for bound agents (no identity or daily routine), and a suggestion box. A suggestion
 // changes nothing until the owner accepts it with `memvault profile accept`.
 
-const profileDb = AGENT_ID ? openVaultDb() : db; // a bound agent's own handle is filtered; the profile is read on its behalf
+// A bound agent's own handle leaves the profile out, so it is read on the agent's behalf through a short-lived
+// owner handle, opened for the one call and closed again: this process never keeps the whole vault open.
+const withProfileDb = (fn) => {
+  if (!AGENT_ID) return fn(db);
+  const h = openVaultDb();
+  try { return fn(h); } finally { h.close(); }
+};
 
 server.tool(
   "profile_get",
@@ -1423,7 +1431,7 @@ server.tool(
     // A bound agent only ever sees the reduced set, whatever it asks for.
     const allowed = AGENT_ID ? AGENT_FACETS : Object.keys(FACETS);
     const wanted = facets?.length ? facets.filter((f) => allowed.includes(f)) : allowed;
-    const card = renderCard(listFacts(profileDb, { facets: wanted }), { maxChars: 2400 });
+    const card = renderCard(withProfileDb((h) => listFacts(h, { facets: wanted })), { maxChars: 2400 });
     return { content: [{ type: "text", text: card || "The user's profile is empty or has nothing in those facets. You may propose a fact with profile_suggest." }] };
   }
 );
@@ -1439,7 +1447,7 @@ server.tool(
   },
   async ({ facet, key, value, reason }) => {
     try {
-      const r = suggestFact(profileDb, { facet, key, value, reason, proposedBy: actor() });
+      const r = withProfileDb((h) => suggestFact(h, { facet, key, value, reason, proposedBy: actor() }));
       return { content: [{ type: "text", text: `Noted. "${r.facet}/${r.key}" is waiting for the user to accept it (memvault profile review). It does not change their profile until they do.` }] };
     } catch (e) {
       return { isError: true, content: [{ type: "text", text: e.message }] };

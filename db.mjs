@@ -268,6 +268,9 @@ export function openVaultDb({ root = VAULT_ROOT, scope = null } = {}) {
       const marks = visible.map(() => "?").join(",");
       db.run(`DELETE FROM items WHERE scope NOT IN (${marks})`, visible);
     }
+    // The owner's profile is never part of an agent's copy, whatever spaces it may read ("project:*" would
+    // otherwise include it). An agent gets the reduced view from profile_get instead (profile.mjs).
+    db.run("DELETE FROM items WHERE scope = 'project:profile' OR source IN ('profile', 'profile-suggestion')");
     if (!scope.allowSecrets) db.run("DELETE FROM secrets");
     return db;
   };

@@ -134,7 +134,8 @@ function visibilityClause(profile) {
       params.push(sc);
     }
   }
-  return { sql: `(${parts.join(" OR ")})`, params };
+  // Like the agent's own copy (applyScope in db.mjs): the owner's profile is never in what an agent sees.
+  return { sql: `((${parts.join(" OR ")}) AND scope != 'project:profile' AND COALESCE(source, '') NOT IN ('profile', 'profile-suggestion'))`, params };
 }
 
 /**
@@ -672,9 +673,16 @@ export function createApp({
   app.get("/profile", (_req, res) =>
     res.json({ ok: true, facets: FACETS, facts: listFacts(vdb), suggestions: listSuggestions(vdb) }));
 
+  // The same shape checks as every other route; profile.mjs then checks the meaning (facet, secrets, length).
+  const FactSchema = z.object({
+    facet: z.string().max(40), key: z.string().max(60), value: z.string().max(2000),
+    confidence: z.enum(["low", "medium", "high"]).optional(),
+  }).strict();
   app.put("/profile/facts", (req, res) => {
+    const parsed = FactSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Send a facet, a key and a value (and, if you like, a confidence: low, medium or high)." });
     try {
-      const { facet, key, value, confidence } = req.body || {};
+      const { facet, key, value, confidence } = parsed.data;
       const r = setFact(vdb, { facet, key, value, source: "manual", confidence }, { actor: "owner", root });
       res.json({ ok: true, changed: r.changed, fact: r.fact });
     } catch (e) {
@@ -695,7 +703,8 @@ export function createApp({
     try {
       res.json({ ok: true, fact: acceptSuggestion(vdb, req.params.id, { actor: "owner", root }) });
     } catch (e) {
-      res.status(404).json({ ok: false, error: e.message });
+      // Gone already: 404. Anything else (it no longer passes the checks): 400, with the reason.
+      res.status(/No such suggestion/.test(e.message) ? 404 : 400).json({ ok: false, error: e.message });
     }
   });
 
@@ -706,13 +715,18 @@ export function createApp({
 
   // Preview by default; nothing is saved unless the body says {"apply": true}.
   app.post("/profile/learn", (req, res) => {
-    const r = learnFromVault(vdb, { apply: req.body?.apply === true, actor: "owner", root });
-    res.json({ ok: true, applied: req.body?.apply === true, ...r });
+    const parsed = z.object({ apply: z.boolean().optional() }).strict().safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: 'Send {} for a preview, or {"apply": true} to save.' });
+    const apply = parsed.data.apply === true;
+    const r = learnFromVault(vdb, { apply, actor: "owner", root });
+    res.json({ ok: true, applied: apply, ...r });
   });
 
   app.get("/profile/export", (_req, res) => {
+    const out = exportProfile(vdb);
+    log("profile-export", { facts: out.facts.length }); // like /export: taking a copy out is recorded
     res.set("Content-Disposition", `attachment; filename="memvault-profile-${isoDate()}.json"`);
-    res.json(exportProfile(vdb));
+    res.json(out);
   });
 
   app.post("/profile/import", (req, res) => {

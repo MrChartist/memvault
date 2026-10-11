@@ -14,8 +14,9 @@
  *   • an AI app: it can only SUGGEST a fact. A suggestion waits until the owner accepts it, because the profile
  *     is placed into every conversation and a poisoned document must not be able to rewrite it.
  * The source names "profile" and "profile-suggestion" are reserved (see ingest.mjs), so no tool or request can
- * forge a fact. Facts live in the scope "project:profile", which a bound agent cannot read directly; it gets a
- * reduced view through profile_get instead (AGENT_FACETS).
+ * forge a fact. Facts live in the scope "project:profile", and every agent's filtered copy of the vault leaves the
+ * profile out whatever spaces the agent may read (applyScope in db.mjs); a bound agent gets a reduced view
+ * through profile_get instead (AGENT_FACETS).
  *
  * Learning from the vault is local and deterministic: counts and patterns, no network and no model.
  * ─────────────────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export const SUGGESTION_SOURCE = "profile-suggestion";
 const CONFIDENCE = new Set(["low", "medium", "high"]);
 const MAX_VALUE = 600;
 const MAX_PENDING = 25;
+const MAX_PENDING_EACH = 10;
 const SEP = "\n\n---\n";
 const TITLE_RE = /^(Profile|Suggestion) · ([a-z]+) · ([a-z0-9][a-z0-9.-]{0,47})$/;
 const OPTS = { allowReserved: true };
@@ -71,7 +73,9 @@ export function cleanKey(key) {
 
 /** One short line. Secrets and ID numbers are refused, never stored in masked form. */
 export function cleanValue(value, { max = MAX_VALUE } = {}) {
-  const v = String(value ?? "").replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  // Control characters and the invisible marks that reverse how text is shown are removed, so a value cannot
+  // disguise itself in a terminal or on the dashboard.
+  const v = String(value ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]+/g, " ").replace(/\s+/g, " ").trim();
   if (!v) throw new Error("A fact needs a value.");
   if (v.length > max) throw new Error(`A fact is at most ${max} characters (this one is ${v.length}). Keep it short.`);
   if (redact(v).findings.length) throw new Error("That looks like a password, key or ID number, so it was not saved. A profile never holds those.");
@@ -85,7 +89,7 @@ const cleanConfidence = (c) => {
 };
 const cleanSource = (s) => {
   const x = String(s ?? "manual").trim().toLowerCase();
-  if (!/^[a-z0-9][a-z0-9._:-]{0,31}$/.test(x)) throw new Error('source is a short label such as "manual", "vault" or "wispr".');
+  if (!/^[a-z0-9][a-z0-9._:-]{0,63}$/.test(x)) throw new Error('source is a short label such as "manual", "vault" or "wispr".');
   return x;
 };
 
@@ -153,32 +157,47 @@ export function getFact(vdb, facet, key) {
  * Add or change one fact. The old value is kept one step back (`previous`) so a change can be seen and undone.
  * @returns {{changed: boolean, fact: object}}
  */
-export function setFact(vdb, { facet, key, value, source = "manual", confidence = "high" }, { actor = "owner", root = VAULT_ROOT, now = new Date() } = {}) {
-  const f = cleanFacet(facet);
-  const k = cleanKey(key);
-  const v = cleanValue(value);
-  const src = cleanSource(source);
-  const conf = cleanConfidence(confidence);
-  const existing = getFact(vdb, f, k);
-  if (existing && existing.value === v) return { changed: false, fact: existing };
+export function setFact(vdb, fact, opts = {}) {
+  const [r] = setFacts(vdb, [fact], opts);
+  if (r.error) throw new Error(r.error);
+  return { changed: r.status !== "unchanged", fact: getFact(vdb, r.facet, r.key) };
+}
 
+/**
+ * Several facts in ONE write: an import of hundreds would otherwise rewrite the whole vault once per fact.
+ * Every fact passes the same checks; one that fails is reported (`error`) and the others are still saved.
+ * The same facet and key given twice: the last one counts.
+ * @returns {{facet?: string, key?: string, status: "added"|"changed"|"unchanged"|"rejected", error?: string}[]}
+ */
+export function setFacts(vdb, facts, { actor = "owner", root = VAULT_ROOT, now = new Date() } = {}) {
   const updated = now.toISOString();
-  ingest({
-    type: "diary",
-    source: FACT_SOURCE,
-    title: factTitle(f, k),
-    content: encode(v, {
-      source: src,
-      confidence: conf,
-      updated,
-      previous: existing?.value,
-      previous_updated: existing ? existing.updated : undefined,
-    }),
-    tags: `profile,facet:${f}`,
-    scope: PROFILE_SCOPE,
-    upsert: true,
-  }, { vdb, actor, root, ...OPTS });
-  return { changed: true, fact: getFact(vdb, f, k) };
+  const results = [];
+  const items = new Map();
+  for (const input of facts) {
+    try {
+      const f = cleanFacet(input?.facet);
+      const k = cleanKey(input?.key);
+      const v = cleanValue(input?.value);
+      const src = cleanSource(input?.source ?? "manual");
+      const conf = cleanConfidence(input?.confidence ?? "high");
+      const existing = getFact(vdb, f, k);
+      if (existing && existing.value === v) { items.delete(`${f}/${k}`); results.push({ facet: f, key: k, status: "unchanged" }); continue; }
+      items.set(`${f}/${k}`, {
+        type: "diary",
+        source: FACT_SOURCE,
+        title: factTitle(f, k),
+        content: encode(v, { source: src, confidence: conf, updated, previous: existing?.value, previous_updated: existing ? existing.updated : undefined }),
+        tags: `profile,facet:${f}`,
+        scope: PROFILE_SCOPE,
+        upsert: true,
+      });
+      results.push({ facet: f, key: k, status: existing ? "changed" : "added" });
+    } catch (e) {
+      results.push({ facet: input?.facet, key: input?.key, status: "rejected", error: e.message });
+    }
+  }
+  if (items.size) ingest([...items.values()], { vdb, actor, root, ...OPTS });
+  return results;
 }
 
 export function removeFact(vdb, facet, key, { actor = "owner", root = VAULT_ROOT } = {}) {
@@ -214,8 +233,15 @@ export function suggestFact(vdb, { facet, key, value, reason, proposedBy = "ai" 
   const why = reason ? cleanValue(reason, { max: 200 }) : undefined;
   const by = cleanSource(proposedBy);
   const pending = listSuggestions(vdb);
-  const replacing = pending.some((s) => s.facet === f && s.key === k);
-  if (!replacing && pending.length >= MAX_PENDING) {
+  const same = pending.find((s) => s.facet === f && s.key === k);
+  // One app (or agent) cannot replace another one's suggestion, or fill the whole queue by itself.
+  if (same && (same.proposedBy || "ai") !== by) {
+    throw new Error(`Another app already suggested "${f}/${k}", and it is waiting for the owner. Use a different key, or let the owner review it first.`);
+  }
+  if (!same && pending.filter((s) => (s.proposedBy || "ai") === by).length >= MAX_PENDING_EACH) {
+    throw new Error(`You already have ${MAX_PENDING_EACH} suggestions waiting for the owner. Ask them to review them first (memvault profile review).`);
+  }
+  if (!same && pending.length >= MAX_PENDING) {
     throw new Error(`There are already ${MAX_PENDING} suggestions waiting for the owner. Ask them to review them first (memvault profile review).`);
   }
   ingest({
@@ -233,7 +259,7 @@ export function suggestFact(vdb, { facet, key, value, reason, proposedBy = "ai" 
 export function acceptSuggestion(vdb, id, { actor = "owner", root = VAULT_ROOT } = {}) {
   const s = listSuggestions(vdb).find((x) => x.id === id);
   if (!s) throw new Error("No such suggestion (it may already have been reviewed).");
-  const res = setFact(vdb, { facet: s.facet, key: s.key, value: s.value, source: `suggested-by-${s.proposedBy || "ai"}`.slice(0, 32), confidence: "medium" }, { actor, root });
+  const res = setFact(vdb, { facet: s.facet, key: s.key, value: s.value, source: `suggested-by-${s.proposedBy || "ai"}`.slice(0, 64), confidence: "medium" }, { actor, root });
   vdb.run("DELETE FROM items WHERE id = ?", [id]);
   audit({ actor, action: "profile-accept", detail: { facet: s.facet, key: s.key } }, root);
   return res.fact;
@@ -263,16 +289,10 @@ export function importProfile(vdb, data, { actor = "owner", root = VAULT_ROOT } 
   if (!Array.isArray(facts)) throw new Error('Expected {"facts": [...]} (a file made by "memvault profile export").');
   if (facts.length > 500) throw new Error("A profile file holds at most 500 facts.");
   const result = { added: 0, changed: 0, unchanged: 0, rejected: [] };
-  for (const f of facts) {
-    try {
-      const before = getFact(vdb, f?.facet, f?.key);
-      const r = setFact(vdb, { facet: f?.facet, key: f?.key, value: f?.value, source: f?.source || "import", confidence: f?.confidence || "medium" }, { actor, root });
-      if (!r.changed) result.unchanged++;
-      else if (before) result.changed++;
-      else result.added++;
-    } catch (e) {
-      result.rejected.push({ facet: f?.facet, key: f?.key, reason: e.message });
-    }
+  const done = setFacts(vdb, facts.map((f) => ({ facet: f?.facet, key: f?.key, value: f?.value, source: f?.source || "import", confidence: f?.confidence || "medium" })), { actor, root });
+  for (const r of done) {
+    if (r.status === "rejected") result.rejected.push({ facet: r.facet, key: r.key, reason: r.error });
+    else result[r.status]++;
   }
   return result;
 }
@@ -331,8 +351,12 @@ export function buildPrompt(facts, request, { facets, maxChars = 2000 } = {}) {
 
 // ─── learning from the vault (local, no network, no model) ──────────────────
 
-/** Notes the person wrote or imported themselves. Device scans, the browser and the clipboard are never used. */
-const LEARN_SOURCES = new Set(["manual", "cli", "mcp", "ai-memory", "git", "chatgpt", "claude", "gemini", "perplexity", "antigravity", "wispr"]);
+/**
+ * Notes the person wrote or imported themselves. What an AI app saved (mcp, ai-memory) is never used, because
+ * learning writes facts without the owner's accept; `vault_add` cannot use the labels "manual", "cli" or "wispr"
+ * either (mcp-server.mjs). Device scans, the browser and the clipboard are never used.
+ */
+const LEARN_SOURCES = new Set(["manual", "cli", "git", "chatgpt", "claude", "gemini", "perplexity", "antigravity", "wispr"]);
 const WRITTEN_BY_USER = new Set(["manual", "cli", "wispr"]);
 const NOT_COUNTED = new Set(["profile", "profile-suggestion", "system", "filesystem", "browser", "clipboard", "vscode"]);
 
@@ -461,15 +485,17 @@ export function deriveFacts(rows, { projects = PROJECTS, now = Date.now() } = {}
       const text = String(r.content);
       wc += words(text);
       if (FILLER_RE.test(text)) filler++;
-      // names and brands: capitalised mid-sentence, CamelCase, or containing digits
-      for (const m of text.matchAll(/(?<![.!?]\s)(?<!^)\b([A-Z][A-Za-z0-9]{2,}|[A-Za-z]+[0-9]+[A-Za-z0-9]*)\b/gm)) {
+      // product names and terms only: CamelCase (MemVault, TradingView, iPhone), capitals (NASDAQ, NISMExams)
+      // or with digits (GPT4, S3). A word with just a capital first letter is usually a person ("Priya"), and
+      // other people's names are not kept.
+      for (const m of text.matchAll(/\b([A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*|[A-Z]{2,}[A-Za-z0-9]*|[a-z]+[A-Z][A-Za-z0-9]*|[A-Za-z]+[0-9]+[A-Za-z0-9]*)\b/g)) {
         if (!VOCAB_STOP.has(m[1])) vocab.set(m[1], (vocab.get(m[1]) || 0) + 1);
       }
     }
     add("communication", "dictation",
       `Dictated notes average ${Math.round(wc / dictated.length)} words; ${Math.round((filler / dictated.length) * 100)}% contain filler words, so tidy them before sending as a prompt. Based on ${dictated.length} notes.`);
     const terms = top(vocab, 10, 3).map(([t]) => t);
-    if (terms.length) add("communication", "dictation-vocabulary", `Names and terms you say often: ${terms.join(", ")}.`);
+    if (terms.length) add("communication", "dictation-vocabulary", `Product names and terms you say often: ${terms.join(", ")}.`);
   }
   return facts;
 }
@@ -485,12 +511,16 @@ export function learnFromVault(vdb, { apply = false, actor = "owner", root = VAU
   const facts = deriveFacts(rows, { projects, now });
   const result = { facts, written: 0, unchanged: 0, skippedManual: [] };
   if (!apply) return result;
+  const learnt = [];
   for (const f of facts) {
     const existing = getFact(vdb, f.facet, f.key);
     // A fact the owner wrote or corrected by hand is theirs: learning never overwrites it.
     if (existing && existing.source !== "vault") { result.skippedManual.push(`${f.facet}/${f.key}`); continue; }
-    const r = setFact(vdb, f, { actor, root });
-    if (r.changed) result.written++; else result.unchanged++;
+    learnt.push(f);
+  }
+  for (const r of setFacts(vdb, learnt, { actor, root })) {
+    if (r.status === "unchanged") result.unchanged++;
+    else if (r.status !== "rejected") result.written++;
   }
   return result;
 }

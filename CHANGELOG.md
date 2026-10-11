@@ -21,9 +21,16 @@ Fixes found by installing the packed package and by testing each part again, plu
 **Your profile, Wispr Flow import and a security check (new)**
 - **A central profile of you** (`memvault profile`, [docs/profile.md](docs/profile.md)): short facts about how you like things written, what you work on and the tools you use, offered to every connected AI app. Ten fixed headings; passwords, keys, ID numbers, health and money are refused. Learns from your own notes when you ask (preview first), and wraps a dictated request with your background (`memvault profile prompt`).
 - Two MCP tools: `profile_get` (a bound agent gets a reduced view) and `profile_suggest` (an AI can only suggest; you accept with `memvault profile accept`). Owner routes for the same under `/profile`.
-- **Wispr Flow import** (`memvault wispr <file-or-folder>`): notes and meeting summaries; attendee names, e-mail addresses and share links are left out.
+- **Wispr Flow import** (`memvault wispr <file-or-folder>`): notes and meeting summaries. The attendee list, every e-mail address (also inside the title or text) and share links are left out; secrets are masked before the text is shortened.
 - **Final security check**: `docs/review/final-security-check.md` is a brief for Claude Opus or Fable that lists all 14 connections and the threat model, and `npm run security-review` (`scripts/security-review.mjs`) runs it through the Anthropic API. `--dry-run` shows the plan and a rough cost first. Reports go to `.security-review/` (ignored by git). The script is a maintainer tool: it is not in the npm package, and the SDK it uses is a development dependency.
 - The source names `profile` and `profile-suggestion` are reserved in `ingest`, so only the profile module can write profile items.
+- Fixed before merging, after a review of this work:
+  - An agent allowed to read every project space (`project:*`, such as the starter Coordinator) could search the whole profile, including the parts `profile_get` holds back. The profile is now left out of every agent's copy of the vault, and out of "See what this agent can see".
+  - Learning kept the names of people mentioned in dictation ("Priya, Rahul") and gave them to every agent. It now keeps only product-like terms. It no longer learns from what an AI app saved, and `vault_add` cannot label a note as typed or dictated by you (`manual`, `cli`, `wispr`).
+  - The Wispr import kept e-mail addresses and share links that sat in a title or the text, and could cut a secret in half before masking it.
+  - Importing a profile rewrote the vault once per fact; a file is now saved in one write. One app can no longer fill the suggestion queue or replace another app's suggestion. Hidden text-direction characters are removed from facts.
+  - A bound agent's process no longer keeps a full copy of the vault open for the profile tools.
+  - The security-review script stops outside a git checkout (instead of sending every file in the folder) and masks error messages, which can repeat an API key. A test no longer opens the real vault in your home folder.
 
 **Security and privacy**
 - A key or password that crossed the 80-character cut of a title was stored half-masked: its first part stayed in the title, and search returned it. This affected `vault_remember`, `vault_capture_prompt`, `vault_log_conversation`, git capture, the Gemini and Perplexity importers and Antigravity capture. Secrets are now masked first, and the title is shortened after that.

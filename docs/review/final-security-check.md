@@ -20,7 +20,7 @@ Core ideas you should test, not trust:
 - **Agents and scopes** (`agents.mjs`, `db.mjs`): an AI app can be bound to an agent profile with `MEMVAULT_AGENT`. A bound agent reads through a copy of the database from which everything it may not see has been removed, and is offered only the tools its profile allows. Scopes are `shared`, `agent:<id>`, `project:<name>`.
 - **Everything automatic is off by default**: git, VS Code, files, browser, clipboard, computer info, Antigravity.
 - **The server listens on 127.0.0.1 only**, needs a 256-bit access key on every data route, checks `Host` and `Origin`, sends no CORS headers and a strict Content-Security-Policy.
-- **The user profile** (`profile.mjs`, new since the last review): one local record of facts about the owner, shared by every AI app. AI apps may only read a reduced view and *suggest* a fact; the owner accepts. The source names `profile` and `profile-suggestion` are reserved in `ingest.mjs`. Profile items live in the scope `project:profile`, which a bound agent cannot read directly.
+- **The user profile** (`profile.mjs`, new since the last review): one local record of facts about the owner, shared by every AI app. AI apps may only read a reduced view and *suggest* a fact; the owner accepts. The source names `profile` and `profile-suggestion` are reserved in `ingest.mjs`. Profile items live in the scope `project:profile`, and every agent's filtered copy of the database leaves them out, even for an agent allowed to read `project:*`.
 
 ## 2. Every connection (inventory)
 
@@ -35,7 +35,7 @@ Check each row. "Code" tells you where to look; "Verify" is the question to answ
 | 5 | MemVault → Gemini API (optional) | out | API key in config | `ai-engine.mjs` | What text leaves the machine; key handling; error messages; prompt injection into digests |
 | 6 | MemVault → Google Drive (folder mirror and OAuth API) | out | OAuth refresh token / folder path | `storage.mjs`, `crypto-vault.mjs` | Backups encrypted before leaving? Passphrase handling; restore validation; path traversal on restore; token storage |
 | 7 | Capture engines → vault | in | none | `sync-*.mjs`, `sync-guard.mjs`, `git-log.mjs` | Off by default really holds; secrets in commit messages, clipboard, browser URLs; shelling out; idempotence (`upsert`, deterministic ids) can't be abused to overwrite or delete others' items |
-| 8 | Importers → vault | in | none | `import-*.mjs`, `import-common.mjs`, `import-wispr.mjs` | Hostile export files (huge, deeply nested, odd keys such as `__proto__`); paths; dates; share links and attendee data in Wispr notes; regeneration of ids |
+| 8 | Importers → vault | in | none | `import-*.mjs`, `import-common.mjs`, `import-wispr.mjs` | Hostile export files (huge, deeply nested, odd keys such as `__proto__`); paths; dates; share links, e-mail addresses and attendee data in Wispr Flow notes; regeneration of ids |
 | 9 | Vault → Markdown mirror and audit log on disk | local | file permissions | `mirror.mjs`, `audit.mjs` | Mirrors are written from masked text; deleted notes leave no copy; log injection; chain verification |
 | 10 | Secure Vault (encrypted secrets) | local | master password | `crypto-vault.mjs`, `server.mjs` | KDF parameters, salt, throttling, plaintext in memory, error oracle |
 | 11 | npm / npx distribution | out | npm token in CI | `package.json`, `server.json`, `.github/workflows/release.yml` | Files shipped (`files` whitelist), install scripts, provenance, token scope, action pinning, `pull_request` vs `pull_request_target`, secrets exposure to forks |
@@ -43,9 +43,9 @@ Check each row. "Code" tells you where to look; "Verify" is the question to answ
 | 13 | Preview site on Vercel (a Vercel project named `memvault` exists) | out | Vercel | not in the files | **Needs verification:** what is served, and that no vault data, token or config can be exposed. Say "Not found in files." if you cannot tell. |
 | 14 | This review script → Anthropic API | out | your API key from the environment | `scripts/security-review.mjs` | Secrets masked before sending; key never printed or written; output files not committed |
 
-### Accounts connected to the assistant that builds and maintains this project (outside the code)
+### Outside services (outside the code)
 
-The people who maintain MemVault use an AI assistant session with connectors for **GitHub** (repository `MrChartist/memvault`), **Gmail**, **Google Calendar**, **Google Drive / Docs / Sheets / Slides**, **Notion**, **Wispr Flow**, **Canva** and **Higgsfield**. MemVault's own code contains no client for any of them, and nothing in the repository may depend on them. Treat this as context for the threat model, not as code to review:
+MemVault is built and maintained with the help of AI assistants that may be connected to other services (code hosting, e-mail, notes). MemVault's own code contains no client for any of them, and nothing in the repository may depend on them. Treat this as context for the threat model, not as code to review:
 
 - Text from those services (an email, a note, a meeting summary) is untrusted input to the assistant. It can carry instructions. The design answer in MemVault is that nothing from an AI can change the profile or reserved memory without the owner's approval. Check that this holds.
 - Anything the owner imports from them (for example a Wispr export through `import-wispr.mjs`) must pass through `ingest`. If you find code that talks to any of these services directly, report it.

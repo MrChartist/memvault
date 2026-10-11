@@ -62,21 +62,15 @@ const EXPECTED_OUTPUT_TOKENS = 16_000; // per request, for the estimate only
 const NEVER = [/(^|\/)\.env/, /\.(pem|key|p12|pfx|sqlite|db|log)$/i, /(^|\/)(token|passphrase)[^/]*$/i, /package-lock\.json$/, /(^|\/)node_modules\//, /^\.security-review\//];
 const TEXT_EXT = /\.(mjs|js|json|md|yml|yaml|html|css|service|ps1|vbs|txt)$/i;
 
+/**
+ * The files git tracks. Outside a git checkout this stops instead of walking the folder: a walk would also send
+ * ignored files (exports, local scripts, notes) and the targets of links.
+ */
 export function listTracked(repo = REPO) {
   try {
     return execFileSync("git", ["ls-files", "-z"], { cwd: repo, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\0").filter(Boolean);
   } catch {
-    const out = [];
-    const walk = (dir) => {
-      for (const e of fs.readdirSync(path.join(repo, dir), { withFileTypes: true })) {
-        const rel = dir ? `${dir}/${e.name}` : e.name;
-        if (e.name === ".git" || e.name === "node_modules") continue;
-        if (e.isDirectory()) walk(rel);
-        else out.push(rel);
-      }
-    };
-    walk("");
-    return out;
+    throw new Error("This folder is not a git checkout (or git is not installed), so nothing was sent. Run it from a clone of the repository.");
   }
 }
 
@@ -272,9 +266,10 @@ export async function runReview({ client, repo = REPO, model = "claude-opus-5-5"
   return { run, outDir, ok: failures.length === 0 && !run.refused.length };
 }
 
-function errorText(e) {
+/** An error, shortened for the console and run.json. Masked first: an API error can repeat the key it was sent. */
+export function errorText(e) {
   const status = e?.status ? `HTTP ${e.status}: ` : "";
-  return `${status}${String(e?.message || e).slice(0, 300)}`;
+  return `${status}${redact(String(e?.message || e)).text.slice(0, 300)}`;
 }
 
 // ─── command line ───────────────────────────────────────────────────────────
@@ -313,7 +308,9 @@ async function main() {
   if (o.help) { console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 40).join("\n")); return; }
   const model = resolveModel(o.model);
   const brief = fs.readFileSync(o.brief || path.join(REPO, "docs/review/final-security-check.md"), "utf8");
-  const { files, skipped, masked } = collectFiles({ withTests: o.withTests });
+  let collected;
+  try { collected = collectFiles({ withTests: o.withTests }); } catch (e) { console.error(e.message); process.exit(1); }
+  const { files, skipped, masked } = collected;
   const chunks = planChunks(files, { only: o.only });
   if (!chunks.length) { console.error("Nothing to review (check --only)."); process.exit(1); }
   const est = estimate(chunks, o.model, { synthesis: o.synthesis, briefChars: brief.length });

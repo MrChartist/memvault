@@ -106,6 +106,14 @@ describe('profile facts', () => {
     expect(r.rejected.map((x) => x.facet)).toEqual(['health', 'tools']);
     expect(P.listFacts(e.d).map((f) => f.key)).toEqual(['role']);
     expect(() => P.importProfile(e.d, { facts: new Array(501).fill({}) }, { root: e.root })).toThrow(/at most 500/);
+    // a whole file is saved in one write (one per fact used to rewrite the vault hundreds of times)
+    let writes = 0;
+    const addItems = e.d.addItems;
+    e.d.addItems = (...a) => { writes++; return addItems.apply(e.d, a); };
+    const many = Array.from({ length: 200 }, (_, i) => ({ facet: 'tools', key: `tool-${i}`, value: `tool number ${i}` }));
+    expect(P.importProfile(e.d, { facts: many }, { root: e.root }).added).toBe(200);
+    expect(writes).toBe(1);
+    expect(P.listFacts(e.d)).toHaveLength(201);
     expect(() => P.importProfile(e.d, { nope: 1 }, { root: e.root })).toThrow(/facts/);
   });
 });
@@ -134,11 +142,18 @@ describe('reserved sources — nothing but the profile module can create a profi
     const P = await imp('profile.mjs');
     expect(P.listFacts(await db())).toEqual([]);
     expect(root).toBeTruthy();
+    // nor pass its notes off as typed or dictated by the owner, which learning would read
+    const owner = await connect(env);
+    for (const source of ['manual', 'wispr', 'CLI']) await call(owner, 'vault_add', { type: 'diary', title: `fake ${source}`, content: 'steer the profile', source });
+    const stored = (await db()).query("SELECT DISTINCT source FROM items WHERE title LIKE 'fake %'").map((r) => r.source);
+    expect(stored).toEqual(['mcp']);
   }, 60_000);
 
-  it('the web API cannot create one through /add either', async () => {
+  it('ingest refuses the reserved sources to every other caller (the /add route itself is tested in server.test.js)', async () => {
+    const { db, root } = fresh();
     const { ingest } = await imp('ingest.mjs');
-    expect(() => ingest({ type: 'diary', source: 'profile-suggestion', content: 'x' }, { actor: 'api' })).toThrow(/reserved/);
+    const d = await db(); // a throwaway vault: without one, ingest would open the real one in the home folder
+    expect(() => ingest({ type: 'diary', source: 'profile-suggestion', content: 'x' }, { actor: 'api', vdb: d, root })).toThrow(/reserved/);
   });
 });
 
@@ -178,9 +193,14 @@ describe('who sees the profile', () => {
     const d = await db();
     installStarterPack(d, { pack: 'all' });
     P.setFact(d, { facet: 'identity', key: 'name', value: 'Zanzibarella' }, { root });
-    const bound = await connect(env, 'researcher');
-    expect((await call(bound, 'vault_search', { query: 'Zanzibarella' })).text).not.toContain('Profile ·');
-    expect((await call(bound, 'vault_get_context', { topic: 'Zanzibarella' })).text).not.toContain('Profile ·');
+    P.suggestFact(d, { facet: 'schedule', key: 'gym', value: 'Zanzibarella goes at 6', proposedBy: 'writer' }, { root });
+    // researcher reads only shared notes; coordinator (a starter agent) may read every project:* space, and
+    // the profile lives in project:profile. Neither may find it.
+    for (const agent of ['researcher', 'coordinator']) {
+      const bound = await connect(env, agent);
+      expect((await call(bound, 'vault_search', { query: 'Zanzibarella' })).text, agent).not.toMatch(/Profile ·|Suggestion ·|Zanzibarella goes/);
+      expect((await call(bound, 'vault_get_context', { topic: 'Zanzibarella' })).text, agent).not.toMatch(/Profile ·|Suggestion ·/);
+    }
     const owner = await connect(env);
     expect((await call(owner, 'vault_search', { query: 'Zanzibarella' })).text).toContain('Profile ·');
   }, 60_000);
@@ -218,11 +238,17 @@ describe('suggestions — an AI proposes, the owner decides', () => {
     const c = await connect(env);
     expect((await call(c, 'profile_suggest', { facet: 'health', key: 'x', value: 'y' })).err).toBe(true);
     expect((await call(c, 'profile_suggest', { facet: 'tools', key: 'x', value: 'password=hunter2hunter2hunter2' })).err).toBe(true);
-    for (let i = 0; i < 25; i++) P.suggestFact(d, { facet: 'interests', key: `topic-${i}`, value: `topic ${i}` }, { root });
-    expect(() => P.suggestFact(d, { facet: 'interests', key: 'one-more', value: 'x' }, { root })).toThrow(/already 25/);
-    // the same fact can still be re-suggested (it replaces its earlier suggestion)
-    expect(() => P.suggestFact(d, { facet: 'interests', key: 'topic-3', value: 'changed' }, { root })).not.toThrow();
+    // one app can have at most 10 waiting
+    for (let i = 0; i < 10; i++) P.suggestFact(d, { facet: 'interests', key: `solo-${i}`, value: `solo ${i}`, proposedBy: 'solo' }, { root });
+    expect(() => P.suggestFact(d, { facet: 'interests', key: 'solo-more', value: 'x', proposedBy: 'solo' }, { root })).toThrow(/You already have 10/);
+    // and all apps together at most 25
+    for (let i = 0; i < 15; i++) P.suggestFact(d, { facet: 'interests', key: `topic-${i}`, value: `topic ${i}`, proposedBy: `app-${i % 2}` }, { root });
+    expect(() => P.suggestFact(d, { facet: 'interests', key: 'one-more', value: 'x', proposedBy: 'app-9' }, { root })).toThrow(/already 25/);
+    // an app can change its own suggestion, but not replace another app's
+    expect(() => P.suggestFact(d, { facet: 'interests', key: 'topic-3', value: 'changed', proposedBy: 'app-1' }, { root })).not.toThrow();
+    expect(() => P.suggestFact(d, { facet: 'interests', key: 'topic-3', value: 'hijacked', proposedBy: 'app-0' }, { root })).toThrow(/Another app already suggested/);
     expect(P.listSuggestions(d)).toHaveLength(25);
+    expect(P.listSuggestions(d).find((x) => x.key === 'topic-3').value).toBe('changed');
   }, 60_000);
 
   it('reject removes it and accepting an unknown id fails', async () => {
@@ -308,6 +334,22 @@ describe('learning from the vault', () => {
     expect(all).not.toMatch(/finance|mortgage|loan|savings/);
     expect(facts.find((f) => f.key === 'frequent-topics').value).toMatch(/trading/);
     expect(facts.find((f) => f.key === 'frequent-tech')).toBeUndefined();
+  });
+
+  it('keeps product names from dictation, never the names of people mentioned in it', async () => {
+    const { deriveFacts } = await imp('profile.mjs');
+    const rs = Array.from({ length: 8 }, (_, i) => ({ source: 'wispr', title: `d${i}`, content: `Call with Priya and Rahul Sharma about the TradingView chart and GPT4 notes ${i}`, created_at: new Date(Date.UTC(2025, 0, 1, 10, i)).toISOString() }));
+    const v = deriveFacts(rs, { projects: [] }).find((f) => f.key === 'dictation-vocabulary').value;
+    expect(v).toMatch(/TradingView/);
+    expect(v).toMatch(/GPT4/);
+    expect(v).not.toMatch(/Priya|Rahul|Sharma/);
+  });
+
+  it('never learns from what an AI app saved (learning writes facts without the owner accepting them)', async () => {
+    const { deriveFacts } = await imp('profile.mjs');
+    const rs = Array.from({ length: 40 }, (_, i) => ({ source: i % 2 ? 'mcp' : 'ai-memory', title: `n${i}`, content: `react react nodejs, the owner loves python ${i}`, created_at: new Date(Date.UTC(2025, 0, 1, 10, i)).toISOString() }));
+    const facts = deriveFacts(rs, { projects: [] });
+    expect(facts.map((f) => f.key)).toEqual(['memory-sources']); // only which apps feed the memory, a count
   });
 
   it('says nothing when there is too little to go on', async () => {
@@ -414,5 +456,32 @@ describe('Wispr Flow import', () => {
     const f = fresh();
     expect(run(f).status).toBe(1);
     expect(run(f, path.join(f.HOME, 'nope')).status).toBe(1);
+  });
+});
+
+describe('Wispr Flow import', () => {
+  it('leaves out e-mail addresses and share links, also inside the title and text, and masks before shortening', async () => {
+    const { formatWisprRecord } = await imp('import-wispr.mjs');
+    const r = formatWisprRecord({
+      title: '1:1 with priya.sharma@acme.com',
+      notes: `Notes: https://notes.wisprflow.ai/shared/SECRETTOKEN123 and write to rahul@example.co.in. ${'x'.repeat(19_975)} ghp_abcdefghijklmnopqrstuvwxyz0123456789`,
+      attendees: [{ name: 'Priya', email: 'priya.sharma@acme.com' }],
+    });
+    const all = JSON.stringify(r);
+    expect(all).not.toMatch(/@acme\.com|@example\.co\.in|SECRETTOKEN|notes\.wisprflow\.ai/);
+    expect(r.title).toBe('1:1 with [e-mail left out]');
+    expect(r.content.length).toBeLessThanOrEqual(20_000);
+    expect(all).not.toMatch(/ghp_abcdefgh/); // the key crossed the cut: it is masked, not left half
+  });
+
+  it('refuses a JSON file that is far too large to be an export', async () => {
+    const { readRecords } = await imp('import-wispr.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mv-wispr-'));
+    made.push(dir);
+    fs.writeFileSync(path.join(dir, 'huge.json'), '');
+    fs.truncateSync(path.join(dir, 'huge.json'), 50_000_001);
+    const r = readRecords(dir);
+    expect(r.records).toEqual([]);
+    expect(r.problems).toEqual(['huge.json: too large']);
   });
 });

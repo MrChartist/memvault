@@ -13,8 +13,10 @@
  * Each record's text comes from the first of: notes, summary, content, text, transcript, formatted_text, body,
  * content_excerpt. Its title comes from title / name, and its date from start / created_at / timestamp / date.
  *
- * Left out ON PURPOSE: attendee names and e-mail addresses, and share links (a share link opens the note for
- * anyone who has it). Secrets and ID numbers are masked as for every other import.
+ * Left out ON PURPOSE: the attendee list, every e-mail address (also inside the title or the text), and Wispr
+ * Flow share links (a share link opens the note for anyone who has it). People's names said inside the text
+ * stay, because they are part of what was said. Secrets and ID numbers are masked as for every other import,
+ * before anything is shortened, so a cut never leaves half a key behind.
  *
  * Needs verification: the file the Wispr Flow app itself exports. Those field names are not confirmed here, which is
  * why unknown shapes are skipped and counted rather than guessed.
@@ -25,7 +27,7 @@
 
 import fs from "fs";
 import path from "path";
-import { createIngestQueue } from "./ingest.mjs";
+import { createIngestQueue, clipText } from "./ingest.mjs";
 import { runImport, toIso } from "./import-common.mjs";
 import { isMain } from "./is-main.mjs";
 
@@ -35,6 +37,12 @@ const DATE_FIELDS = ["start", "created_at", "createdAt", "timestamp", "date", "m
 const LIST_FIELDS = ["notes", "meetings", "items", "transcripts", "history", "dictations", "data"];
 const MAX_CHARS = 20000;
 const MAX_FILES = 2000;
+const MAX_FILE_BYTES = { text: 2_000_000, json: 50_000_000 };
+
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const SHARE_RE = /https?:\/\/(?:[a-z0-9-]+\.)*wisprflow\.ai\/shared\/\S*/gi;
+/** E-mail addresses and share links never reach the vault, wherever they appear. */
+export const leaveOut = (s) => String(s).replace(SHARE_RE, "[share link left out]").replace(EMAIL_RE, "[e-mail left out]");
 
 const asText = (v) => (typeof v === "string" ? v : "");
 
@@ -47,9 +55,9 @@ export function formatWisprRecord(rec) {
     if (text) break;
   }
   if (text.length < 8 || /^(no meaningful audio|transcript too short)/i.test(text)) return null;
-  text = text.slice(0, MAX_CHARS);
+  text = clipText(leaveOut(text), MAX_CHARS); // masked first, then shortened
 
-  const title = (asText(rec.title) || asText(rec.name)).trim() || text.replace(/\s+/g, " ").slice(0, 60);
+  const title = clipText(leaveOut((asText(rec.title) || asText(rec.name)).trim() || text.replace(/\s+/g, " ")), 60);
   let created = null;
   for (const f of DATE_FIELDS) {
     created = toIso(rec[f]);
@@ -57,7 +65,7 @@ export function formatWisprRecord(rec) {
   }
   const meeting = Array.isArray(rec.attendees) || rec.start !== undefined;
   return {
-    title: title.slice(0, 200),
+    title,
     content: text,
     tags: ["import", SOURCE, meeting ? "meeting" : "dictation"].join(","),
     created_at: created,
@@ -94,11 +102,12 @@ export function readRecords(inputPath) {
   const problems = [];
   for (const f of files) {
     try {
-      if (/\.json$/i.test(f)) {
+      const stat = fs.statSync(f);
+      const json = /\.json$/i.test(f);
+      if (stat.size > MAX_FILE_BYTES[json ? "json" : "text"]) { problems.push(`${path.basename(f)}: too large`); continue; }
+      if (json) {
         records.push(...recordsFromJson(JSON.parse(fs.readFileSync(f, "utf8"))));
       } else {
-        const stat = fs.statSync(f);
-        if (stat.size > 2_000_000) { problems.push(`${path.basename(f)}: too large`); continue; }
         records.push({ title: path.basename(f).replace(/\.[^.]+$/, ""), content: fs.readFileSync(f, "utf8"), created_at: stat.mtime.toISOString() });
       }
     } catch (e) {
@@ -140,7 +149,7 @@ if (isMain(import.meta.url)) {
     node import-wispr.mjs <file-or-folder> --dry-run
 
   Accepts JSON (a list of notes or meetings) and Markdown or text files.
-  Attendee names, e-mail addresses and share links are not imported.
+  The attendee list, e-mail addresses and share links are not imported.
 `);
     process.exit(1);
   }
