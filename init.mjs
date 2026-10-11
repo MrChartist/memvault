@@ -133,9 +133,10 @@ async function main() {
       model: existing.ai?.model || "gemini-2.0-flash",
     },
     storage: {
-      local: { enabled: true },
-      gdriveFolder: { enabled: gdriveFolderOn, path: gdriveFolderPath },
-      gdriveApi: { ...gdriveApi, enabled: gdriveApiOn }, // the answer wins over any previously saved "enabled"
+      ...existing.storage, // settings not asked about here (the backup passphrase file, encryption) are kept
+      local: { ...existing.storage?.local, enabled: true },
+      gdriveFolder: { ...existing.storage?.gdriveFolder, enabled: gdriveFolderOn, path: gdriveFolderPath },
+      gdriveApi: { ...existing.storage?.gdriveApi, ...gdriveApi, enabled: gdriveApiOn }, // the answer wins over any previously saved "enabled"
       keepLocalBackups: existing.storage?.keepLocalBackups ?? 20,
     },
     mcpBridges,

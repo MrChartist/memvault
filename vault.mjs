@@ -1,8 +1,7 @@
 // vault.mjs — add entries to your MemVault from the command line (no server needed)
-import fs from "fs";
-import path from "path";
 import { VAULT_ROOT } from "./config.mjs";
 import { ingest } from "./ingest.mjs";
+import { writeMirror } from "./mirror.mjs";
 function isoDate() {
     const d = new Date();
     const yyyy = d.getFullYear();
@@ -34,21 +33,19 @@ if (cmd === "diary") {
     if (!text) usage();
 
     const day = isoDate();
-    const dir = path.join(VAULT_ROOT, "entries", day.slice(0, 4), day.slice(5, 7));
-    fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, `${day}.md`);
-
-    const { items } = ingest({
+    const created_at = new Date().toISOString();
+    const { ids, items } = ingest({
         type: "diary",
         source: "manual",
         title: `Diary ${day}`,
         content: text,
-        file_path: file,
         tags: "diary",
+        created_at,
     }, { actor: "cli" });
 
-    // Mirror what was STORED (secrets masked), never the raw input.
-    fs.appendFileSync(file, `\n## ${new Date().toISOString()}\n${items[0].content}\n`, { mode: 0o600 });
+    // Mirror what was STORED (secrets masked), never the raw input, in a file named with the memory's id
+    // so deleting or editing the memory also removes or rewrites it.
+    const file = writeMirror(VAULT_ROOT, { ...items[0], id: ids[0], created_at });
 
     console.log(`OK: wrote diary -> ${file}`);
     process.exit(0);
