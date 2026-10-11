@@ -258,7 +258,8 @@ await p.fill("#m-content", "Maya's exam is on 14 June. API_KEY=abcd1234efgh5678"
 await p.click('[data-action="mem-save"]'); await p.waitForSelector("#dlg-memory:not([open])", { state: "attached" });
 check("saving an edit hides secrets and says so in plain words", /hid 1 password or key/.test(await p.locator("#toast").innerText()));
 const saved = await (await fetch(`${base}/search?q=14%20June`, { headers: { authorization: `Bearer ${token}` } })).json();
-check("the stored text is the edited, masked text", saved.results.length === 1 && !JSON.stringify(saved).includes("abcd1234efgh5678") && /14 June/.test(saved.results[0].snippet));
+check("the stored text is the edited, masked text", saved.results.length === 1 && !JSON.stringify(saved).includes("abcd1234efgh5678") && /14 June/.test(saved.results[0].snippet),
+  JSON.stringify(saved.results.map((r) => ({ id: r.id, title: r.title, snippet: r.snippet })))); // shown if it fails
 check("saving an edit keeps the hidden labels and the pin", ["diary", "manual", "pinned"].every((t) => saved.results[0].tags.split(",").includes(t)), saved.results[0].tags);
 await p.waitForFunction(() => document.querySelector("article.entry")?.classList.contains("is-pinned"));
 check("a pinned memory moves to the top and says 'Pinned' in words", /Pinned/.test(await p.locator("article.entry.is-pinned").first().innerText()));
