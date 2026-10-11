@@ -33,6 +33,7 @@ describe('every listed tool answers a minimal valid call without error', () => {
     vault_ai_summarize: { query: 'x' }, vault_ai_insights: {}, vault_smart_search: { query: 'x' },
     vault_weekly_digest: {}, vault_backups: {}, vault_bridge_list: {}, vault_bridge_sync: {},
     vault_backup: {}, vault_git_log: {},
+    profile_get: {}, profile_suggest: { facet: 'preferences', key: 'smoke', value: 'smoke suggestion' },
   };
   it('covers all listed tools (fails when a new tool is added without a smoke entry)', async () => {
     const names = (await c.listTools()).tools.map((t) => t.name);

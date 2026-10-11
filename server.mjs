@@ -29,7 +29,11 @@ import { collectDiagnostics } from "./diagnostics.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
 import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
+import { setupStatus, backupPassphraseState } from "./setup-status.mjs";
 import { resolveUserPath } from "./paths.mjs";
+import {
+  FACETS, listFacts, setFact, removeFact, listSuggestions, acceptSuggestion, rejectSuggestion, learnFromVault, importProfile, exportProfile,
+} from "./profile.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PKG_VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
@@ -131,7 +135,8 @@ function visibilityClause(profile) {
       params.push(sc);
     }
   }
-  return { sql: `(${parts.join(" OR ")})`, params };
+  // Like the agent's own copy (applyScope in db.mjs): the owner's profile is never in what an agent sees.
+  return { sql: `((${parts.join(" OR ")}) AND scope != 'project:profile' AND COALESCE(source, '') NOT IN ('profile', 'profile-suggestion'))`, params };
 }
 
 /**
@@ -662,6 +667,77 @@ export function createApp({
     res.json({ ok: true, backup: backup?.location ? path.basename(backup.location) : null });
   });
 
+  // ── user profile ─────────────────────────────────────────────────────────
+  // Owner-only like every route here (access key). AI apps never reach these: they use profile_get and
+  // profile_suggest over MCP, and a suggestion changes nothing until it is accepted below.
+
+  app.get("/profile", (_req, res) =>
+    res.json({ ok: true, facets: FACETS, facts: listFacts(vdb), suggestions: listSuggestions(vdb) }));
+
+  // The same shape checks as every other route; profile.mjs then checks the meaning (facet, secrets, length).
+  const FactSchema = z.object({
+    facet: z.string().max(40), key: z.string().max(60), value: z.string().max(2000),
+    confidence: z.enum(["low", "medium", "high"]).optional(),
+  }).strict();
+  app.put("/profile/facts", (req, res) => {
+    const parsed = FactSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: "Send a facet, a key and a value (and, if you like, a confidence: low, medium or high)." });
+    try {
+      const { facet, key, value, confidence } = parsed.data;
+      const r = setFact(vdb, { facet, key, value, source: "manual", confidence }, { actor: "owner", root });
+      res.json({ ok: true, changed: r.changed, fact: r.fact });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.delete("/profile/facts/:facet/:key", (req, res) => {
+    try {
+      if (!removeFact(vdb, req.params.facet, req.params.key, { actor: "owner", root })) return res.status(404).json({ ok: false, error: "Not found" });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.post("/profile/suggestions/:id/accept", (req, res) => {
+    try {
+      res.json({ ok: true, fact: acceptSuggestion(vdb, req.params.id, { actor: "owner", root }) });
+    } catch (e) {
+      // Gone already: 404. Anything else (it no longer passes the checks): 400, with the reason.
+      res.status(/No such suggestion/.test(e.message) ? 404 : 400).json({ ok: false, error: e.message });
+    }
+  });
+
+  app.post("/profile/suggestions/:id/reject", (req, res) => {
+    if (!rejectSuggestion(vdb, req.params.id, { actor: "owner", root })) return res.status(404).json({ ok: false, error: "Not found" });
+    res.json({ ok: true });
+  });
+
+  // Preview by default; nothing is saved unless the body says {"apply": true}.
+  app.post("/profile/learn", (req, res) => {
+    const parsed = z.object({ apply: z.boolean().optional() }).strict().safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ ok: false, error: 'Send {} for a preview, or {"apply": true} to save.' });
+    const apply = parsed.data.apply === true;
+    const r = learnFromVault(vdb, { apply, actor: "owner", root });
+    res.json({ ok: true, applied: apply, ...r });
+  });
+
+  app.get("/profile/export", (_req, res) => {
+    const out = exportProfile(vdb);
+    log("profile-export", { facts: out.facts.length }); // like /export: taking a copy out is recorded
+    res.set("Content-Disposition", `attachment; filename="memvault-profile-${isoDate()}.json"`);
+    res.json(out);
+  });
+
+  app.post("/profile/import", (req, res) => {
+    try {
+      res.json({ ok: true, ...importProfile(vdb, req.body, { actor: "owner", root }) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message });
+    }
+  });
+
   // Ready-to-paste MCP client config for the owner (full access). Per-agent versions: /agents/:id/mcp-config
   app.get("/mcp-config", (_req, res) => {
     res.json({ ok: true, config: { mcpServers: { memvault: mcpEntry({ vaultRoot: root }) } } });
@@ -690,12 +766,6 @@ export function createApp({
   // Lets the dashboard check a typed key without reading any data.
   app.get("/whoami", (_req, res) => res.json({ ok: true }));
 
-  const passphraseState = (uc) => {
-    if (process.env.MEMVAULT_BACKUP_PASSPHRASE) return { set: true, via: "env" };
-    const f = uc.storage?.passphraseFile;
-    if (f) { try { if (fs.readFileSync(f, "utf8").split(/\r?\n/)[0].trim()) return { set: true, via: "file" }; } catch { /* missing file */ } }
-    return { set: false, via: null };
-  };
 
   app.get("/settings", (_req, res) => {
     const uc = config.load();
@@ -710,7 +780,7 @@ export function createApp({
       capture,
       projects: Array.isArray(uc.projects) ? uc.projects : [],
       backup: {
-        passphrase: passphraseState(uc),
+        passphrase: backupPassphraseState(uc),
         cloud: { folder: !!st.gdriveFolder.enabled, api: !!st.gdriveApi.enabled },
         keep: st.keepLocalBackups,
       },
@@ -820,6 +890,15 @@ export function createApp({
     if (!forgetDeviceKey(req.params.id)) return res.status(404).json({ ok: false, error: "Not found" });
     log("device-forgotten", { device: req.params.id });
     res.json({ ok: true });
+  });
+
+  // The Getting started list on the Memory screen (setup-status.mjs): it ticks itself from what is really there.
+  app.get("/setup", (req, res) => {
+    try {
+      res.json({ ok: true, onPhone: Boolean(req.deviceKeyId), ...setupStatus({ vdb, userConfig: config.load(), dir: devicesDir }) });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
   });
 
   // One round of every switched-on capture engine (the clipboard watcher runs separately, by design).

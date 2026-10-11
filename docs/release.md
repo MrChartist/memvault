@@ -7,7 +7,7 @@ Do these in order. Stop at the first step that fails.
 1. CI is green on the release commit, including Windows and macOS, or the launch post says they are untried.
 2. `npx vitest run` and `npm run test:e2e` pass.
 3. `npm audit --omit=dev` shows nothing.
-4. `npm pack --dry-run` lists only what you expect: 85 files on 2026-10-11 (86 once `docs/devices.md` exists). The program, `public/`, `profiles/`, `examples/` and the user guides in `docs/`. No `db/`, no `.env`, no `tests/`, no `site/`, no screenshots, no `docs/review/`, and not `docs/promo.md` or this file. `tests/package.test.js` checks part of this.
+4. `npm pack --dry-run` lists only what you expect: 91 files on 2026-10-11. The program, `public/`, `profiles/`, `examples/` and the user guides in `docs/`. No `db/`, no `.env`, no `tests/`, no `site/`, no screenshots, no `docs/review/`, and not `docs/promo.md` or this file. `tests/package.test.js` checks part of this.
 5. CHANGELOG, `package.json` version and `server.json` version are the same.
 6. Private vulnerability reporting is on (in the GitHub repository's Settings, security section). It was **off** when checked on 2026-10-11. Send yourself a test report once it is on.
 

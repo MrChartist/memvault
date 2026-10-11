@@ -125,6 +125,22 @@ describe('signing a phone in', () => {
     expect((await req('GET', '/whoami', { token: phone })).status).toBe(200); // it did not sign itself out either
   });
 
+  it('the Getting started list says which steps are done, needs the key, and tells a phone it is a phone', async () => {
+    expect((await req('GET', '/setup', { token: null })).status).toBe(401);
+    const r = await req('GET', '/setup');
+    expect(r.status).toBe(200);
+    expect(r.json.onPhone).toBe(false);
+    expect(r.json.steps.map((s) => s.id)).toEqual(['install', 'connect', 'try', 'backup', 'passphrase', 'agents', 'devices', 'phone']);
+    expect(r.json.steps.find((s) => s.id === 'install').done).toBe(true);
+    expect(r.json.total).toBe(5);
+
+    const made = await req('POST', '/devices/pair-code', { body: { name: 'Checklist phone' } });
+    const phone = (await req('POST', '/pair', { token: null, body: { code: made.json.code } })).json.key;
+    const onPhone = await req('GET', '/setup', { token: phone });
+    expect(onPhone.json.onPhone).toBe(true); // the dashboard hides the list there: the steps are done on a computer
+    expect((await req('GET', '/setup')).json.steps.find((s) => s.id === 'phone').done).toBe(true);
+  });
+
   it('wrong codes are limited', async () => {
     let last;
     for (let i = 0; i < 6; i++) last = await req('POST', '/pair', { token: null, body: { code: 'AAAA-AAAA' } });

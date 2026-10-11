@@ -28,6 +28,11 @@ secrets.json
 credentials.json
 config.local.*
 
+# ── MemVault's own backups and device-sync files (they hold your memory) ──────
+*.mvbak
+*.mvsync
+.memvault/
+
 # ── Sync output / temp files ──────────────────────────────────────────────────
 *.log
 /tmp/
@@ -59,3 +64,6 @@ test.sh
 
 # generated per machine
 run-sync-silent.vbs
+
+# Security-review reports describe vulnerabilities: never commit them
+.security-review/

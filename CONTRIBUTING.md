@@ -36,6 +36,7 @@ If `npm install` crashes with `Cannot read properties of null (reading 'edgesOut
 | The vault file (the only code that opens it) | `db.mjs`, `filelock.mjs` |
 | The one door for writes: mask secrets, write once, copy to Markdown, audit | `ingest.mjs`, `redact.mjs`, `mirror.mjs`, `audit.mjs` |
 | Agents, scopes, access key | `agents.mjs`, `profiles/`, `auth.mjs` |
+| The user profile | `profile.mjs` (reserved sources, suggestions, learning) |
 | Dashboard and API | `server.mjs`, `public/` |
 | MCP server and bridges | `mcp-server.mjs`, `mcp-bridge.mjs` |
 | Automatic capture (all off by default) | `sync-*.mjs`, `sync-guard.mjs`, `git-log.mjs` |
@@ -52,7 +53,8 @@ Ground rules. Most of them exist because a review found a real bug.
 4. **Escape everything you put into the dashboard.** Use the existing `esc()` helper in `public/app.js`. The dashboard has a strict Content-Security-Policy, so no inline scripts or styles.
 5. **Paths from people go through `paths.mjs`.** JSON settings and environment variables do not expand `~`. Use `resolveUserPath()` for command-line arguments, environment variables and wizard answers (relative means "the folder you are in"), and `expandHome()` for values read from the settings file (relative means "under the home folder"). Build paths with `path.join`, never with a hard-coded `/` or `C:\`, and never hard-code a personal folder.
 6. **Do not add dependencies lightly.** MemVault is meant to install with `npm install -g` or `npx` (once it is on npm) and has no native build step. That is a feature.
-7. **Plain JavaScript modules for Node 20 or newer. No TypeScript build step.** Match the style of the file you are in.
+7. **The names `profile` and `profile-suggestion` are reserved sources.** Only `profile.mjs` may write them (`allowReserved` in `ingest`). Do not add a path that lets a tool, import or request write them, and do not let an AI change the profile without the owner's accept.
+8. **Plain JavaScript modules for Node 20 or newer. No TypeScript build step.** Match the style of the file you are in.
 
 ## Adding or changing a capture engine
 
@@ -85,6 +87,10 @@ We use [Vitest](https://vitest.dev). Tests live in `tests/` and use throwaway fo
 Commit messages: a short imperative subject, for example `fix: stop re-importing renamed branches`. Prefixes such as `feat:`, `fix:`, `docs:`, `test:` and `chore:` are welcome but not required.
 
 Translations, accessibility fixes and tests are especially welcome. A new starter pack of agents is a folder of JSON files in `profiles/`; see [docs/agents.md](docs/agents.md).
+
+## Security check before a release (maintainers)
+
+`npm run security-review -- --dry-run` shows the plan and a rough cost. `npm run security-review -- --model opus --yes` (or `--model fable`) sends the code, with certain credentials masked, to the Anthropic API using your key, and writes reports to `.security-review/` (never commit them). The brief it uses is `docs/review/final-security-check.md`; keep its connection list up to date when you add one.
 
 ## Releasing (maintainers)
 

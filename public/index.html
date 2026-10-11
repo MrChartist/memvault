@@ -46,24 +46,18 @@
     <section id="view-memory" class="view">
       <h2 id="h-memory" class="sr-only" tabindex="-1">Memory</h2>
 
-      <div class="card guide" id="guide" hidden>
+      <div class="card guide" id="guide" hidden aria-labelledby="guide-title">
         <div class="row between wrap gap">
-          <h3 class="guide-title">Welcome! Here’s how MemVault works</h3>
+          <h3 class="guide-title" id="guide-title">Getting started</h3>
           <button class="btn sm ghost" data-action="dismiss-guide">Hide this</button>
         </div>
-        <p class="muted">MemVault is a notebook on <strong>your own computer</strong> that all your AI assistants can share. Tell one AI something once, and the others can find it too.</p>
-        <ol class="steps">
-          <li><div><b>Connect your AI app</b>
-            <span class="muted">Works with Claude, Cursor, Antigravity, VS Code and other AI apps that can connect to tools.</span>
-            <div class="row"><button class="btn primary" data-action="connect-apps">Show me how</button></div></div></li>
-          <li><div><b>Choose agents (optional)</b>
-            <span class="muted">An agent is a helper with its own job, way of talking and rules, such as a study helper or a writing helper.</span>
-            <div class="row"><button class="btn" data-action="view" data-view="agents">See the agents</button></div></div></li>
-          <li><div><b>Try it</b>
-            <span class="muted">In your AI app, say:</span>
-            <div><span class="sample" dir="auto">Remember that I prefer short answers.</span></div>
-            <div class="row"><button class="btn" data-action="copy-sample">Copy sentence</button></div></div></li>
-        </ol>
+        <p class="muted">MemVault is a notebook on <strong>your own computer</strong> that all your AI assistants can share. Tell one AI something once, and the others can find it too. This list ticks itself as you go.</p>
+        <div class="setup-progress"><progress id="setup-bar" max="5" value="1" aria-labelledby="setup-count"></progress> <span id="setup-count" class="muted small" role="status">1 of 5 done</span></div>
+        <ol class="steps" id="setup-steps"></ol>
+        <details class="setup-later">
+          <summary>When you are ready <span class="muted small" id="setup-optional-count">(optional)</span></summary>
+          <ol class="steps" id="setup-optional"></ol>
+        </details>
         <p class="privacy-note"><strong>Your privacy, in plain words.</strong> Your notes are stored only on this computer, and MemVault sends nothing anywhere by itself. When you ask an AI to look something up here, the part it reads goes to that AI’s company, like anything else you type to it. Passwords and ID numbers are hidden before they are saved.</p>
       </div>
 

@@ -31,7 +31,8 @@
     "setup": "node cli.mjs setup",
     "doctor": "node cli.mjs doctor",
     "test:e2e": "node tests/e2e/dashboard.e2e.mjs",
-    "screenshots": "node tests/e2e/screenshots.mjs"
+    "screenshots": "node tests/e2e/screenshots.mjs",
+    "security-review": "node scripts/security-review.mjs"
   },
   "keywords": [
     "mcp",
@@ -63,6 +64,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "0.128.0",
     "axe-core": "^4.10.0",
     "playwright-core": "^1.50.0",
     "vitest": "^5.0.3"
@@ -77,6 +79,7 @@
     "docs/devices.md",
     "docs/google-drive.md",
     "docs/mcp-bridge.md",
+    "docs/profile.md",
     "docs/uninstall.md",
     "README.md",
     "SECURITY.md",
