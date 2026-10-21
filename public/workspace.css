@@ -46,3 +46,8 @@
 
 @media (max-width: 900px) { .ws-meters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ws-files { grid-template-columns: minmax(0, 1fr); } .ws-tree { max-height: 40vh; } }
 @media (max-width: 560px) { .ws-term { height: 56vh; } .ws-editor { height: 56vh; } .ws-meter .value { font-size: 1.25rem; } }
+
+.ws-machine-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; margin-top: 16px; }
+.ws-machine-bar .label { margin: 0; }
+.ws-machine-bar select { min-height: 44px; flex: 1 1 200px; max-width: 360px; }
+.ws-off { padding: 18px; }

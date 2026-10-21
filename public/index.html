@@ -39,7 +39,7 @@
       <button class="tab" data-action="view" data-view="vault">Secure Vault</button>
       <button class="tab" data-action="view" data-view="security">Security</button>
       <button class="tab" data-action="view" data-view="settings">Settings</button>
-      <button class="tab" data-action="view" data-view="server" data-ws="processes" hidden>Server</button>
+      <button class="tab" data-action="view" data-view="server" data-ws="server" hidden>Server</button>
       <button class="tab" data-action="view" data-view="terminal" data-ws="terminal" hidden>Terminal</button>
       <button class="tab" data-action="view" data-view="files" data-ws="files" hidden>Files</button>
     </nav>
@@ -189,6 +189,16 @@
       </div>
       <div id="backups" class="card"></div>
     </section>
+
+    <!-- ═════════ MACHINE PICKER (Server, Terminal, Files) ═════════ -->
+    <div id="ws-machine-bar" class="card ws-machine-bar" hidden>
+      <label class="label" for="ws-machine">Machine</label>
+      <select id="ws-machine"></select>
+      <div class="row gap wrap">
+        <button class="btn sm" data-action="ws-machine-add">Link a machine</button>
+        <button class="btn sm ghost" data-action="ws-machine-remove" id="ws-machine-remove" hidden>Unlink</button>
+      </div>
+    </div>
 
     <!-- ═════════ SERVER ═════════ -->
     <section id="view-server" class="view" hidden>
@@ -527,6 +537,21 @@
       <input id="wipe-confirm" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
       <p class="error" id="wipe-error" role="alert" hidden></p>
       <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn danger" type="button" id="wipe-go" data-action="wipe-go" disabled>Delete everything</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-machine" aria-labelledby="machine-title" data-guard>
+    <form method="dialog" class="dlg" id="machine-form">
+      <h3 id="machine-title">Link a machine</h3>
+      <p class="muted">Control another MemVault (a VPS, a work computer) from this dashboard, and from any phone signed in here. On that machine, turn on the server workspace and make a pairing code: <code>memvault devices pair --name "This laptop"</code>, or Settings → Add a phone.</p>
+      <label class="label" for="machine-name">Name</label>
+      <input id="machine-name" type="text" maxlength="40" placeholder="VPS" autocomplete="off" />
+      <label class="label" for="machine-url">Address</label>
+      <input id="machine-url" type="url" inputmode="url" placeholder="https://memvault.example.com" autocomplete="off" autocapitalize="off" spellcheck="false" required />
+      <label class="label" for="machine-code">Pairing code</label>
+      <input id="machine-code" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required />
+      <p class="error" id="machine-error" role="alert" hidden></p>
+      <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn primary" type="submit">Link</button></div>
     </form>
   </dialog>
 

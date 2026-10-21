@@ -32,3 +32,21 @@ Optional keys: `"terminal": false`, `"processes": false` or `"files": false` tur
 ## A real terminal
 
 On Linux and macOS the shell runs under `script` (part of util-linux, installed almost everywhere), so prompts, colours, `htop`, `vim` and `nano` work. For resizing with the window, install `node-pty` next to MemVault (`npm install node-pty`); it is used automatically when present. Without either, the terminal falls back to a plain pipe (fine for commands, no full-screen programs).
+
+## Control your other machines from one place
+
+Every MemVault can link other MemVaults and use their Server, Terminal and Files tabs. Install MemVault on each machine you want to control (a VPS, a work computer), then link them to the one you open most:
+
+1. **On the machine to control** (for example the VPS): turn the workspace on (above), then run `memvault devices pair --name "My laptop"`. It shows a one-time code, valid for 10 minutes.
+2. **On the dashboard you use:** open **Server**, choose **Link a machine**, and enter a name, its address (for example `https://memvault.187-127-156-46.sslip.io`) and the code.
+3. Pick the machine in the **Machine** list above the Server, Terminal and Files tabs. Everything on those tabs now runs on that machine. The choice is remembered in this browser.
+
+**From a phone:** a phone cannot run MemVault itself, so it opens one MemVault's dashboard: pair it once (`memvault devices pair --name "iPhone"`, then "Use a pairing code" on the phone). It can then use that machine and every machine linked to it. If the VPS is the one the phone opens, link your other machines to the VPS. A computer at home is only reachable from the VPS if it has an address the VPS can reach, for example with Tailscale (`tailscale serve`); a VPS is reachable from everywhere.
+
+How it is protected:
+
+- The browser only talks to the dashboard it opened (the CSP stays `connect-src 'self'`). That server relays **only** the workspace routes (`/api/workspace`, `/api/term/*`, `/api/system/*`, `/api/fs/*`) to the linked machine; memories, the Secure Vault and settings of the other machine cannot be reached this way.
+- The other machine's key is kept on the server in `~/.memvault/machines.json` (mode 0600), never in the browser. On the other machine it shows up as a paired device, so you can sign it out there with `memvault devices forget <id>`.
+- Linking and unlinking need the dashboard key: a paired phone can use linked machines but cannot link new ones.
+- Addresses must be `https://` (plain `http://` only to this computer or a private / Tailscale address). Redirects are refused.
+- Both machines write the action to their audit logs: `machine-relay` here, and the terminal, service or file action (with the linking device) there.

@@ -181,7 +181,7 @@ The Secure Vault, uploaded files and the access log stay on each computer. Claud
 
 ### On a server: terminal, services and files
 
-Running MemVault on a VPS? Turn on the server workspace and the dashboard also gets **Server** (health meters, PM2 and Docker with one-tap restart and logs), **Terminal** (a shell in the browser, with touch keys on phones) and **Files** (browse and edit config files). It is off by default, needs the dashboard key, and every action is in the audit log. See [docs/workspace.md](docs/workspace.md).
+Running MemVault on a VPS? Turn on the server workspace and the dashboard also gets **Server** (health meters, PM2 and Docker with one-tap restart and logs), **Terminal** (a shell in the browser, with touch keys on phones) and **Files** (browse and edit config files). Install it on several machines and link them, and one dashboard (on your laptop, the VPS or your phone) controls them all. It is off by default, needs the dashboard key, and every action is in the audit log. See [docs/workspace.md](docs/workspace.md).
 
 ## Is it safe?
 

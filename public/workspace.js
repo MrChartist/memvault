@@ -21,6 +21,14 @@
     return data;
   }
 
+  /* ───────── which machine ───────── */
+  // '' is this machine; anything else is a linked one, reached through this server (machines.mjs).
+  const MACHINE_KEY = 'memvault-machine';
+  let machine = read(MACHINE_KEY, 'localStorage') || '';
+  let machines = [];
+  const wapi = (path, opts) => api(machine ? `/api/machines/${encodeURIComponent(machine)}/relay${path}` : path, opts);
+  const machineName = () => (machine ? machines.find((m) => m.id === machine)?.name || 'that machine' : 'this machine');
+
   const bytes = (n) => {
     if (n == null) return '—';
     const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0;
@@ -34,11 +42,45 @@
   };
   const say = (msg) => { const t = $('#toast'); if (!t) return; t.textContent = msg; try { t.showPopover(); setTimeout(() => t.hidePopover(), 3500); } catch { /* no popover */ } };
 
-  let caps = null;
+  let caps = null;      // what the chosen machine offers
+  let localCaps = null; // what this machine offers
   async function detect() {
     if (!getToken()) return;
-    try { caps = await api('/api/workspace'); } catch { return; }
-    document.querySelectorAll('.tab[data-ws]').forEach((t) => { t.hidden = !caps[t.dataset.ws]; });
+    try {
+      const [l, m] = await Promise.all([api('/api/workspace'), api('/api/machines')]);
+      localCaps = l; machines = m.machines;
+    } catch { return; }
+    if (machine && !machines.some((x) => x.id === machine)) setMachine('');
+    renderPicker();
+    await loadCaps();
+  }
+
+  async function loadCaps() {
+    caps = machine ? await wapi('/api/workspace').catch((e) => ({ enabled: false, error: e.message })) : localCaps;
+    document.querySelectorAll('.tab[data-ws]').forEach((t) => {
+      t.hidden = t.dataset.ws === 'server' ? false : !(caps?.[t.dataset.ws]); // Server always: it is where machines are linked
+    });
+  }
+
+  function renderPicker() {
+    const sel = $('#ws-machine');
+    const here = `This machine${localCaps?.enabled ? '' : ' (workspace off)'}`;
+    sel.innerHTML = `<option value="">${esc(here)}</option>` + machines.map((m) => `<option value="${esc(m.id)}">${esc(m.name)} · ${esc(m.url.replace(/^https?:\/\//, ''))}</option>`).join('');
+    sel.value = machine;
+    $('#ws-machine-remove').hidden = !machine;
+  }
+
+  function setMachine(id) {
+    machine = id;
+    try { if (id) localStorage.setItem(MACHINE_KEY, id); else localStorage.removeItem(MACHINE_KEY); } catch { /* storage blocked */ }
+  }
+
+  // Shown on a tab when the chosen machine does not offer it.
+  function offNotice(box, what) {
+    const why = caps?.error ? caps.error : machine
+      ? `${machineName()} has its ${what} turned off. Turn it on there (docs/workspace.md).`
+      : `The server workspace is off on this machine. Turn it on with "security": { "workspace": { "enabled": true } } in ~/.memvaultrc.json, or link another machine above.`;
+    box.innerHTML = `<div class="card ws-off"><p>${esc(why)}</p></div>`;
   }
 
   /* ───────── server ───────── */
@@ -47,8 +89,8 @@
     + `${pct == null ? '' : `<progress max="100" value="${esc(pct)}" aria-label="${esc(label)} ${esc(pct)}%">${esc(pct)}%</progress>`}<small>${esc(sub)}</small></div>`;
 
   async function loadStatus() {
-    const s = await api('/api/system/status');
-    $('#sv-host').textContent = `${s.hostname} · ${s.platform}`;
+    const s = await wapi('/api/system/status');
+    $('#sv-host').textContent = `${machine ? `${machineName()} — ` : ''}${s.hostname} · ${s.platform}`;
     $('#sv-meters').innerHTML = meter('CPU', s.cpu.percent, `${s.cpu.percent}%`, `${s.cpu.cores} cores · load ${s.cpu.load.map((x) => x.toFixed(2)).join(' ')}`)
       + meter('Memory', s.memory.percent, `${s.memory.percent}%`, `${bytes(s.memory.used)} used · ${bytes(s.memory.free)} free`)
       + (s.disk ? meter('Disk', s.disk.percent, `${s.disk.percent}%`, `${bytes(s.disk.used)} of ${bytes(s.disk.total)}`) : meter('Disk', null, '—', 'Not available'))
@@ -67,7 +109,8 @@
   };
 
   async function loadProcs() {
-    const r = await api('/api/system/processes');
+    if (!caps?.processes) { offNotice($('#sv-procs'), 'service controls'); return; }
+    const r = await wapi('/api/system/processes');
     let html = '';
     if (r.pm2.available) html += `<h4 class="ws-group">PM2 apps (${r.pm2.apps.length})</h4>` + (r.pm2.apps.map(procCard).join('') || '<p class="muted">No PM2 apps.</p>');
     if (r.docker.available) html += `<h4 class="ws-group">Docker containers (${r.docker.containers.length})</h4>` + (r.docker.containers.map(procCard).join('') || '<p class="muted">No containers.</p>');
@@ -76,6 +119,7 @@
 
   async function loadServer() {
     stopServer();
+    if (!caps?.enabled) { $('#sv-meters').innerHTML = ''; $('#sv-host').textContent = machineName(); offNotice($('#sv-procs'), 'server workspace'); return; }
     const tick = async () => {
       try { await Promise.all([loadStatus(), loadProcs()]); } catch (e) { $('#sv-procs').innerHTML = `<p class="error">${esc(e.message)}</p>`; }
       if (!$('#view-server').hidden && $('#sv-auto').checked) svTimer = setTimeout(tick, 5000);
@@ -88,7 +132,7 @@
     const { op, kind, name } = el.dataset;
     if (op !== 'start' && !window.confirm(`${op === 'stop' ? 'Stop' : 'Restart'} ${name}?`)) return;
     el.disabled = true;
-    try { await api(`/api/system/process/${op}`, { method: 'POST', body: { kind, name } }); say(`${name}: ${op} done.`); }
+    try { await wapi(`/api/system/process/${op}`, { method: 'POST', body: { kind, name } }); say(`${name}: ${op} done.`); }
     catch (e) { say(`${name}: ${e.message}`); }
     finally { el.disabled = false; loadProcs().catch(() => {}); }
   }
@@ -99,7 +143,7 @@
     $('#sv-logs-title').textContent = `Logs: ${name}`;
     $('#sv-logs').textContent = 'Loading…';
     try {
-      const r = await api(`/api/system/process/${encodeURIComponent(name)}/logs?kind=${encodeURIComponent(kind)}&lines=300`);
+      const r = await wapi(`/api/system/process/${encodeURIComponent(name)}/logs?kind=${encodeURIComponent(kind)}&lines=300`);
       const pre = $('#sv-logs');
       pre.textContent = r.lines.join('\n') || '(no output)';
       pre.scrollTop = pre.scrollHeight;
@@ -125,7 +169,7 @@
   function fitNow() {
     if (!term.fit || $('#view-terminal').hidden) return;
     try { term.fit.fit(); } catch { return; }
-    if (term.id && term.mode === 'pty') api(`/api/term/${term.id}/resize`, { method: 'POST', body: { cols: term.xt.cols, rows: term.xt.rows } }).catch(() => {});
+    if (term.id && term.mode === 'pty') wapi(`/api/term/${term.id}/resize`, { method: 'POST', body: { cols: term.xt.cols, rows: term.xt.rows } }).catch(() => {});
   }
 
   function send(d) {
@@ -137,7 +181,7 @@
     term.sending = true;
     while (term.queue && term.id) {
       const data = term.queue; term.queue = '';
-      try { await api(`/api/term/${term.id}/write`, { method: 'POST', body: { data } }); }
+      try { await wapi(`/api/term/${term.id}/write`, { method: 'POST', body: { data } }); }
       catch (e) { term.xt.write(`\r\n\x1b[31m[${e.message}]\x1b[0m\r\n`); term.id = null; }
     }
     term.sending = false;
@@ -147,7 +191,7 @@
     while (term.id === id) {
       term.abort = new AbortController();
       try {
-        const r = await api(`/api/term/${id}/read?since=${term.seq}`, { signal: term.abort.signal });
+        const r = await wapi(`/api/term/${id}/read?since=${term.seq}`, { signal: term.abort.signal });
         if (term.id !== id) return;
         if (r.data) term.xt.write(r.data);
         term.seq = r.seq;
@@ -170,9 +214,9 @@
     fitNow();
     xt.reset();
     try {
-      const r = await api('/api/term/open', { method: 'POST', body: { cols: xt.cols, rows: xt.rows } });
+      const r = await wapi('/api/term/open', { method: 'POST', body: { cols: xt.cols, rows: xt.rows } });
       term.id = r.id; term.seq = 0; term.mode = r.mode;
-      status(r.mode === 'pipe' ? 'Connected (basic mode: no full-screen programs).' : 'Connected. Everything you run here is real.');
+      status(`${machine ? `${machineName()}: ` : ''}` + (r.mode === 'pipe' ? 'Connected (basic mode: no full-screen programs).' : 'Connected. Everything you run here is real.'));
       pump(r.id);
       xt.focus();
     } catch (e) { status(e.message); }
@@ -182,7 +226,7 @@
     const id = term.id;
     term.id = null;
     term.abort?.abort();
-    if (id) await api(`/api/term/${id}/close`, { method: 'POST' }).catch(() => {});
+    if (id) await wapi(`/api/term/${id}/close`, { method: 'POST' }).catch(() => {});
     status('Session ended.');
   }
 
@@ -200,7 +244,7 @@
   async function loadDir(p = fsx.path) {
     const box = $('#fs-list');
     try {
-      const r = await api(`/api/fs/list?path=${encodeURIComponent(p)}`);
+      const r = await wapi(`/api/fs/list?path=${encodeURIComponent(p)}`);
       fsx.path = r.path;
       const parts = r.path === '.' ? [] : r.path.split(/[\\/]/);
       $('#fs-crumbs').innerHTML = `<li><button data-action="ws-fs-go" data-path=".">${esc(r.root)}</button></li>`
@@ -224,7 +268,7 @@
   async function openFile(p) {
     if (!leaveOk()) return;
     try {
-      const r = await api(`/api/fs/read?path=${encodeURIComponent(p)}`);
+      const r = await wapi(`/api/fs/read?path=${encodeURIComponent(p)}`);
       fsx.file = r.path; fsx.mtime = r.mtime; fsx.dirty = false;
       $('#fs-file').textContent = r.path;
       $('#fs-text').value = r.content;
@@ -243,7 +287,7 @@
     const btn = $('#fs-save');
     btn.disabled = true;
     try {
-      const r = await api('/api/fs/write', { method: 'POST', body: { path: fsx.file, content: $('#fs-text').value, mtime: fsx.mtime } });
+      const r = await wapi('/api/fs/write', { method: 'POST', body: { path: fsx.file, content: $('#fs-text').value, mtime: fsx.mtime } });
       fsx.mtime = r.mtime; fsx.dirty = false;
       $('#fs-state').textContent = `Saved · ${bytes(r.size)}`;
       loadDir();
@@ -260,7 +304,48 @@
   }
 
   /* ───────── wiring ───────── */
+  async function switchMachine(id) {
+    if (fsx.dirty && !window.confirm('You have unsaved changes. Throw them away?')) { $('#ws-machine').value = machine; return; }
+    if (term.id) await closeTerminal();
+    fsx.path = '.'; fsx.file = null; fsx.dirty = false;
+    $('#fs-editor-card').hidden = true; $('.ws-files').classList.add('no-file'); $('#sv-logs-card').hidden = true;
+    setMachine(id);
+    renderPicker();
+    await loadCaps();
+    const view = ['server', 'terminal', 'files'].find((v) => !$(`#view-${v}`).hidden);
+    if (view && document.querySelector(`.tab[data-view="${view}"]`)?.hidden) document.querySelector('.tab[data-view="server"]')?.click();
+    else if (view) views[view]();
+  }
+
+  async function linkMachine(e) {
+    e.preventDefault();
+    const err = $('#machine-error');
+    try {
+      const r = await api('/api/machines', { method: 'POST', body: { name: $('#machine-name').value.trim(), url: $('#machine-url').value.trim(), code: $('#machine-code').value.trim() } });
+      err.hidden = true;
+      delete $('#dlg-machine').dataset.dirty;
+      $('#dlg-machine').close();
+      $('#machine-form').reset();
+      machines.push(r.machine);
+      say(`Linked ${r.machine.name}.`);
+      await switchMachine(r.machine.id);
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  }
+
+  async function unlinkMachine() {
+    const m = machines.find((x) => x.id === machine);
+    if (!m || !window.confirm(`Unlink ${m.name}? You can link it again with a new pairing code.`)) return;
+    try {
+      await api(`/api/machines/${encodeURIComponent(m.id)}`, { method: 'DELETE' });
+      machines = machines.filter((x) => x.id !== m.id);
+      say(`Unlinked ${m.name}. To sign this machine out there too, remove it from that machine's devices list.`);
+      await switchMachine('');
+    } catch (ex) { say(ex.message); }
+  }
+
   const actions = {
+    'ws-machine-add': () => { $('#machine-error').hidden = true; $('#dlg-machine').showModal(); $('#machine-name').focus(); },
+    'ws-machine-remove': unlinkMachine,
     'ws-refresh-server': loadServer,
     'ws-proc': procAction,
     'ws-logs': showLogs,
@@ -274,7 +359,11 @@
     'ws-fs-save': saveFile,
     'ws-fs-closefile': closeFile,
   };
-  const views = { server: loadServer, terminal: () => openTerminal(), files: () => loadDir() };
+  const views = {
+    server: loadServer,
+    terminal: () => (caps?.terminal ? openTerminal() : status('The terminal is not available on this machine.')),
+    files: () => (caps?.files ? loadDir() : offNotice($('#fs-list'), 'file editor')),
+  };
 
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-action]');
@@ -282,6 +371,7 @@
     const a = el.dataset.action;
     if (actions[a]) { e.preventDefault(); actions[a](el); return; }
     if (a === 'view') {
+      $('#ws-machine-bar').hidden = !views[el.dataset.view];
       if (el.dataset.view !== 'server') stopServer();
       // app.js has just shown the section; fill it once it is visible.
       setTimeout(() => views[el.dataset.view]?.(), 0);
@@ -299,6 +389,8 @@
       e.preventDefault(); ta.setRangeText('  ', ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input'));
     } else if (e.key === 'Escape') ta.dataset.escaped = '1';
   });
+  $('#ws-machine').addEventListener('change', (e) => switchMachine(e.target.value));
+  $('#machine-form').addEventListener('submit', linkMachine);
   $('#sv-auto').addEventListener('change', (e) => { if (e.target.checked && !$('#view-server').hidden) loadServer(); else stopServer(); });
   window.addEventListener('beforeunload', (e) => { if (fsx.dirty) e.preventDefault(); });
   $('.ws-files').classList.add('no-file');
