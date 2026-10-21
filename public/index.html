@@ -196,8 +196,10 @@
       <select id="ws-machine"></select>
       <div class="row gap wrap">
         <button class="btn sm" data-action="ws-machine-add">Link a machine</button>
+        <button class="btn sm" data-action="ws-main" id="ws-main" hidden>Make main</button>
         <button class="btn sm ghost" data-action="ws-machine-remove" id="ws-machine-remove" hidden>Unlink</button>
       </div>
+      <p class="muted ws-main-note" id="ws-main-note" role="status"></p>
     </div>
 
     <!-- ═════════ SERVER ═════════ -->
@@ -550,6 +552,8 @@
       <input id="machine-url" type="url" inputmode="url" placeholder="https://memvault.example.com" autocomplete="off" autocapitalize="off" spellcheck="false" required />
       <label class="label" for="machine-code">Pairing code</label>
       <input id="machine-code" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required />
+      <label class="check"><input type="checkbox" id="machine-main" checked /> Make it my main machine: keep this machine's memories in step through it, and open it first here</label>
+      <p class="muted">Syncing needs the same sync passphrase on both machines (Settings → Your devices).</p>
       <p class="error" id="machine-error" role="alert" hidden></p>
       <div class="row end gap"><button class="btn" type="button" data-action="close-dialog">Cancel</button><button class="btn primary" type="submit">Link</button></div>
     </form>

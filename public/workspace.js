@@ -24,8 +24,9 @@
   /* ───────── which machine ───────── */
   // '' is this machine; anything else is a linked one, reached through this server (machines.mjs).
   const MACHINE_KEY = 'memvault-machine';
-  let machine = read(MACHINE_KEY, 'localStorage') || '';
+  let machine = read(MACHINE_KEY, 'localStorage'); // null: this browser has not chosen, so the main machine opens
   let machines = [];
+  let main = { main: '', isMain: false };
   const wapi = (path, opts) => api(machine ? `/api/machines/${encodeURIComponent(machine)}/relay${path}` : path, opts);
   const machineName = () => (machine ? machines.find((m) => m.id === machine)?.name || 'that machine' : 'this machine');
 
@@ -47,9 +48,10 @@
   async function detect() {
     if (!getToken()) return;
     try {
-      const [l, m] = await Promise.all([api('/api/workspace'), api('/api/machines')]);
-      localCaps = l; machines = m.machines;
+      const [l, m, mm] = await Promise.all([api('/api/workspace'), api('/api/machines'), api('/api/main')]);
+      localCaps = l; machines = m.machines; main = mm;
     } catch { return; }
+    if (machine === null) machine = main.machine ? main.machine.id : '';
     if (machine && !machines.some((x) => x.id === machine)) setMachine('');
     renderPicker();
     await loadCaps();
@@ -64,10 +66,14 @@
 
   function renderPicker() {
     const sel = $('#ws-machine');
-    const here = `This machine${localCaps?.enabled ? '' : ' (workspace off)'}`;
-    sel.innerHTML = `<option value="">${esc(here)}</option>` + machines.map((m) => `<option value="${esc(m.id)}">${esc(m.name)} · ${esc(m.url.replace(/^https?:\/\//, ''))}</option>`).join('');
+    const star = (on) => (on ? '★ ' : '');
+    const here = `${star(main.isMain)}This machine${localCaps?.enabled ? '' : ' (workspace off)'}`;
+    sel.innerHTML = `<option value="">${esc(here)}</option>` + machines.map((m) => `<option value="${esc(m.id)}">${esc(star(main.main === m.id))}${esc(m.name)} · ${esc(m.url.replace(/^https?:\/\//, ''))}</option>`).join('');
     sel.value = machine;
     $('#ws-machine-remove').hidden = !machine;
+    const isMainHere = machine ? main.main === machine : main.isMain;
+    $('#ws-main').hidden = isMainHere;
+    $('#ws-main-note').textContent = isMainHere ? '★ Main machine: memories sync through it, and this dashboard opens on it.' : '';
   }
 
   function setMachine(id) {
@@ -327,9 +333,27 @@
       $('#dlg-machine').close();
       $('#machine-form').reset();
       machines.push(r.machine);
-      say(`Linked ${r.machine.name}.`);
+      if ($('#machine-main').checked) {
+        await api('/api/main', { method: 'PUT', body: { main: r.machine.id } }).catch((x) => say(x.message));
+        main = await api('/api/main').catch(() => main);
+        try { localStorage.removeItem(MACHINE_KEY); } catch { /* storage blocked */ }
+        say(`Linked ${r.machine.name}. It is now your main machine.`);
+      } else say(`Linked ${r.machine.name}.`);
       await switchMachine(r.machine.id);
     } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  }
+
+  async function makeMain() {
+    const target = machine || 'this';
+    const label = machine ? machineName() : 'this machine';
+    if (!window.confirm(`Make ${label} the main machine? Every machine set up this way keeps its memories in step through it. Each one needs the same sync passphrase (Settings → Your devices).`)) return;
+    try {
+      await api('/api/main', { method: 'PUT', body: { main: target } });
+      main = await api('/api/main');
+      try { localStorage.removeItem(MACHINE_KEY); } catch { /* storage blocked */ }
+      renderPicker();
+      say(machine ? `${label} is now the main machine. Memories sync through it every few minutes.` : 'This machine is now the main machine. Link it on your other machines and make it main there too.');
+    } catch (ex) { say(ex.message); }
   }
 
   async function unlinkMachine() {
@@ -344,8 +368,9 @@
   }
 
   const actions = {
-    'ws-machine-add': () => { $('#machine-error').hidden = true; $('#dlg-machine').showModal(); $('#machine-name').focus(); },
+    'ws-machine-add': () => { $('#machine-error').hidden = true; $('#machine-main').checked = !main.main; $('#dlg-machine').showModal(); $('#machine-name').focus(); },
     'ws-machine-remove': unlinkMachine,
+    'ws-main': makeMain,
     'ws-refresh-server': loadServer,
     'ws-proc': procAction,
     'ws-logs': showLogs,

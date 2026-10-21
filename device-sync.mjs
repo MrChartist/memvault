@@ -48,8 +48,8 @@ import { retryBusy } from "./retry.mjs";
 
 const FORMAT = "memvault-devices";
 const FORMAT_VERSION = 1;
-const FILE_RE = /^memvault-([a-z0-9]{16})\.mvsync$/; // conflict copies ("… 2.mvsync", "….sync-conflict-….mvsync") never match
-const MAX_FILE_BYTES = 256 * 1024 * 1024; // a computer's whole vault, compressed: far below this
+export const FILE_RE = /^memvault-([a-z0-9]{16})\.mvsync$/; // conflict copies ("… 2.mvsync", "….sync-conflict-….mvsync") never match
+export const MAX_FILE_BYTES = 256 * 1024 * 1024; // a computer's whole vault, compressed: far below this
 const RETRY_FAILED_MS = 30 * 60_000;     // a file that could not be read is tried again after this, or when it changes
 const KEEP_TOMBSTONES_DAYS = 180;         // a computer away for longer may bring back notes deleted before that
 const ITEM_COLS = ["id", "type", "source", "title", "content", "file_path", "tags", "created_at", "updated_at", "agent_id", "scope"];
@@ -118,9 +118,17 @@ export function renameDevice(name, { dir = homeDir() } = {}) {
 export function deviceSettings(cfg = loadUserConfig(), { dir = homeDir() } = {}) {
   const d = cfg.devices || {};
   const passphraseFile = d.passphraseFile ? expandHome(d.passphraseFile) : path.join(dir, "sync-passphrase");
+  // The main machine (main-machine.mjs): "this" keeps the folder every other machine syncs through; a linked
+  // machine's id means this one syncs through that machine, via a private copy of its folder.
+  const main = typeof d.main === "string" ? d.main : "";
+  let folder = d.folder ? expandHome(String(d.folder)) : "";
+  if (main === "this" && !folder) folder = path.join(dir, "main-folder");
+  if (main && main !== "this") folder = path.join(dir, "main-cache");
+  if (main) fs.mkdirSync(folder, { recursive: true, mode: 0o700 });
   return {
     enabled: d.enabled === true,
-    folder: d.folder ? expandHome(String(d.folder)) : "",
+    main,
+    folder,
     intervalMinutes: Math.min(Math.max(Number(d.intervalMinutes) || 5, 1), 24 * 60),
     passphraseFile,
   };
@@ -350,7 +358,7 @@ export function applyMerge(vdb, snapshots, { security = SECURITY_CONFIG, root = 
 
 // ─── the folder ─────────────────────────────────────────────────────────────
 
-const ownFile = (folder, identity) => path.join(folder, `memvault-${identity.id}.mvsync`);
+export const ownFile = (folder, identity) => path.join(folder, `memvault-${identity.id}.mvsync`);
 
 /**
  * Write this computer's file in one step: a half-copied file is never left under the real name. The temporary
@@ -624,7 +632,8 @@ async function main(argv) {
       const settings = deviceSettings();
       if (!settings.folder) fail("Syncing is not set up yet. Run: memvault devices setup --folder <path>");
       if (rest.includes("--if-due") && !syncDue(settings)) return;
-      const r = syncDevices({ vdb: openVaultDb(), settings, force: rest.includes("--full"), backup: (await import("./storage.mjs")).backupLocal });
+      const { runDeviceSync } = await import("./main-machine.mjs");
+      const r = await runDeviceSync({ vdb: openVaultDb(), settings, force: rest.includes("--full"), backup: (await import("./storage.mjs")).backupLocal });
       if (rest.includes("--quiet")) { process.exitCode = r.ok ? 0 : 1; return; }
       console.log(`${r.ok ? "✅" : "⚠️ "} Sync: +${r.added} added, ${r.changed} changed, ${r.deleted} deleted${r.agents ? `, ${r.agents} ${r.agents === 1 ? "agent" : "agents"} updated` : ""}${r.wrote ? "; this computer's file updated" : ""}.`);
       if (r.backup) console.log(`   A backup was taken first: ${r.backup}`);

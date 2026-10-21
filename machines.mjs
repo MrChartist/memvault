@@ -56,7 +56,7 @@ export function normaliseUrl(u) {
 }
 
 export const listMachines = ({ file } = {}) => load(file).map(({ key, ...m }) => m);
-const getMachine = (id, file) => load(file).find((m) => m.id === id) || null;
+export const getMachine = (id, file) => load(file).find((m) => m.id === id) || null;
 
 /** Link a machine: trade its one-time pairing code for a key of our own. */
 export async function addMachine({ name, url, code, deviceName = "MemVault", fetchImpl = fetch, file } = {}) {

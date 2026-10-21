@@ -28,6 +28,7 @@ import { spawn } from "child_process";
 import { collectDiagnostics } from "./diagnostics.mjs";
 import { mountWorkspace } from "./workspace.mjs";
 import { mountMachines } from "./machines.mjs";
+import { mountMain, runDeviceSync } from "./main-machine.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
 import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
@@ -876,8 +877,8 @@ export function createApp({
     res.json({ ok: true });
   });
 
-  app.post("/devices/sync", (_req, res) => {
-    const r = syncDevices({ vdb, settings: devSettings(), dir: devicesDir, security, backup: backupLocal, force: true });
+  app.post("/devices/sync", async (_req, res) => {
+    const r = await runDeviceSync({ vdb, settings: devSettings(), dir: devicesDir, security, backup: backupLocal, force: true });
     res.json({ ok: r.ok, added: r.added, changed: r.changed, deleted: r.deleted, agents: r.agents, backup: r.backup || null, problems: r.problems });
   });
 
@@ -985,6 +986,12 @@ export function createApp({
   app.locals.terminals = mountWorkspace(app, { security, log, express });
   // ── other machines: link a VPS or another computer and use its workspace from here (machines.mjs) ──
   mountMachines(app, { log, ownerOnly });
+  // ── the main machine: everything syncs through it, and the dashboard opens on it (main-machine.mjs) ──
+  mountMain(app, {
+    log, express, ownerOnly, dir: path.dirname(TOKEN_FILE),
+    settings: () => deviceSettings(config.load(), { dir: path.dirname(TOKEN_FILE) }),
+    updateSettings: (change) => updateDeviceSettings(change, { load: () => config.load({ forUpdate: true }), save: config.save }),
+  });
 
   // JSON body errors etc. → clean JSON, never a stack trace.
   app.use((err, _req, res, _next) => {

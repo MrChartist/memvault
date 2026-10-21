@@ -50,3 +50,18 @@ How it is protected:
 - Linking and unlinking need the dashboard key: a paired phone can use linked machines but cannot link new ones.
 - Addresses must be `https://` (plain `http://` only to this computer or a private / Tailscale address). Redirects are refused.
 - Both machines write the action to their audit logs: `machine-relay` here, and the terminal, service or file action (with the linking device) there.
+
+## One main machine (for example your VPS)
+
+Make one machine the **main machine** and everything runs from it and stays up to date on it:
+
+- **Memories sync through it.** No Syncthing or Dropbox needed: the main machine keeps the shared sync folder itself (`~/.memvault/main-folder`) and serves it to its linked machines. Each upload is merged on the main machine right away, so it always holds everyone's latest memories. Other machines sync with it every few minutes (Settings → Your devices → Sync now for at once).
+- **Dashboards open on it.** On every machine where it is the main one, the Server, Terminal and Files tabs open on it (★ in the Machine list) until you pick another machine in that browser.
+
+Set it up once:
+
+1. On the VPS: Settings → Your devices → set the sync passphrase. Then on the Server tab choose **This machine** and **Make main** (or set `"devices": { "enabled": true, "main": "this" }`). Run `memvault devices pair --name "Laptop"`.
+2. On each computer: set the **same** sync passphrase, then Server → **Link a machine** with the VPS address and the code. "Make it my main machine" is ticked for you.
+3. Phones: pair the phone with the VPS (`memvault devices pair --name "iPhone"`). The phone then sees everything on the VPS and every machine linked to it.
+
+Security: the sync files stay encrypted with your sync passphrase on the way and on the main machine. A machine can only replace the file it uploaded first (`~/.memvault/main-owners.json`), so a stolen phone key cannot overwrite a laptop's memories. Choosing the main machine needs the dashboard key, not a phone key. Uploads are written to the main machine's audit log (`main-upload`).
