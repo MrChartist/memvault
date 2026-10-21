@@ -179,6 +179,10 @@ Or use **Settings → Your devices** in the dashboard:
 
 The Secure Vault, uploaded files and the access log stay on each computer. Claude on the iPhone cannot read MemVault yet. Step-by-step guides for a VPS, for no VPS, for a cloud folder and for the iPhone are in [docs/devices.md](docs/devices.md).
 
+### On a server: terminal, services and files
+
+Running MemVault on a VPS? Turn on the server workspace and the dashboard also gets **Server** (health meters, PM2 and Docker with one-tap restart and logs), **Terminal** (a shell in the browser, with touch keys on phones) and **Files** (browse and edit config files). It is off by default, needs the dashboard key, and every action is in the audit log. See [docs/workspace.md](docs/workspace.md).
+
 ## Is it safe?
 
 MemVault is built so that your data stays with you, and it can check itself: run `memvault doctor` for a live report, or open the **Security** page in the dashboard.

@@ -9,6 +9,8 @@
   <link rel="icon" type="image/svg+xml" href="brand/mrchartist-symbol.svg" />
   <link rel="stylesheet" href="brand/fonts.css" />
   <link rel="stylesheet" href="app.css" />
+  <link rel="stylesheet" href="vendor/xterm/xterm.css" />
+  <link rel="stylesheet" href="workspace.css" />
   <script src="theme-init.js"></script>
 </head>
 <body>
@@ -37,6 +39,9 @@
       <button class="tab" data-action="view" data-view="vault">Secure Vault</button>
       <button class="tab" data-action="view" data-view="security">Security</button>
       <button class="tab" data-action="view" data-view="settings">Settings</button>
+      <button class="tab" data-action="view" data-view="server" data-ws="processes" hidden>Server</button>
+      <button class="tab" data-action="view" data-view="terminal" data-ws="terminal" hidden>Terminal</button>
+      <button class="tab" data-action="view" data-view="files" data-ws="files" hidden>Files</button>
     </nav>
   </header>
 
@@ -183,6 +188,68 @@
         <button class="btn" data-action="backup-now">Back up now</button>
       </div>
       <div id="backups" class="card"></div>
+    </section>
+
+    <!-- ═════════ SERVER ═════════ -->
+    <section id="view-server" class="view" hidden>
+      <div class="section-head">
+        <div>
+          <h2 id="h-server" tabindex="-1">Server</h2>
+          <p class="muted" id="sv-host">Health of this machine and the services running on it.</p>
+        </div>
+        <button class="btn" data-action="ws-refresh-server">Refresh</button>
+      </div>
+      <div class="ws-meters" id="sv-meters" aria-live="polite"></div>
+      <div class="section-head"><h3>Services</h3><label class="ws-auto"><input type="checkbox" id="sv-auto" checked /> Update every 5 seconds</label></div>
+      <div id="sv-procs" class="ws-procs"></div>
+      <div class="card ws-logs" id="sv-logs-card" hidden>
+        <div class="row between"><h3 id="sv-logs-title">Logs</h3><button class="btn sm" data-action="ws-logs-close">Close</button></div>
+        <pre id="sv-logs" class="ws-pre" tabindex="0"></pre>
+      </div>
+    </section>
+
+    <!-- ═════════ TERMINAL ═════════ -->
+    <section id="view-terminal" class="view" hidden>
+      <div class="section-head">
+        <div>
+          <h2 id="h-terminal" tabindex="-1">Terminal</h2>
+          <p class="muted" id="term-status">A shell on the server. Everything you run here is real.</p>
+        </div>
+        <div class="row gap"><button class="btn" data-action="ws-term-new">New session</button><button class="btn ghost" data-action="ws-term-close">End session</button></div>
+      </div>
+      <div class="ws-term-wrap"><div id="term" class="ws-term" aria-label="Terminal"></div></div>
+      <div class="ws-keys" role="toolbar" aria-label="Terminal keys">
+        <button class="btn sm" data-action="ws-key" data-key="esc">Esc</button>
+        <button class="btn sm" data-action="ws-key" data-key="tab">Tab</button>
+        <button class="btn sm" data-action="ws-key" data-key="ctrlc">Ctrl+C</button>
+        <button class="btn sm" data-action="ws-key" data-key="up" aria-label="Up arrow">↑</button>
+        <button class="btn sm" data-action="ws-key" data-key="down" aria-label="Down arrow">↓</button>
+        <button class="btn sm" data-action="ws-key" data-key="clear">Clear</button>
+      </div>
+    </section>
+
+    <!-- ═════════ FILES ═════════ -->
+    <section id="view-files" class="view" hidden>
+      <div class="section-head">
+        <div>
+          <h2 id="h-files" tabindex="-1">Files</h2>
+          <nav aria-label="Folder path"><ol class="ws-crumbs" id="fs-crumbs"></ol></nav>
+        </div>
+        <button class="btn" data-action="ws-fs-up">Up one folder</button>
+      </div>
+      <div class="ws-files">
+        <div class="card ws-tree" id="fs-list" role="region" aria-label="Folder contents" tabindex="0"></div>
+        <div class="card ws-editor-card" id="fs-editor-card" hidden>
+          <div class="row between gap">
+            <strong id="fs-file" class="ws-file-name"></strong>
+            <div class="row gap"><span id="fs-state" class="muted" role="status"></span><button class="btn ghost sm" data-action="ws-fs-closefile">Close</button><button class="btn primary sm" data-action="ws-fs-save" id="fs-save">Save</button></div>
+          </div>
+          <div class="ws-editor">
+            <pre class="ws-gutter" id="fs-gutter" aria-hidden="true"></pre>
+            <textarea id="fs-text" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="File contents"></textarea>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ═════════ SETTINGS ═════════ -->
@@ -471,5 +538,9 @@
   <div id="toast" popover="manual" role="status" aria-live="polite"></div>
   <div id="toast-err" popover="manual" role="alert"><span id="toast-err-text"></span> <button type="button" class="btn sm" data-action="dismiss-error">Dismiss</button></div>
   <script src="app.js" defer></script>
+  <script src="vendor/xterm/csp-style-shim.js" defer></script>
+  <script src="vendor/xterm/xterm.js" defer></script>
+  <script src="vendor/xterm/addon-fit.js" defer></script>
+  <script src="workspace.js" defer></script>
 </body>
 </html>

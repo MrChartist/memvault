@@ -17,6 +17,10 @@ The font files in `public/brand/fonts/` are subsets (Latin and Latin Extended) i
 
 The Mr. Chartist logo files in `public/brand/` are **not** under the MIT licence. See [TRADEMARKS.md](TRADEMARKS.md).
 
+## Bundled in the dashboard
+
+`public/vendor/xterm/` holds `@xterm/xterm` 6.0.0 and `@xterm/addon-fit` 0.11.0 (MIT, © The xterm.js authors; licence in `public/vendor/xterm/LICENSE`), copied unchanged from npm except for removing the source-map comments, so the dashboard loads them from itself under its strict CSP. `csp-style-shim.js` next to them is MemVault's own.
+
 ## Software installed with MemVault
 
 `npm install` adds 101 packages. They are not copied into this repository; each one keeps its own licence inside `node_modules`. At the time of this review (checked by reading each installed package's `package.json`):

@@ -1,0 +1,48 @@
+/* Server workspace: Server, Terminal and Files tabs (workspace.js). */
+.ws-meters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ws-meter { padding: 14px; }
+.ws-meter .label { font-size: 0.8125rem; color: var(--muted); font-weight: 600; }
+.ws-meter .value { font: 700 1.5rem var(--display); margin: 4px 0 8px; }
+.ws-meter small { color: var(--muted); display: block; margin-top: 6px; }
+.ws-meter progress { width: 100%; height: 8px; appearance: none; border: 0; border-radius: 99px; background: var(--hover); overflow: hidden; }
+.ws-meter progress::-webkit-progress-bar { background: var(--hover); }
+.ws-meter progress::-webkit-progress-value { background: var(--good); border-radius: 99px; }
+.ws-meter progress::-moz-progress-bar { background: var(--good); }
+.ws-meter.hot progress::-webkit-progress-value { background: var(--bad); }
+.ws-meter.hot progress::-moz-progress-bar { background: var(--bad); }
+.ws-auto { display: inline-flex; gap: 8px; align-items: center; font-size: 0.875rem; color: var(--muted); min-height: 44px; }
+.ws-procs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.ws-proc { display: flex; flex-direction: column; gap: 8px; padding: 14px; }
+.ws-proc h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.ws-proc .meta { font-size: 0.8125rem; color: var(--muted); overflow-wrap: anywhere; }
+.ws-proc .row { flex-wrap: wrap; gap: 8px; }
+.ws-badge { font-size: 0.75rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--line); white-space: nowrap; }
+.ws-badge.on { color: var(--good); } .ws-badge.off { color: var(--bad); }
+.ws-group { grid-column: 1 / -1; margin: 8px 0 0; font-size: 0.875rem; color: var(--muted); }
+.ws-logs { margin-top: 14px; }
+.ws-pre { font: 0.8rem/1.45 var(--mono); max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; }
+
+.ws-term-wrap { background: #121212; border-radius: var(--radius); padding: 8px; border: 1px solid var(--line); }
+.ws-term { height: min(68vh, 640px); min-height: 260px; }
+.ws-keys { position: sticky; bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; padding: 8px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.ws-keys .btn { min-width: 56px; font-family: var(--mono); }
+@media (hover: hover) and (pointer: fine) and (min-width: 900px) { .ws-keys { position: static; box-shadow: none; justify-content: flex-start; } }
+
+.ws-crumbs { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 6px 0 0; padding: 0; font-family: var(--mono); font-size: 0.875rem; }
+.ws-crumbs li + li::before { content: "/"; color: var(--muted); margin-right: 4px; }
+.ws-crumbs button { background: none; border: 0; color: var(--primary-text); cursor: pointer; font: inherit; padding: 6px 2px; min-height: 32px; }
+.ws-files { display: grid; grid-template-columns: minmax(220px, 320px) minmax(0, 1fr); gap: 12px; align-items: start; }
+.ws-files.no-file { grid-template-columns: minmax(0, 1fr); }
+.ws-tree { padding: 6px; max-height: 72vh; overflow: auto; }
+.ws-entry { display: flex; width: 100%; gap: 10px; align-items: center; text-align: left; background: none; border: 0; border-radius: 8px; padding: 10px; color: var(--fg); cursor: pointer; font: 0.9rem var(--body); min-height: 44px; }
+.ws-entry:hover, .ws-entry.is-open { background: var(--hover); }
+.ws-entry .nm { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ws-entry .sz { color: var(--muted); font: 0.75rem var(--mono); white-space: nowrap; }
+.ws-file-name { font-family: var(--mono); overflow-wrap: anywhere; min-width: 0; }
+.ws-editor { display: flex; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; height: 64vh; min-height: 260px; background: var(--bg); }
+.ws-gutter { margin: 0; padding: 10px 8px; text-align: right; color: var(--muted); background: var(--hover); font: 0.8125rem/1.5 var(--mono); user-select: none; overflow: hidden; min-width: 3.2em; }
+.ws-editor textarea { flex: 1; border: 0; border-radius: 0; resize: none; padding: 10px; font: 0.8125rem/1.5 var(--mono); background: transparent; color: var(--fg); white-space: pre; overflow: auto; tab-size: 2; min-height: 0; }
+.ws-editor textarea:focus { outline: none; box-shadow: inset 0 0 0 2px var(--ring); }
+
+@media (max-width: 900px) { .ws-meters { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ws-files { grid-template-columns: minmax(0, 1fr); } .ws-tree { max-height: 40vh; } }
+@media (max-width: 560px) { .ws-term { height: 56vh; } .ws-editor { height: 56vh; } .ws-meter .value { font-size: 1.25rem; } }

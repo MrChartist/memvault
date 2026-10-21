@@ -26,6 +26,7 @@ import {
 import { listLocalBackups, backupLocal, backupVault, enabledBackends, resolvePassphrase } from "./storage.mjs";
 import { spawn } from "child_process";
 import { collectDiagnostics } from "./diagnostics.mjs";
+import { mountWorkspace } from "./workspace.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
 import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
@@ -978,6 +979,9 @@ export function createApp({
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+
+  // ── server workspace: terminal, PM2 / Docker, files (off unless security.workspace.enabled) ──
+  app.locals.terminals = mountWorkspace(app, { security, log, express });
 
   // JSON body errors etc. → clean JSON, never a stack trace.
   app.use((err, _req, res, _next) => {

@@ -4,6 +4,9 @@
 
 Fixes found by installing the packed package and by testing each part again, plus documentation checked line by line against the code. Nothing here is on npm yet.
 
+**Server workspace (new, off by default)**
+- Three dashboard tabs for running MemVault on a server: **Server** (CPU, memory, disk, uptime, and PM2 apps and Docker containers with restart, stop, start and logs), **Terminal** (a shell in the browser, with touch keys for phones) and **Files** (browse and edit text files with line numbers; saves are atomic). Turn it on with `"security": { "workspace": { "enabled": true } }`. Every route needs the dashboard key or a paired device's key, files stay inside the chosen folder, and terminals, service actions and saved files are written to the audit log. xterm.js 6.0.0 ships in `public/vendor/`, so the strict CSP is unchanged. See [docs/workspace.md](docs/workspace.md).
+
 **Getting started list (new)**
 - The welcome card on the Memory screen is now a checklist that ticks itself: MemVault installed, an AI app connected (by name, for example "Connected: Claude Desktop"), an AI has saved a memory, a first backup, and a backup passphrase. Three optional steps sit below it: an app tied to an agent, your other computers, and your phone. It is checked again whenever you come back to the browser window, and it is not shown on a phone. `memvault doctor` prints the same list, for a server with no browser.
 - To know which app connected, MemVault keeps one small file per app in `~/.memvault/apps/`: only the name and version the app reports, the agent it is tied to, and when it connected. Nothing from your memory, and it never leaves your computer.

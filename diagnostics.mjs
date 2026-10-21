@@ -15,6 +15,7 @@ import { listAgents, getAgent } from "./agents.mjs";
 import { deviceSettings, deviceStatus } from "./device-sync.mjs";
 import { listDeviceKeys } from "./device-keys.mjs";
 import { isLoopbackHost } from "./auth.mjs";
+import { workspaceSettings } from "./workspace.mjs";
 import { verifyAudit } from "./audit.mjs";
 import { cloudPolicy, listLocalBackups } from "./storage.mjs";
 import { isLegacyBlob } from "./crypto-vault.mjs";
@@ -81,6 +82,14 @@ export async function collectDiagnostics({ vdb, deep = false, checkServer = true
 
   if (isLoopbackHost(sec.host)) add("ok", `Server only listens on this computer (${sec.host})`);
   else add(sec.allowRemote ? "warn" : "bad", `Server listens on ${sec.host}, so other devices may reach it`, 'Set "security": { "host": "127.0.0.1" } in ~/.memvaultrc.json, unless you really need this.');
+  const ws = workspaceSettings(sec);
+  if (!ws.enabled) add("ok", "Server workspace (terminal, services, files) is off");
+  else {
+    const reach = ws.terminal ? "a shell" : "services and files";
+    add(isLoopbackHost(sec.host) ? "info" : "warn", `Server workspace is ON: anyone with the dashboard key or a paired phone gets ${reach} as ${os.userInfo().username}`,
+      isLoopbackHost(sec.host) ? "" : "Keep the dashboard key private, serve it over HTTPS only, and sign out phones you no longer use.");
+    if (!fs.existsSync(ws.root)) add("warn", `Workspace folder ${ws.root} does not exist`, 'Set "security": { "workspace": { "root": "…" } } in ~/.memvaultrc.json.');
+  }
   if (checkServer) {
     const base = `http://127.0.0.1:${cfg.PORT}`;
     add("info", (await serverUp(base)) ? `Server is running at ${base}` : "Server is not running. That is fine: only the dashboard needs it.");
