@@ -4,7 +4,7 @@ On a server (for example a VPS behind Nginx), the dashboard can also show three 
 
 - **Server** — CPU, memory, disk and uptime, plus every PM2 app and Docker container with 🟢 Online / 🔴 Stopped, CPU and memory, and one-tap **Restart**, **Stop** / **Start** and **Logs**.
 - **Terminal** — a real shell (`bash` on Linux, `powershell.exe` on Windows) in the browser, with Esc, Tab, Ctrl+C, ↑, ↓ and Clear buttons for phones and tablets.
-- **Files** — browse a folder (default `/opt/projects`), open a text file in an editor with line numbers, and save it (Ctrl+S / ⌘S works too).
+- **Files** — browse a folder (default: your home folder), open a text file in an editor with line numbers, and save it (Ctrl+S / ⌘S works too).
 
 ## It is off until you turn it on
 
@@ -13,7 +13,7 @@ Anyone holding the dashboard key, or a phone paired with `memvault devices pair`
 ```json
 {
   "security": {
-    "workspace": { "enabled": true, "root": "/opt/projects" }
+    "workspace": { "enabled": true, "root": "/srv/projects" }
   }
 }
 ```
@@ -38,7 +38,7 @@ On Linux and macOS the shell runs under `script` (part of util-linux, installed 
 Every MemVault can link other MemVaults and use their Server, Terminal and Files tabs. Install MemVault on each machine you want to control (a VPS, a work computer), then link them to the one you open most:
 
 1. **On the machine to control** (for example the VPS): turn the workspace on (above), then run `memvault devices pair --name "My laptop"`. It shows a one-time code, valid for 10 minutes.
-2. **On the dashboard you use:** open **Server**, choose **Link a machine**, and enter a name, its address (for example `https://memvault.187-127-156-46.sslip.io`) and the code.
+2. **On the dashboard you use:** open **Server**, choose **Link a machine**, and enter a name, its address (for example `https://memvault.example.com`) and the code.
 3. Pick the machine in the **Machine** list above the Server, Terminal and Files tabs. Everything on those tabs now runs on that machine. The choice is remembered in this browser.
 
 **From a phone:** a phone cannot run MemVault itself, so it opens one MemVault's dashboard: pair it once (`memvault devices pair --name "iPhone"`, then "Use a pairing code" on the phone). It can then use that machine and every machine linked to it. If the VPS is the one the phone opens, link your other machines to the VPS. A computer at home is only reachable from the VPS if it has an address the VPS can reach, for example with Tailscale (`tailscale serve`); a VPS is reachable from everywhere.

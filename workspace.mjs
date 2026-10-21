@@ -4,7 +4,7 @@
  * Off unless you turn it on: anyone holding the dashboard key (or a paired phone's key) gets a shell as the
  * user MemVault runs as. Turn it on in ~/.memvaultrc.json:
  *
- *   "security": { "workspace": { "enabled": true, "root": "/opt/projects" } }
+ *   "security": { "workspace": { "enabled": true, "root": "/srv/projects" } }
  *
  * Every route here sits behind requireToken (mounted after it in server.mjs). Opening a terminal, starting or
  * stopping a service and saving a file are written to the tamper-evident audit log.
@@ -27,7 +27,7 @@ const isWin = process.platform === "win32";
 export function workspaceSettings(security = {}) {
   const w = security.workspace || {};
   const envOn = process.env.MEMVAULT_WORKSPACE === "1";
-  const fallbackRoot = fs.existsSync("/opt/projects") ? "/opt/projects" : os.homedir();
+  const fallbackRoot = os.homedir();
   return {
     enabled: envOn || w.enabled === true,
     terminal: w.terminal !== false,
