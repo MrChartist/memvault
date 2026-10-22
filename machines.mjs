@@ -103,11 +103,31 @@ export async function relay(id, { method, subpath, query = "", body, fetchImpl =
   return { status: r.status, body: text || "{}", machine: m };
 }
 
+/** Is each linked machine reachable, which version, and does it still accept our key? Checked in parallel. */
+export async function machineStatus({ fetchImpl = fetch, file } = {}) {
+  return Promise.all(load(file).map(async (m) => {
+    const out = { id: m.id, online: false, version: null, keyOk: null, workspace: null, viewOnly: null };
+    try {
+      const h = await fetchImpl(`${m.url}/health`, { redirect: "error", signal: AbortSignal.timeout(5000) });
+      const d = await h.json().catch(() => ({}));
+      out.online = h.ok && d.name === "memvault";
+      out.version = typeof d.version === "string" ? d.version.slice(0, 20) : null;
+      if (out.online) {
+        const w = await fetchImpl(`${m.url}/api/workspace`, { headers: { authorization: `Bearer ${m.key}` }, redirect: "error", signal: AbortSignal.timeout(5000) });
+        out.keyOk = w.status !== 401;
+        if (w.ok) { const wd = await w.json(); out.workspace = wd.enabled === true; out.viewOnly = wd.viewOnly === true; }
+      }
+    } catch { /* offline */ }
+    return out;
+  }));
+}
+
 export function mountMachines(app, { log = () => {}, ownerOnly }) {
   const fail = (res, e) => res.status(e.status && e.status < 600 ? e.status : 500).json({ ok: false, error: e.message });
   const actorOf = (req) => (req.deviceKeyId ? `device:${req.deviceKeyId}` : "owner");
 
   app.get("/api/machines", (_req, res) => res.json({ ok: true, machines: listMachines() }));
+  app.get("/api/machines/status", async (_req, res) => res.json({ ok: true, status: await machineStatus() }));
   // Linking and unlinking is done with the dashboard key, like pairing a phone: a stolen phone cannot link more.
   app.post("/api/machines", ownerOnly, async (req, res) => {
     try {

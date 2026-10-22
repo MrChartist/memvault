@@ -65,3 +65,8 @@ Set it up once:
 3. Phones: pair the phone with the VPS (`memvault devices pair --name "iPhone"`). The phone then sees everything on the VPS and every machine linked to it.
 
 Security: the sync files stay encrypted with your sync passphrase on the way and on the main machine. A machine can only replace the file it uploaded first (`~/.memvault/main-owners.json`), so a stolen phone key cannot overwrite a laptop's memories. Choosing the main machine needs the dashboard key, not a phone key. Uploads are written to the main machine's audit log (`main-upload`).
+
+## Seeing at a glance, and view-only devices
+
+- **Status in the Machine list:** each linked machine shows `online · v3.0.0`, `offline`, or `needs linking again` (its key was signed out there). The main machine's line says when it last synced and why a sync failed (most often: the sync passphrase is not the same on both machines). **Sync now** syncs at once.
+- **View only:** in Settings → Your devices, any phone, tablet or linked machine can be set to **Server: view only**. It still sees health, services, logs and files, but it cannot open a terminal, start, stop or restart a service, or save a file; the server refuses those requests, not just the page. Only the dashboard key can change this, and each change is in the audit log (`device-access`). A good default for a phone you carry everywhere: view only, and do changes from your computer.

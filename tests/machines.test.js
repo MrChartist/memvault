@@ -43,4 +43,20 @@ describe('machines', () => {
     expect(M.removeMachine(m.id, { file })).toBe(true);
     await expect(M.relay(m.id, { method: 'GET', subpath: '/api/workspace', file })).rejects.toThrow(/not linked/);
   });
+
+  it('reports which linked machines are online and still accept the key', async () => {
+    const f2 = path.join(ROOT, 'machines-status.json');
+    const calls = [];
+    const up = await M.addMachine({ name: 'Up', url: 'https://up.example.com', code: 'GOOD', fetchImpl: fakeFetch(calls), file: f2 });
+    const down = await M.addMachine({ name: 'Down', url: 'https://down.example.com', code: 'GOOD', fetchImpl: fakeFetch(calls), file: f2 });
+    const fetchImpl = async (url) => {
+      if (url.startsWith('https://down.')) throw new Error('ECONNREFUSED');
+      if (url.endsWith('/health')) return new Response(JSON.stringify({ ok: true, name: 'memvault', version: '3.0.0' }));
+      return new Response(JSON.stringify({ ok: true, enabled: true, viewOnly: true }));
+    };
+    const st = Object.fromEntries((await M.machineStatus({ fetchImpl, file: f2 })).map((s) => [s.id, s]));
+    expect(st[up.id]).toMatchObject({ online: true, version: '3.0.0', keyOk: true, workspace: true, viewOnly: true });
+    expect(st[down.id]).toMatchObject({ online: false });
+    expect(JSON.stringify(st)).not.toContain('k-1'); // keys never leave the server
+  });
 });

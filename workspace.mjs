@@ -21,6 +21,7 @@ import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { spawn, execFile } from "child_process";
+import { isServerViewOnly } from "./device-keys.mjs";
 
 const isWin = process.platform === "win32";
 
@@ -331,15 +332,19 @@ export function createTerminals({ shell, cwd, now = Date.now } = {}) {
 /**
  * Mount the workspace routes. Call after requireToken. `log(action, detail, actor)` writes the audit log.
  */
-export function mountWorkspace(app, { security = {}, log = () => {}, express }) {
+export function mountWorkspace(app, { security = {}, log = () => {}, express, viewOnly = isServerViewOnly }) {
   const ws = workspaceSettings(security);
+  // A device set to "view only" by the owner may look, never act.
+  const canAct = (req, res, next) => (viewOnly(req.deviceKeyId)
+    ? res.status(403).json({ ok: false, error: "This device is set to view only for the server. Change it on your computer (Settings → Your devices)." })
+    : next());
   const actorOf = (req) => (req.deviceKeyId ? `device:${req.deviceKeyId}` : "owner");
   const fail = (res, e) => res.status(e.status && e.status < 600 ? e.status : e.code === "ENOENT" ? 404 : e.code === "EACCES" ? 403 : 500)
     .json({ ok: false, error: e.code === "ENOENT" ? "Not found." : e.code === "EACCES" ? "Permission denied." : e.message });
   const off = (what) => (_req, res) => res.status(404).json({ ok: false, error: `The server ${what} is turned off. Set security.workspace.enabled in ~/.memvaultrc.json.` });
 
-  app.get("/api/workspace", (_req, res) => res.json({
-    ok: true, enabled: ws.enabled, terminal: ws.enabled && ws.terminal, processes: ws.enabled && ws.processes,
+  app.get("/api/workspace", (req, res) => res.json({
+    ok: true, enabled: ws.enabled, viewOnly: viewOnly(req.deviceKeyId), terminal: ws.enabled && ws.terminal, processes: ws.enabled && ws.processes,
     files: ws.enabled && ws.files, root: ws.enabled ? ws.root : null, platform: process.platform,
   }));
   if (!ws.enabled) {
@@ -351,7 +356,7 @@ export function mountWorkspace(app, { security = {}, log = () => {}, express }) 
   const terms = createTerminals({ shell: ws.shell, cwd: ws.root });
   if (ws.terminal) {
     const body = express.json({ limit: "256kb" });
-    app.post("/api/term/open", body, async (req, res) => {
+    app.post("/api/term/open", canAct, body, async (req, res) => {
       try {
         const s = await terms.open({ owner: actorOf(req), cols: req.body?.cols, rows: req.body?.rows });
         log("terminal-open", { id: s.id, mode: s.mode, shell: ws.shell }, actorOf(req));
@@ -361,7 +366,7 @@ export function mountWorkspace(app, { security = {}, log = () => {}, express }) 
     app.get("/api/term/:id/read", async (req, res) => {
       try { res.json({ ok: true, ...(await terms.read(req.params.id, actorOf(req), req.query.since)) }); } catch (e) { fail(res, e); }
     });
-    app.post("/api/term/:id/write", body, (req, res) => {
+    app.post("/api/term/:id/write", canAct, body, (req, res) => {
       try { terms.get(req.params.id, actorOf(req)).write(String(req.body?.data ?? "")); res.json({ ok: true }); } catch (e) { fail(res, e); }
     });
     app.post("/api/term/:id/resize", body, (req, res) => {
@@ -384,7 +389,7 @@ export function mountWorkspace(app, { security = {}, log = () => {}, express }) 
     app.get("/api/system/processes", async (_req, res) => {
       try { res.json({ ok: true, ...(await listProcesses()) }); } catch (e) { fail(res, e); }
     });
-    app.post("/api/system/process/:action", async (req, res) => {
+    app.post("/api/system/process/:action", canAct, async (req, res) => {
       const { action } = req.params;
       const kind = req.body?.kind === "docker" ? "docker" : "pm2";
       const name = String(req.body?.name || "");
@@ -410,7 +415,7 @@ export function mountWorkspace(app, { security = {}, log = () => {}, express }) 
     app.get("/api/fs/read", (req, res) => {
       try { res.json({ ok: true, ...readText(ws.root, req.query.path) }); } catch (e) { fail(res, e); }
     });
-    app.post("/api/fs/write", express.json({ limit: "2mb" }), (req, res) => {
+    app.post("/api/fs/write", canAct, express.json({ limit: "2mb" }), (req, res) => {
       try {
         const { path: p, content, mtime } = req.body || {};
         if (typeof p !== "string" || !p || typeof content !== "string") return res.status(400).json({ ok: false, error: "Send a path and the file's text." });

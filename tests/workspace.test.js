@@ -116,4 +116,22 @@ describe('workspace', () => {
     expect((await req(on, 'GET', `/api/term/${o.json.id}/read`)).status).toBe(404);
     expect(fs.readFileSync(path.join(process.env.VAULT_ROOT, 'audit.log'), 'utf8')).toContain('"terminal-open"');
   }, 30_000);
+
+  it('lets the owner make a device view only for the server', async () => {
+    const K = await import('../device-keys.mjs');
+    const { code } = K.createPairingCode({ name: 'Phone' });
+    const { id, key } = K.redeemPairingCode(code);
+    expect((await req(on, 'GET', '/api/fs/read?path=app.env', { token: key })).status).toBe(200);
+    expect((await req(on, 'PUT', `/devices/phones/${id}`, { token: key, body: { serverViewOnly: true } })).status).toBe(403); // not from the phone itself
+    expect((await req(on, 'PUT', `/devices/phones/${id}`, { body: { serverViewOnly: true } })).status).toBe(200);
+    expect((await req(on, 'GET', '/api/workspace', { token: key })).json.viewOnly).toBe(true);
+    expect((await req(on, 'GET', '/api/fs/read?path=app.env', { token: key })).status).toBe(200); // looking is fine
+    expect((await req(on, 'GET', '/api/system/status', { token: key })).status).toBe(200);
+    expect((await req(on, 'POST', '/api/fs/write', { token: key, body: { path: 'app.env', content: 'x' } })).status).toBe(403);
+    expect((await req(on, 'POST', '/api/term/open', { token: key, body: {} })).status).toBe(403);
+    expect((await req(on, 'POST', '/api/system/process/restart', { token: key, body: { name: 'web' } })).status).toBe(403);
+    expect((await req(on, 'GET', '/api/workspace')).json.viewOnly).toBe(false); // the owner key is never view only
+    expect((await req(on, 'PUT', `/devices/phones/${id}`, { body: { serverViewOnly: false } })).status).toBe(200);
+    expect((await req(on, 'GET', '/api/workspace', { token: key })).json.viewOnly).toBe(false);
+  });
 });

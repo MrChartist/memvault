@@ -1224,7 +1224,7 @@
       : '<p class="muted small">No other computers seen yet. Set up the same shared folder and passphrase on them.</p>';
     $('#devices-info').innerHTML = `<p><b>${d.enabled ? 'Syncing is on' : 'Syncing is off'}</b>${d.enabled ? `, every ${esc(d.intervalMinutes)} minutes while MemVault is open` : ''}. ${d.passphraseSet ? 'The sync passphrase is set.' : '<b>No sync passphrase yet.</b>'} ${last}</p>${problems ? `<ul class="plain">${problems}</ul>` : ''}<h4>Other computers</h4>${peers}`;
     $('#phones-list').innerHTML = d.phones.length
-      ? `<ul class="plain">${d.phones.map((k) => `<li><span dir="auto"><b>${esc(k.name)}</b> <span class="muted small">· added ${esc(fmtDay(k.created_at))}${k.last_used_at ? `, last used ${esc(ago(k.last_used_at))}` : ''}</span></span>${phone ? '' : ` <button type="button" class="btn sm ghost" data-action="forget-phone" data-id="${esc(k.id)}" aria-label="Sign out: ${esc(k.name)}">Sign out</button>`}</li>`).join('')}</ul>`
+      ? `<ul class="plain">${d.phones.map((k) => `<li><span dir="auto"><b>${esc(k.name)}</b> <span class="muted small">· added ${esc(fmtDay(k.created_at))}${k.last_used_at ? `, last used ${esc(ago(k.last_used_at))}` : ''}</span></span>${k.server_view_only ? ' <span class="pill">Server: view only</span>' : ''}${phone ? '' : ` <button type="button" class="btn sm ghost" data-action="phone-access" data-id="${esc(k.id)}" data-view-only="${k.server_view_only ? '0' : '1'}" aria-label="${k.server_view_only ? 'Allow full server control' : 'Make server view only'}: ${esc(k.name)}">${k.server_view_only ? 'Allow server control' : 'Server: view only'}</button> <button type="button" class="btn sm ghost" data-action="forget-phone" data-id="${esc(k.id)}" aria-label="Sign out: ${esc(k.name)}">Sign out</button>`}</li>`).join('')}</ul>`
       : '<p class="muted small">No phones or tablets are signed in.</p>';
   }
 
@@ -1439,6 +1439,13 @@
     'devices-sync': devicesSync,
     'pair-phone': () => pairPhone(),
     'forget-phone': (el) => forgetPhone(el.dataset.id),
+    'phone-access': async (el) => {
+      try {
+        await api(`/devices/phones/${encodeURIComponent(el.dataset.id)}`, { method: 'PUT', body: { serverViewOnly: el.dataset.viewOnly === '1' } });
+        toast(el.dataset.viewOnly === '1' ? 'That device can now only look at the server: no terminal, no restarts, no saving files.' : 'That device can control the server again.');
+        await loadDevices();
+      } catch (e) { toast(e.message, true); }
+    },
     'export-all': exportAll,
     'wipe-all': () => { $('#wipe-confirm').value = ''; $('#wipe-go').disabled = true; $('#wipe-error').hidden = true; dlg('dlg-wipe').showModal(); focusSoon($('#wipe-confirm')); },
     'wipe-go': wipeGo,

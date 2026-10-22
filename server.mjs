@@ -31,7 +31,7 @@ import { mountMachines } from "./machines.mjs";
 import { mountMain, runDeviceSync } from "./main-machine.mjs";
 import { mcpEntry } from "./cli-tools.mjs";
 import { deviceSettings, deviceStatus, syncDevices, syncDue, saveSyncPassphrase, updateDeviceSettings, renameDevice } from "./device-sync.mjs";
-import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey } from "./device-keys.mjs";
+import { createPairingCode, redeemPairingCode, listDeviceKeys, forgetDeviceKey, setServerViewOnly } from "./device-keys.mjs";
 import { setupStatus, backupPassphraseState } from "./setup-status.mjs";
 import { resolveUserPath } from "./paths.mjs";
 import {
@@ -887,6 +887,13 @@ export function createApp({
     const { code, expiresAt } = createPairingCode({ name });
     log("devices", { changed: ["pairing-code"] });
     res.json({ ok: true, code, expiresAt });
+  });
+
+  app.put("/devices/phones/:id", ownerOnly, (req, res) => {
+    if (typeof req.body?.serverViewOnly !== "boolean") return res.status(400).json({ ok: false, error: "Send serverViewOnly: true or false." });
+    if (!setServerViewOnly(req.params.id, req.body.serverViewOnly)) return res.status(404).json({ ok: false, error: "Not found" });
+    log("device-access", { device: req.params.id, serverViewOnly: req.body.serverViewOnly });
+    res.json({ ok: true });
   });
 
   app.delete("/devices/phones/:id", ownerOnly, (req, res) => {

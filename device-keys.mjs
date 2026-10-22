@@ -95,7 +95,29 @@ export function deviceKeyMatches(candidate, { file = keysFile() } = {}) {
 }
 
 export function listDeviceKeys({ file = keysFile() } = {}) {
-  return load(file).keys.map(({ id, name, created_at, last_used_at }) => ({ id, name, created_at, last_used_at }));
+  return load(file).keys.map(({ id, name, created_at, last_used_at, server_view_only }) => ({ id, name, created_at, last_used_at, server_view_only: server_view_only === true }));
+}
+
+/**
+ * "View only" on the Server, Terminal and Files tabs (workspace.mjs): that device sees health, services, logs
+ * and files, but cannot open a terminal, start or stop a service, or save a file. Set by the owner.
+ */
+export function setServerViewOnly(id, viewOnly, { file = keysFile() } = {}) {
+  const data = load(file);
+  const k = data.keys.find((x) => x.id === id);
+  if (!k) return false;
+  k.server_view_only = viewOnly === true;
+  save(data, file);
+  cache = { mtime: -1, keys: [] };
+  return true;
+}
+
+export function isServerViewOnly(id, { file = keysFile() } = {}) {
+  if (!id) return false;
+  let mtime;
+  try { mtime = fs.statSync(file).mtimeMs; } catch { return false; }
+  if (mtime !== cache.mtime) cache = { mtime, keys: load(file).keys };
+  return cache.keys.find((k) => k.id === id)?.server_view_only === true;
 }
 
 export function forgetDeviceKey(id, { file = keysFile() } = {}) {

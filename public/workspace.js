@@ -27,6 +27,7 @@
   let machine = read(MACHINE_KEY, 'localStorage'); // null: this browser has not chosen, so the main machine opens
   let machines = [];
   let main = { main: '', isMain: false };
+  let health = {}; // machine id → { online, version, keyOk, workspace, viewOnly }
   const wapi = (path, opts) => api(machine ? `/api/machines/${encodeURIComponent(machine)}/relay${path}` : path, opts);
   const machineName = () => (machine ? machines.find((m) => m.id === machine)?.name || 'that machine' : 'this machine');
 
@@ -55,6 +56,7 @@
     if (machine && !machines.some((x) => x.id === machine)) setMachine('');
     renderPicker();
     await loadCaps();
+    refreshHealth();
   }
 
   async function loadCaps() {
@@ -68,12 +70,42 @@
     const sel = $('#ws-machine');
     const star = (on) => (on ? '★ ' : '');
     const here = `${star(main.isMain)}This machine${localCaps?.enabled ? '' : ' (workspace off)'}`;
-    sel.innerHTML = `<option value="">${esc(here)}</option>` + machines.map((m) => `<option value="${esc(m.id)}">${esc(star(main.main === m.id))}${esc(m.name)} · ${esc(m.url.replace(/^https?:\/\//, ''))}</option>`).join('');
+    const state = (id) => {
+      const h = health[id];
+      if (!h) return '';
+      if (!h.online) return ' — offline';
+      if (h.keyOk === false) return ' — needs linking again';
+      return ` — online${h.version ? ` · v${h.version}` : ''}${h.viewOnly ? ' · view only' : ''}`;
+    };
+    sel.innerHTML = `<option value="">${esc(here)}</option>` + machines.map((m) => `<option value="${esc(m.id)}">${esc(star(main.main === m.id))}${esc(m.name)} · ${esc(m.url.replace(/^https?:\/\//, ''))}${esc(state(m.id))}</option>`).join('');
     sel.value = machine;
     $('#ws-machine-remove').hidden = !machine;
     const isMainHere = machine ? main.main === machine : main.isMain;
     $('#ws-main').hidden = isMainHere;
-    $('#ws-main-note').textContent = isMainHere ? '★ Main machine: memories sync through it, and this dashboard opens on it.' : '';
+    $('#ws-main-note').textContent = isMainHere ? `★ Main machine: memories sync through it, and this dashboard opens on it.${syncLine}` : '';
+    $('#ws-sync').hidden = !main.main;
+  }
+
+  let syncLine = '';
+  const ago = (iso) => { const m = Math.round((Date.now() - Date.parse(iso)) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+  async function refreshHealth() {
+    try {
+      const [st, dv] = await Promise.all([machines.length ? api('/api/machines/status') : { status: [] }, main.main ? api('/devices') : null]);
+      health = Object.fromEntries(st.status.map((h) => [h.id, h]));
+      const last = dv?.last;
+      syncLine = !main.main ? '' : !dv?.passphraseSet ? ' Set the sync passphrase in Settings → Your devices to start syncing.'
+        : !last ? ' Not synced yet.' : last.ok ? ` Last synced ${ago(last.at)}.` : ` Last sync ${ago(last.at)} had a problem: ${last.problems?.[0] || 'unknown'}`;
+      renderPicker();
+    } catch { /* shown next time */ }
+  }
+
+  async function syncNow(el) {
+    el.disabled = true;
+    try {
+      const r = await api('/devices/sync', { method: 'POST' });
+      say(r.ok ? `Synced: ${r.added} added, ${r.changed} changed, ${r.deleted} deleted.` : `Sync problem: ${r.problems?.[0] || 'unknown'}`);
+    } catch (e) { say(e.message); }
+    finally { el.disabled = false; refreshHealth(); }
   }
 
   function setMachine(id) {
@@ -108,7 +140,7 @@
     const meta = p.kind === 'pm2'
       ? `PM2 · CPU ${p.cpu ?? '—'}% · ${bytes(p.memory)} · ${p.restarts} restarts${p.uptime ? ` · up ${dur(p.uptime / 1000)}` : ''}`
       : `Docker · ${p.image} · ${p.status}`;
-    const b = (action, label, cls = '') => `<button class="btn sm ${cls}" data-action="ws-proc" data-op="${action}" data-kind="${esc(p.kind)}" data-name="${esc(p.name)}">${label}</button>`;
+    const b = (action, label, cls = '') => caps?.viewOnly ? '' : `<button class="btn sm ${cls}" data-action="ws-proc" data-op="${action}" data-kind="${esc(p.kind)}" data-name="${esc(p.name)}">${label}</button>`;
     return `<div class="card ws-proc"><div class="row between gap"><h4>${esc(p.name)}</h4><span class="ws-badge ${on ? 'on' : 'off'}">${on ? '🟢 Online' : '🔴 Stopped'}</span></div>`
       + `<div class="meta">${esc(meta)}</div><div class="row">${b('restart', 'Restart', 'primary')}${on ? b('stop', 'Stop') : b('start', 'Start')}`
       + `<button class="btn sm ghost" data-action="ws-logs" data-kind="${esc(p.kind)}" data-name="${esc(p.name)}">Logs</button></div></div>`;
@@ -212,6 +244,7 @@
   const status = (t) => { $('#term-status').textContent = t; };
 
   async function openTerminal({ fresh = false } = {}) {
+    if (caps?.viewOnly) { status('This device is set to view only for the server, so it cannot open a terminal.'); return; }
     const xt = ensureXterm();
     if (!xt) { status('The terminal files did not load. Reload the page.'); return; }
     setTimeout(() => { fitNow(); xt.focus(); }, 30);
@@ -280,6 +313,9 @@
       $('#fs-text').value = r.content;
       $('#fs-state').textContent = bytes(r.size);
       $('#fs-editor-card').hidden = false;
+      $('#fs-text').readOnly = !!caps?.viewOnly;
+      $('#fs-save').hidden = !!caps?.viewOnly;
+      if (caps?.viewOnly) $('#fs-state').textContent = `${bytes(r.size)} · view only`;
       $('.ws-files').classList.remove('no-file');
       gutter();
       $('#fs-text').scrollTop = 0;
@@ -371,6 +407,7 @@
     'ws-machine-add': () => { $('#machine-error').hidden = true; $('#machine-main').checked = !main.main; $('#dlg-machine').showModal(); $('#machine-name').focus(); },
     'ws-machine-remove': unlinkMachine,
     'ws-main': makeMain,
+    'ws-sync': syncNow,
     'ws-refresh-server': loadServer,
     'ws-proc': procAction,
     'ws-logs': showLogs,
@@ -397,6 +434,7 @@
     if (actions[a]) { e.preventDefault(); actions[a](el); return; }
     if (a === 'view') {
       $('#ws-machine-bar').hidden = !views[el.dataset.view];
+      if (views[el.dataset.view]) refreshHealth();
       if (el.dataset.view !== 'server') stopServer();
       // app.js has just shown the section; fill it once it is visible.
       setTimeout(() => views[el.dataset.view]?.(), 0);
